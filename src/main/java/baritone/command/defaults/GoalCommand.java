@@ -39,12 +39,17 @@ import java.util.stream.Stream;
 public class GoalCommand extends Command {
 
     public GoalCommand(IBaritone baritone) {
-        super(baritone, "goal");
+        super(baritone, "goal", "goals");
     }
 
     @Override
     public void execute(String label, IArgConsumer args) throws CommandException {
         ICustomGoalProcess goalProcess = baritone.getCustomGoalProcess();
+        if (label.equals("goals") && !args.hasAny()) {
+            boolean visible = GoalTracker.toggleVisible();
+            logDirect(visible ? "Goal HUD shown." : "Goal HUD hidden.", ChatFormatting.GRAY);
+            return;
+        }
         if (args.hasAny()) {
             String raw = args.rawRest().trim();
             String low = raw.toLowerCase(Locale.ROOT);
@@ -78,6 +83,10 @@ public class GoalCommand extends Command {
                 return;
             }
             if (!looksLikeCoordinateGoal(args)) {
+                if (seemsLikeCoordinateAttempt(args)) {
+                    logDirect("Malformed coordinates. Usage: goal <x> <y> <z>", ChatFormatting.RED);
+                    return;
+                }
                 AiCommand.startAgent(baritone, raw, true, this, "goal");
                 return;
             }
@@ -122,7 +131,7 @@ public class GoalCommand extends Command {
 
     @Override
     public String getShortDesc() {
-        return "Set a coordinate goal or run an AI #goal plan";
+        return "Set a coordinate goal, or open the live AI goal HUD";
     }
 
     @Override
@@ -140,6 +149,7 @@ public class GoalCommand extends Command {
                 "> goal <x> <y> <z> - Set the goal to an X,Y,Z position",
                 "",
                 "AI goal mode:",
+                "> goals - toggle the live Goal HUD",
                 "> goal get 10 jungle logs without exploring - plan and execute with the side HUD",
                 "> goal status - show the current AI plan/status",
                 "> goal stop - cancel the running AI agent",
@@ -164,5 +174,28 @@ public class GoalCommand extends Command {
             }
         }
         return true;
+    }
+
+    private static boolean seemsLikeCoordinateAttempt(IArgConsumer args) {
+        if (!args.hasAtMost(3)) {
+            return false;
+        }
+        for (int i = 0; args.has(i + 1); i++) {
+            String s;
+            try {
+                s = args.peekString(i);
+            } catch (CommandException e) {
+                return false;
+            }
+            String low = s.toLowerCase(Locale.ROOT);
+            if (low.equals("reset") || low.equals("clear") || low.equals("none")) {
+                return true;
+            }
+            // If any token contains a digit or a tilde, it's likely an attempt at coordinates
+            if (s.matches(".*[0-9~].*")) {
+                return true;
+            }
+        }
+        return false;
     }
 }
