@@ -85,3 +85,18 @@ you can push a dummy commit to trigger it and have GitHub build Baritone for you
 
 If the commit you want to build is less than 90 days old, you can also find the corresponding workflow run in
 [this list](https://github.com/cabaletta/baritone/actions/workflows/gradle_build.yml) and download the artifacts from there.
+
+## Java toolchain / Gradle warnings
+
+When building you may see warnings about the Java installation or Gradle deprecations (for example: "Path for java installation '/usr/lib/jvm/java-21-openjdk' does not contain a java executable" or "Deprecated Gradle features were used").
+
+- Ensure `JAVA_HOME` points to a valid JDK that contains a `bin/java` executable. Example (Linux):
+
+```bash
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+export PATH="$JAVA_HOME/bin:$PATH"
+```
+
+- For Gradle 9 compatibility, run `./gradlew --warning-mode all` to list deprecation warnings and follow the suggested fixes. Many warnings come from third-party plugins and may require plugin updates.
+
+If you need help interpreting a specific warning message, open an issue with the full build output and I'll help triage it.
