@@ -166,11 +166,12 @@ public abstract class Movement implements IMovement, MovementHelper {
                 if (reachable.isPresent()) {
                     Rotation rotTowardsBlock = reachable.get();
                     state.setTarget(new MovementState.MovementTarget(rotTowardsBlock, true));
-                    if (Baritone.settings().strictVisibleBlockInteractions.value) {
-                        if (ctx.isLookingAt(blockPos)) {
-                            state.setInput(Input.CLICK_LEFT, true);
-                        }
-                    } else if (ctx.isLookingAt(blockPos) || ctx.playerRotations().isReallyCloseTo(rotTowardsBlock)) {
+                    // Allow interactions when the player is looking at the block OR
+                    // the player's current rotation is already very close to the
+                    // rotation that reaches the block. The "strict" setting now
+                    // only affects whether we require visibility for other fallbacks,
+                    // but shouldn't suppress an obvious-close-rotation case.
+                    if (ctx.isLookingAt(blockPos) || ctx.playerRotations().isReallyCloseTo(rotTowardsBlock)) {
                         state.setInput(Input.CLICK_LEFT, true);
                     }
                     return false;
@@ -179,11 +180,15 @@ public abstract class Movement implements IMovement, MovementHelper {
                 //i'm doing it anyway
                 //i dont care if theres snow in the way!!!!!!!
                 //you dont own me!!!!
-                state.setTarget(new MovementState.MovementTarget(RotationUtils.calcRotationFromVec3d(ctx.playerHead(),
-                        VecUtils.getBlockPosCenter(blockPos), ctx.playerRotations()), true)
+                // In the fallback rotation case, also allow the click when our
+                // current rotations are already very close to the computed target
+                // so strict mode doesn't prevent intended interactions.
+                Rotation fallbackRot = RotationUtils.calcRotationFromVec3d(ctx.playerHead(),
+                        VecUtils.getBlockPosCenter(blockPos), ctx.playerRotations());
+                state.setTarget(new MovementState.MovementTarget(fallbackRot, true)
                 );
                 // don't check selectedblock on this one, this is a fallback when we can't see any face directly, it's intended to be breaking the "incorrect" block
-                if (!Baritone.settings().strictVisibleBlockInteractions.value || ctx.isLookingAt(blockPos)) {
+                if (!Baritone.settings().strictVisibleBlockInteractions.value || ctx.isLookingAt(blockPos) || ctx.playerRotations().isReallyCloseTo(fallbackRot)) {
                     state.setInput(Input.CLICK_LEFT, true);
                 }
                 return false;
