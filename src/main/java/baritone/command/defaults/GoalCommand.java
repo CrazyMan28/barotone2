@@ -83,6 +83,10 @@ public class GoalCommand extends Command {
                 return;
             }
             if (!looksLikeCoordinateGoal(args)) {
+                if (seemsLikeCoordinateAttempt(args)) {
+                    logDirect("Malformed coordinates. Usage: goal <x> <y> <z>", ChatFormatting.RED);
+                    return;
+                }
                 AiCommand.startAgent(baritone, raw, true, this, "goal");
                 return;
             }
@@ -170,5 +174,28 @@ public class GoalCommand extends Command {
             }
         }
         return true;
+    }
+
+    private static boolean seemsLikeCoordinateAttempt(IArgConsumer args) {
+        if (!args.hasAtMost(3)) {
+            return false;
+        }
+        for (int i = 0; args.has(i + 1); i++) {
+            String s;
+            try {
+                s = args.peekString(i);
+            } catch (CommandException e) {
+                return false;
+            }
+            String low = s.toLowerCase(Locale.ROOT);
+            if (low.equals("reset") || low.equals("clear") || low.equals("none")) {
+                return true;
+            }
+            // If any token contains a digit or a tilde, it's likely an attempt at coordinates
+            if (s.matches(".*[0-9~].*")) {
+                return true;
+            }
+        }
+        return false;
     }
 }
