@@ -39,12 +39,17 @@ import java.util.stream.Stream;
 public class GoalCommand extends Command {
 
     public GoalCommand(IBaritone baritone) {
-        super(baritone, "goal");
+        super(baritone, "goal", "goals");
     }
 
     @Override
     public void execute(String label, IArgConsumer args) throws CommandException {
         ICustomGoalProcess goalProcess = baritone.getCustomGoalProcess();
+        if (label.equals("goals") && !args.hasAny()) {
+            boolean visible = GoalTracker.toggleVisible();
+            logDirect(visible ? "Goal HUD shown." : "Goal HUD hidden.", ChatFormatting.GRAY);
+            return;
+        }
         if (args.hasAny()) {
             String raw = args.rawRest().trim();
             String low = raw.toLowerCase(Locale.ROOT);
@@ -122,7 +127,7 @@ public class GoalCommand extends Command {
 
     @Override
     public String getShortDesc() {
-        return "Set a coordinate goal or run an AI #goal plan";
+        return "Set a coordinate goal, or open the live AI goal HUD";
     }
 
     @Override
@@ -140,6 +145,7 @@ public class GoalCommand extends Command {
                 "> goal <x> <y> <z> - Set the goal to an X,Y,Z position",
                 "",
                 "AI goal mode:",
+                "> goals - toggle the live Goal HUD",
                 "> goal get 10 jungle logs without exploring - plan and execute with the side HUD",
                 "> goal status - show the current AI plan/status",
                 "> goal stop - cancel the running AI agent",
