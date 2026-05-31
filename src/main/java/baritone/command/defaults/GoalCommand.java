@@ -66,19 +66,22 @@ public class GoalCommand extends Command {
                 logDirect("Goal HUD hidden.", ChatFormatting.GRAY);
                 return;
             }
-            if (low.equals("retry")) {
+            if (low.equals("retry") || low.startsWith("retry ")) {
                 if (MistralAgent.ACTIVE.get() != null) {
                     logDirect("Another AI agent is already running. Run `goal stop` first.",
                             ChatFormatting.YELLOW);
                     return;
                 }
-                String lastGoal = GoalTracker.lastGoal();
-                if (lastGoal.isEmpty()) {
+                String retryGoal = retryGoal(raw);
+                if (retryGoal.isEmpty()) {
                     GoalTracker.showIdle();
-                    logDirect("No previous AI goal to retry.", ChatFormatting.YELLOW);
+                    logDirect(GoalTracker.history().isEmpty()
+                            ? "No previous AI goal to retry."
+                            : "No matching AI goal in history. Run `goal history` to see available numbers.",
+                            ChatFormatting.YELLOW);
                     return;
                 }
-                AiCommand.startAgent(baritone, lastGoal, true, this, "goal retry");
+                AiCommand.startAgent(baritone, retryGoal, true, this, "goal retry");
                 return;
             }
             if (low.equals("stop") || low.equals("cancel")) {
@@ -171,6 +174,7 @@ public class GoalCommand extends Command {
                 "> goals - toggle the live Goal HUD",
                 "> goal get 10 jungle logs without exploring - plan and execute with the side HUD",
                 "> goal retry - rerun the last AI goal in plan mode",
+                "> goal retry <number> - rerun a numbered entry from goal history",
                 "> goal history - show recent AI goals kept for retry",
                 "> goal status - show the current AI plan/status",
                 "> goal stop - cancel the running AI agent",
@@ -218,5 +222,17 @@ public class GoalCommand extends Command {
             }
         }
         return false;
+    }
+
+    private static String retryGoal(String raw) {
+        String[] parts = raw.trim().split("\\s+", 2);
+        if (parts.length == 1) {
+            return GoalTracker.lastGoal();
+        }
+        try {
+            return GoalTracker.historyGoal(Integer.parseInt(parts[1]));
+        } catch (NumberFormatException e) {
+            return "";
+        }
     }
 }

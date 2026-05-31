@@ -97,7 +97,10 @@ public class GoalTrackerTest {
         List<String> history = GoalTracker.history();
         assertEquals(Arrays.asList("goal 3", "goal 6", "goal 5", "goal 4", "goal 2"), history);
         assertEquals("goal 3", GoalTracker.lastGoal());
-        assertTrue(GoalTracker.describeHistory().contains("Run `goal retry`"));
+        assertEquals("goal 5", GoalTracker.historyGoal(3));
+        assertEquals("", GoalTracker.historyGoal(0));
+        assertEquals("", GoalTracker.historyGoal(6));
+        assertTrue(GoalTracker.describeHistory().contains("goal retry <number>"));
     }
 
     @Test

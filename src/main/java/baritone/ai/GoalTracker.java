@@ -157,6 +157,16 @@ public final class GoalTracker {
         }
     }
 
+    public static String historyGoal(int oneBasedIndex) {
+        synchronized (LOCK) {
+            int idx = oneBasedIndex - 1;
+            if (idx < 0 || idx >= history.size()) {
+                return "";
+            }
+            return history.get(idx);
+        }
+    }
+
     public static String describeHistory() {
         List<String> recent = history();
         if (recent.isEmpty()) {
@@ -166,7 +176,7 @@ public final class GoalTracker {
         for (int i = 0; i < recent.size(); i++) {
             out.append("\n").append(i + 1).append(". ").append(recent.get(i));
         }
-        out.append("\nRun `goal retry` to rerun the latest goal.");
+        out.append("\nRun `goal retry` to rerun the latest goal, or `goal retry <number>` for a listed goal.");
         return out.toString();
     }
 
