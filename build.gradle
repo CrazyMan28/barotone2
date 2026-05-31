@@ -20,7 +20,9 @@ allprojects {
     apply plugin: "xyz.wagyourtail.unimined"
     apply plugin: "maven-publish"
 
-    archivesBaseName = rootProject.archives_base_name
+    base {
+        archivesName.set(rootProject.archives_base_name)
+    }
 
     def vers = ""
     try {
@@ -37,11 +39,13 @@ allprojects {
     }
     group = rootProject.maven_group
 
-    sourceCompatibility = targetCompatibility = JavaVersion.toVersion(project.java_version)
+    def targetJavaVersion = project.java_version.toInteger()
 
     java {
+        sourceCompatibility = JavaVersion.toVersion(targetJavaVersion)
+        targetCompatibility = JavaVersion.toVersion(targetJavaVersion)
         toolchain {
-            languageVersion.set(JavaLanguageVersion.of(sourceCompatibility.majorVersion.toInteger()))
+            languageVersion.set(JavaLanguageVersion.of(targetJavaVersion))
         }
     }
 
@@ -116,7 +120,9 @@ unimined.minecraft {
     defaultRemapJar = false
 }
 
-archivesBaseName = archivesBaseName + "-common"
+base {
+    archivesName.set("${rootProject.archives_base_name}-common")
+}
 
 sourceSets {
     api {
