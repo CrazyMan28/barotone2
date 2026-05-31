@@ -21,6 +21,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.util.Arrays;
+import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -81,5 +82,44 @@ public class GoalTrackerTest {
         assertEquals("", snapshot.goal);
         assertEquals("No AI goal yet", snapshot.status);
         assertTrue(GoalTracker.describe().contains("No active AI goal"));
+    }
+
+    @Test
+    public void historyIsNewestFirstBoundedAndDeduped() {
+        GoalTracker.start("goal 1", true);
+        GoalTracker.start("goal 2", true);
+        GoalTracker.start("goal 3", true);
+        GoalTracker.start("goal 4", true);
+        GoalTracker.start("goal 5", true);
+        GoalTracker.start("goal 6", true);
+        GoalTracker.start("goal 3", true);
+
+        List<String> history = GoalTracker.history();
+        assertEquals(Arrays.asList("goal 3", "goal 6", "goal 5", "goal 4", "goal 2"), history);
+        assertEquals("goal 3", GoalTracker.lastGoal());
+        assertTrue(GoalTracker.describeHistory().contains("Run `goal retry`"));
+    }
+
+    @Test
+    public void emptyHistoryDescriptionIsNonBlank() {
+        assertEquals("No previous AI goals.", GoalTracker.describeHistory());
+    }
+
+    @Test
+    public void doneGoalCanAutoHideAfterTimeout() {
+        GoalTracker.start("get logs", true);
+        GoalTracker.finish("got logs");
+
+        GoalTracker.Snapshot snapshot = GoalTracker.snapshot();
+        assertTrue(snapshot.shouldAutoHide(snapshot.finishedAt + 15_001L, 15_000L));
+    }
+
+    @Test
+    public void stoppedGoalDoesNotAutoHideAfterTimeout() {
+        GoalTracker.start("get logs", true);
+        GoalTracker.fail("Mistral API key is not set");
+
+        GoalTracker.Snapshot snapshot = GoalTracker.snapshot();
+        assertFalse(snapshot.shouldAutoHide(snapshot.finishedAt + 15_001L, 15_000L));
     }
 }

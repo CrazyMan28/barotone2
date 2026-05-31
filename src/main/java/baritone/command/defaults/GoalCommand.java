@@ -57,6 +57,10 @@ public class GoalCommand extends Command {
                 logDirect(GoalTracker.describe(), ChatFormatting.GRAY);
                 return;
             }
+            if (low.equals("history")) {
+                logDirect(GoalTracker.describeHistory(), ChatFormatting.GRAY);
+                return;
+            }
             if (low.equals("hide") || low.equals("clearhud")) {
                 GoalTracker.hide();
                 logDirect("Goal HUD hidden.", ChatFormatting.GRAY);
@@ -127,7 +131,7 @@ public class GoalCommand extends Command {
     public Stream<String> tabComplete(String label, IArgConsumer args) throws CommandException {
         TabCompleteHelper helper = new TabCompleteHelper();
         if (args.hasExactlyOne()) {
-            helper.append("reset", "clear", "none", "status", "stop", "plan", "retry", "hide", "~");
+            helper.append("reset", "clear", "none", "status", "history", "stop", "plan", "retry", "hide", "~");
         } else {
             if (args.hasAtMost(3)) {
                 while (args.has(2)) {
@@ -167,6 +171,7 @@ public class GoalCommand extends Command {
                 "> goals - toggle the live Goal HUD",
                 "> goal get 10 jungle logs without exploring - plan and execute with the side HUD",
                 "> goal retry - rerun the last AI goal in plan mode",
+                "> goal history - show recent AI goals kept for retry",
                 "> goal status - show the current AI plan/status",
                 "> goal stop - cancel the running AI agent",
                 "> goal hide - hide the side HUD"

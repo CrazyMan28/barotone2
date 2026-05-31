@@ -26,9 +26,11 @@ import java.util.List;
  */
 public final class GoalTracker {
 
+    private static final int HISTORY_LIMIT = 5;
     private static final Object LOCK = new Object();
     private static Snapshot current = Snapshot.empty();
     private static String lastGoal = "";
+    private static final List<String> history = new ArrayList<>();
 
     private GoalTracker() {}
 
@@ -39,6 +41,7 @@ public final class GoalTracker {
                     System.currentTimeMillis(), 0L, Collections.emptyList(), -1);
             if (!cleanGoal.isEmpty()) {
                 lastGoal = cleanGoal;
+                remember(cleanGoal);
             }
         }
     }
@@ -148,6 +151,25 @@ public final class GoalTracker {
         }
     }
 
+    public static List<String> history() {
+        synchronized (LOCK) {
+            return Collections.unmodifiableList(new ArrayList<>(history));
+        }
+    }
+
+    public static String describeHistory() {
+        List<String> recent = history();
+        if (recent.isEmpty()) {
+            return "No previous AI goals.";
+        }
+        StringBuilder out = new StringBuilder("Recent AI goals:");
+        for (int i = 0; i < recent.size(); i++) {
+            out.append("\n").append(i + 1).append(". ").append(recent.get(i));
+        }
+        out.append("\nRun `goal retry` to rerun the latest goal.");
+        return out.toString();
+    }
+
     public static String describe() {
         Snapshot s = snapshot();
         if (!s.visible || s.isEmpty()) {
@@ -181,10 +203,19 @@ public final class GoalTracker {
         return s.isEmpty() ? prefix : prefix + ": " + s;
     }
 
+    private static void remember(String goal) {
+        history.remove(goal);
+        history.add(0, goal);
+        while (history.size() > HISTORY_LIMIT) {
+            history.remove(history.size() - 1);
+        }
+    }
+
     static void resetForTests() {
         synchronized (LOCK) {
             current = Snapshot.empty();
             lastGoal = "";
+            history.clear();
         }
     }
 
@@ -228,6 +259,13 @@ public final class GoalTracker {
             return new Snapshot(visible, false, "", "No AI goal yet", false, 0L, 0L, Collections.emptyList(), -1);
         }
 
+        public boolean shouldAutoHide(long nowMillis, long maxAgeMillis) {
+            return !active
+                    && finishedAt > 0L
+                    && nowMillis - finishedAt > maxAgeMillis
+                    && isDoneStatus(status);
+        }
+
         private boolean isEmpty() {
             return goal.isEmpty() && status.isEmpty() && steps.isEmpty() && startedAt == 0L && finishedAt == 0L;
         }
@@ -250,6 +288,10 @@ public final class GoalTracker {
 
         private Snapshot withFinishedAt(long finishedAt) {
             return new Snapshot(visible, active, goal, status, planMode, startedAt, finishedAt, steps, currentStep);
+        }
+
+        private static boolean isDoneStatus(String status) {
+            return "Done".equals(status) || status.startsWith("Done:");
         }
     }
 

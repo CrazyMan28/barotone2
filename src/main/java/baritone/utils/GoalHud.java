@@ -38,7 +38,7 @@ public final class GoalHud {
         if (!snap.visible) {
             return;
         }
-        if (!snap.active && snap.finishedAt > 0L && System.currentTimeMillis() - snap.finishedAt > 15_000L) {
+        if (snap.shouldAutoHide(System.currentTimeMillis(), 15_000L)) {
             GoalTracker.hide();
             return;
         }
