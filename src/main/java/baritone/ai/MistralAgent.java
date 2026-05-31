@@ -129,6 +129,11 @@ public final class MistralAgent implements Helper {
     }
 
     public void runGoal(String userGoal) {
+        if (!GoalTracker.snapshot().active) {
+            GoalTracker.start(userGoal, planMode);
+        }
+        GoalTracker.setStatus("Checking provider");
+
         Settings settings = BaritoneAPI.getSettings();
         String provider = normalizeProvider(settings.aiProvider.value);
         String apiKey;
@@ -141,6 +146,7 @@ public final class MistralAgent implements Helper {
             if (model.isEmpty()) {
                 logDirect("Ollama model is not set. Run: " + settings.prefix.value
                         + "ollama list, then " + settings.prefix.value + "ollama use <number-or-name>", ChatFormatting.RED);
+                GoalTracker.fail("Ollama model is not set");
                 return;
             }
         } else {
@@ -148,6 +154,7 @@ public final class MistralAgent implements Helper {
             if (apiKey == null || apiKey.isEmpty()) {
                 logDirect("Mistral API key is not set. Run: " + settings.prefix.value
                         + "mistral key <YOUR_KEY>, or use " + settings.prefix.value + "ollama use <model>", ChatFormatting.RED);
+                GoalTracker.fail("Mistral API key is not set");
                 return;
             }
             endpoint = settings.mistralEndpoint.value;
@@ -156,7 +163,6 @@ public final class MistralAgent implements Helper {
         worker = Thread.currentThread();
         RUNNING.set(this);
         tools.setForbidExplore(goalForbidsExplore(userGoal));
-        GoalTracker.start(userGoal, planMode);
         GoalTracker.setStatus(planMode ? "Planning" : "Starting");
         history.add(message("user", userGoal));
 
@@ -191,6 +197,7 @@ public final class MistralAgent implements Helper {
                 }
 
                 OpenAiChatClient.AssistantMessage am;
+                GoalTracker.setStatus("Thinking...");
                 try {
                     am = client.chat(model, history, toolDefs, temp, maxTok);
                 } catch (Exception e) {
@@ -209,6 +216,7 @@ public final class MistralAgent implements Helper {
                         GoalTracker.fail("Cancelled");
                         return;
                     }
+                    GoalTracker.setStatus("Thinking... waiting for tool call");
                     history.add(message("user",
                             "You replied without tools. Continue the goal using tools only (get_state, craft_*, "
                                     + "mine, goto_*, wait_until_idle, done, etc.). Do not finish with plain text."));
@@ -228,6 +236,7 @@ public final class MistralAgent implements Helper {
                     String fnName = fn.get("name").getAsString();
                     JsonObject argsObj = parseArgs(fn);
 
+                    GoalTracker.setStatus("Calling " + fnName);
                     if (verbose) {
                         logDirect("[AI:call] " + fnName + " " + truncate(argsObj.toString(), 200),
                                 ChatFormatting.DARK_AQUA);

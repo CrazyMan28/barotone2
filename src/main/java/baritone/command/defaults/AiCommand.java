@@ -73,25 +73,10 @@ public class AiCommand extends Command {
     }
 
     public static void startAgent(IBaritone baritone, String goal, boolean planMode, Helper logger, String label) {
-        Settings settings = BaritoneAPI.getSettings();
-        String provider = settings.aiProvider.value == null ? "mistral" : settings.aiProvider.value.trim().toLowerCase(Locale.ROOT);
-        if ("ollama".equals(provider)) {
-            String model = settings.ollamaModel.value;
-            if (model == null || model.trim().isEmpty()) {
-                logger.logDirect("Ollama model is not set. Run: "
-                                + settings.prefix.value + "ollama list, then " + settings.prefix.value + "ollama use <number-or-name>",
-                        ChatFormatting.RED);
-                return;
-            }
-        } else {
-            String key = settings.mistralApiKey.value;
-            if (key == null || key.isEmpty()) {
-                logger.logDirect("Mistral API key is not set. Run: "
-                                + settings.prefix.value + "mistral key <YOUR_KEY>, or use "
-                                + settings.prefix.value + "ollama use <model>",
-                        ChatFormatting.RED);
-                return;
-            }
+        String cleanGoal = goal == null ? "" : goal.trim();
+        if (cleanGoal.isEmpty()) {
+            logger.logDirect("Usage: " + label + " <natural language goal>", ChatFormatting.RED);
+            return;
         }
 
         if (MistralAgent.ACTIVE.get() != null) {
@@ -100,15 +85,42 @@ public class AiCommand extends Command {
             return;
         }
 
+        GoalTracker.start(cleanGoal, planMode);
+        GoalTracker.setStatus("Checking provider");
+
+        Settings settings = BaritoneAPI.getSettings();
+        String provider = settings.aiProvider.value == null ? "mistral" : settings.aiProvider.value.trim().toLowerCase(Locale.ROOT);
+        if ("ollama".equals(provider)) {
+            String model = settings.ollamaModel.value;
+            if (model == null || model.trim().isEmpty()) {
+                GoalTracker.fail("Ollama model is not set");
+                logger.logDirect("Ollama model is not set. Run: "
+                                + settings.prefix.value + "ollama list, then " + settings.prefix.value + "ollama use <number-or-name>",
+                        ChatFormatting.RED);
+                return;
+            }
+        } else {
+            String key = settings.mistralApiKey.value;
+            if (key == null || key.isEmpty()) {
+                GoalTracker.fail("Mistral API key is not set");
+                logger.logDirect("Mistral API key is not set. Run: "
+                                + settings.prefix.value + "mistral key <YOUR_KEY>, or use "
+                                + settings.prefix.value + "ollama use <model>",
+                        ChatFormatting.RED);
+                return;
+            }
+        }
+
         MistralAgent agent = new MistralAgent(baritone, planMode);
         if (!MistralAgent.ACTIVE.compareAndSet(null, agent)) {
+            GoalTracker.fail("Another AI agent just started");
             logger.logDirect("Another AI agent just started; aborting this one.", ChatFormatting.YELLOW);
             return;
         }
 
         Thread t = new Thread(() -> {
             try {
-                agent.runGoal(goal);
+                agent.runGoal(cleanGoal);
             } catch (Throwable th) {
                 logger.logDirect("AI agent crashed: " + th.getClass().getSimpleName()
                         + ": " + th.getMessage(), ChatFormatting.RED);
@@ -119,7 +131,7 @@ public class AiCommand extends Command {
         }, "baritone-ai-agent");
         t.setDaemon(true);
         t.start();
-        logger.logDirect("[AI] queued " + label + ": " + goal, ChatFormatting.AQUA);
+        logger.logDirect("[AI] queued " + label + ": " + cleanGoal, ChatFormatting.AQUA);
     }
 
     @Override

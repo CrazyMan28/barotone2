@@ -49,7 +49,9 @@ public final class GoalHud {
         int y = Math.max(22, graphics.guiHeight() / 12);
 
         List<String> lines = new ArrayList<>();
-        lines.add((snap.active ? "AI GOAL" : "AI GOAL DONE") + (snap.planMode ? " PLAN" : ""));
+        boolean idle = !snap.active && snap.goal.isEmpty();
+        lines.add((idle ? "AI GOAL IDLE" : (snap.active ? "AI GOAL" : "AI GOAL DONE"))
+                + (snap.planMode ? " PLAN" : ""));
         if (!snap.status.isEmpty()) {
             lines.add(shorten(snap.status, font, maxWidth - 12));
         }

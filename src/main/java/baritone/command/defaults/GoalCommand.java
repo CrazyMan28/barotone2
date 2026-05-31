@@ -62,6 +62,21 @@ public class GoalCommand extends Command {
                 logDirect("Goal HUD hidden.", ChatFormatting.GRAY);
                 return;
             }
+            if (low.equals("retry")) {
+                if (MistralAgent.ACTIVE.get() != null) {
+                    logDirect("Another AI agent is already running. Run `goal stop` first.",
+                            ChatFormatting.YELLOW);
+                    return;
+                }
+                String lastGoal = GoalTracker.lastGoal();
+                if (lastGoal.isEmpty()) {
+                    GoalTracker.showIdle();
+                    logDirect("No previous AI goal to retry.", ChatFormatting.YELLOW);
+                    return;
+                }
+                AiCommand.startAgent(baritone, lastGoal, true, this, "goal retry");
+                return;
+            }
             if (low.equals("stop") || low.equals("cancel")) {
                 MistralAgent active = MistralAgent.ACTIVE.get();
                 if (active == null) {
@@ -112,7 +127,7 @@ public class GoalCommand extends Command {
     public Stream<String> tabComplete(String label, IArgConsumer args) throws CommandException {
         TabCompleteHelper helper = new TabCompleteHelper();
         if (args.hasExactlyOne()) {
-            helper.append("reset", "clear", "none", "status", "stop", "plan", "hide", "~");
+            helper.append("reset", "clear", "none", "status", "stop", "plan", "retry", "hide", "~");
         } else {
             if (args.hasAtMost(3)) {
                 while (args.has(2)) {
@@ -151,6 +166,7 @@ public class GoalCommand extends Command {
                 "AI goal mode:",
                 "> goals - toggle the live Goal HUD",
                 "> goal get 10 jungle logs without exploring - plan and execute with the side HUD",
+                "> goal retry - rerun the last AI goal in plan mode",
                 "> goal status - show the current AI plan/status",
                 "> goal stop - cancel the running AI agent",
                 "> goal hide - hide the side HUD"

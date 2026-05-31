@@ -28,13 +28,18 @@ public final class GoalTracker {
 
     private static final Object LOCK = new Object();
     private static Snapshot current = Snapshot.empty();
+    private static String lastGoal = "";
 
     private GoalTracker() {}
 
     public static void start(String goal, boolean planMode) {
         synchronized (LOCK) {
-            current = new Snapshot(true, false, goal, planMode ? "Planning" : "Running", planMode,
+            String cleanGoal = clean(goal);
+            current = new Snapshot(true, true, cleanGoal, planMode ? "Planning..." : "Starting...", planMode,
                     System.currentTimeMillis(), 0L, Collections.emptyList(), -1);
+            if (!cleanGoal.isEmpty()) {
+                lastGoal = cleanGoal;
+            }
         }
     }
 
@@ -89,7 +94,7 @@ public final class GoalTracker {
             }
             current = current.withActive(false)
                     .withFinishedAt(System.currentTimeMillis())
-                    .withStatus("Done: " + clean(summary));
+                    .withStatus(prefixStatus("Done", summary));
         }
     }
 
@@ -100,7 +105,7 @@ public final class GoalTracker {
             }
             current = current.withActive(false)
                     .withFinishedAt(System.currentTimeMillis())
-                    .withStatus("Stopped: " + clean(summary));
+                    .withStatus(prefixStatus("Stopped", summary));
         }
     }
 
@@ -110,16 +115,46 @@ public final class GoalTracker {
         }
     }
 
+    public static boolean toggleVisible() {
+        synchronized (LOCK) {
+            if (current.isEmpty()) {
+                current = Snapshot.idle(true);
+                return true;
+            }
+            current = current.withVisible(!current.visible);
+            return current.visible;
+        }
+    }
+
+    public static void showIdle() {
+        synchronized (LOCK) {
+            if (current.isEmpty()) {
+                current = Snapshot.idle(true);
+            } else {
+                current = current.withVisible(true);
+            }
+        }
+    }
+
     public static Snapshot snapshot() {
         synchronized (LOCK) {
             return current;
         }
     }
 
+    public static String lastGoal() {
+        synchronized (LOCK) {
+            return lastGoal;
+        }
+    }
+
     public static String describe() {
         Snapshot s = snapshot();
-        if (!s.visible) {
+        if (!s.visible || s.isEmpty()) {
             return "No visible AI goal.";
+        }
+        if (s.goal.isEmpty()) {
+            return "No active AI goal.\nStatus: " + (s.status.isEmpty() ? "Idle" : s.status);
         }
         StringBuilder out = new StringBuilder();
         out.append(s.active ? "Active" : "Last").append(" goal: ").append(s.goal).append("\n");
@@ -139,6 +174,18 @@ public final class GoalTracker {
         }
         String s = raw.replace('\n', ' ').replace('\r', ' ').trim();
         return s.length() <= 180 ? s : s.substring(0, 177) + "...";
+    }
+
+    private static String prefixStatus(String prefix, String raw) {
+        String s = clean(raw);
+        return s.isEmpty() ? prefix : prefix + ": " + s;
+    }
+
+    static void resetForTests() {
+        synchronized (LOCK) {
+            current = Snapshot.empty();
+            lastGoal = "";
+        }
     }
 
     public static final class Snapshot {
@@ -177,6 +224,14 @@ public final class GoalTracker {
             return new Snapshot(false, false, "", "", false, 0L, 0L, Collections.emptyList(), -1);
         }
 
+        private static Snapshot idle(boolean visible) {
+            return new Snapshot(visible, false, "", "No AI goal yet", false, 0L, 0L, Collections.emptyList(), -1);
+        }
+
+        private boolean isEmpty() {
+            return goal.isEmpty() && status.isEmpty() && steps.isEmpty() && startedAt == 0L && finishedAt == 0L;
+        }
+
         private Snapshot withStatus(String status) {
             return new Snapshot(visible, active, goal, status, planMode, startedAt, finishedAt, steps, currentStep);
         }
@@ -186,6 +241,10 @@ public final class GoalTracker {
         }
 
         private Snapshot withActive(boolean active) {
+            return new Snapshot(visible, active, goal, status, planMode, startedAt, finishedAt, steps, currentStep);
+        }
+
+        private Snapshot withVisible(boolean visible) {
             return new Snapshot(visible, active, goal, status, planMode, startedAt, finishedAt, steps, currentStep);
         }
 
