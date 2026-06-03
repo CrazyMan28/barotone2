@@ -90,13 +90,16 @@ public final class GoalHud {
         graphics.fill(x - 5, y - 5, x + maxWidth + 5, y + height, 0xD8080A0D);
         graphics.fill(x - 5, y - 5, x + maxWidth + 5, y - 2, snap.active ? 0xEE36CCDC : 0xEE66AA66);
         for (int i = 0; i < lines.size(); i++) {
+            // Text colors MUST carry an explicit alpha channel: since the 1.21.6 GUI rewrite,
+            // Minecraft no longer promotes zero-alpha colors to opaque, so 0x36CCDC would render
+            // as fully transparent (invisible) text while the alpha'd fills still show.
             int color;
             if (i == 0) {
-                color = snap.active ? 0x36CCDC : 0xA8E6A3;
+                color = snap.active ? 0xFF36CCDC : 0xFFA8E6A3;
             } else if (lines.get(i).contains("[x]")) {
-                color = 0x88D08A;
+                color = 0xFF88D08A;
             } else {
-                color = 0xE6E6E6;
+                color = 0xFFE6E6E6;
             }
             graphics.drawString(font, lines.get(i), x, y + i * lineH, color, true);
         }

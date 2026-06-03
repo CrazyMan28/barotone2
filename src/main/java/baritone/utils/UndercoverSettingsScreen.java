@@ -100,13 +100,14 @@ public final class UndercoverSettingsScreen extends Screen {
         int y = 8;
         graphics.fill(x - 6, y - 4, x + panelWidth + 6, y + panelHeight, 0xAA101010);
         graphics.fill(x - 6, y - 4, x + panelWidth + 6, y - 3, 0xCC707070);
-        graphics.drawCenteredString(this.font, this.title, this.width / 2, 16, 0xFFFFFF);
+        // Explicit alpha required since the 1.21.6 GUI rewrite; zero-alpha text renders invisible.
+        graphics.drawCenteredString(this.font, this.title, this.width / 2, 16, 0xFFFFFFFF);
         graphics.drawCenteredString(
                 this.font,
                 Component.literal(UndercoverCommand.isEnabled() ? "Live profile is active" : "Applies next time you turn it on"),
                 this.width / 2,
                 29,
-                0xA0A0A0);
+                0xFFA0A0A0);
         super.render(graphics, mouseX, mouseY, partialTicks);
     }
 
