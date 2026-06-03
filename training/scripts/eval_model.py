@@ -61,7 +61,8 @@ def ask(model, goal, schemas, timeout):
     }
     if schemas is not None:
         payload["tools"] = schemas
-    req = urllib.request.Request("http://localhost:11434/api/chat",
+    base = os.environ.get("EVAL_OLLAMA", "http://localhost:11434")
+    req = urllib.request.Request(base + "/api/chat",
                                  data=json.dumps(payload).encode(),
                                  headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:

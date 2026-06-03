@@ -109,3 +109,19 @@ nonexistent `stop` tool and fired `explore` unprompted). The design handles the 
 - `sudo systemctl restart ollama` (user) and ideally lower `OLLAMA_CONTEXT_LENGTH`.
 - Optional: pass a "tools added since training" delta cheat-sheet to the brain instead of waiting
   for a retrain.
+
+## The v2/v3 saga (June 3, evening) — why v1 is still the brain
+
+Retrains v2 (95.8% in-process) and v3 (99.0% in-process) both failed or underperformed when served
+by **ollama 0.23.0's bundled llama.cpp** (v2: 45.8%, v3: token salad), while forensics proved every
+artifact good: weights perfect in transformers, conversion faithful (exactly the 196 LoRA tensors
+differ), templates identical, and **current llama.cpp runs the same GGUFs flawlessly**. A user-space
+ollama **v0.30.3** (`~/.local/ollama-new`, port 11435, no sudo needed) fixed v2 (86.6%) and rescued
+v3 via clean peft re-merge (94.8% at q8_0 AND f16) — still short of v1's 96.9%/0.3s on the same 97
+questions. The in-process→ollama gap is template-rendering drift, not quantization.
+
+**Verdict: v1 remains `baritone-brain`** (old engine runs it fine). Lessons: always gate a new model
+against the incumbent through the REAL runtime before shipping; unsloth's crashed-merge dirs and
+old-engine numerics are both real failure modes; `ollama stop` everything before create+test
+(serialized requests + stale runners mislead). The user-space v0.30.3 stays installed for future
+retrains: `OLLAMA_HOST=127.0.0.1:11435 OLLAMA_MODELS=~/.local/ollama-new/models ~/.local/ollama-new/bin/ollama serve`.
