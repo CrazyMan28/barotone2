@@ -142,3 +142,16 @@ ALL freshly-converted GGUFs (v2/v3/v4); only the user-space 0.30.3 runs them.
 
 v5 recipe when more gameplay data is banked: keep dual-format training (lab scores now transfer to
 the field ~1:1), add tune/args/direct reinforcement to fix v4's regressions, consider 4 epochs.
+
+## Final four-way Intent Bench medal table (June 3, chat path, identical 74 questions)
+
+| Place | Model | FULL correct | Speed avg | Notes |
+|---|---|---|---|---|
+| 1 | v4 | 78.4% | 0.4s | best slang/stop/escalation; tied v1 on game path (74.3%) |
+| 2 | **v1** 👑 | 77.0% | 0.6s | retains crown: game-path tie + best legacy exam (96.9%) + zero infra risk |
+| 3 | v3 | 71.6% | 1.2s | weak escalation recall (4/10) |
+| 4 | v2 | 67.6% | 1.2s | format only 85%; over-escalates everything (even "follow alex") |
+
+Anti-poison gate for all future candidates: `scripts/gate.sh <model>` — unloads models, runs the
+corruption sanity (fails fast on token salad), both Intent Bench paths, the legacy exam, and prints
+ship rules (beat champion on game path, no >2pt legacy regression, ties go to the champion).
