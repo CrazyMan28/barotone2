@@ -1074,13 +1074,16 @@ public final class AiCrafting {
             if (MistralAgent.isCancelled()) {
                 return "Cancelled waiting for brew.";
             }
-            Boolean done = onClient(ctx, () -> {
+            String state = onClient(ctx, () -> {
                 if (!(ctx.player().containerMenu instanceof BrewingStandMenu menu)) {
-                    return true;
+                    return "ERROR: Brewing stand GUI closed before brew completed.";
                 }
-                return menu.getSlot(3).getItem().isEmpty();
+                return menu.getSlot(3).getItem().isEmpty() ? "DONE" : "WAIT";
             });
-            if (Boolean.TRUE.equals(done)) {
+            if (state.startsWith("ERROR:")) {
+                return loaded + " " + state;
+            }
+            if ("DONE".equals(state)) {
                 if (collect) {
                     return onClient(ctx, () -> {
                         if (!(ctx.player().containerMenu instanceof BrewingStandMenu menu)) {
@@ -1882,7 +1885,7 @@ public final class AiCrafting {
             String recipeIdRawOptional,
             int maxWaitSeconds) {
         int capWait = Math.min(600, Math.max(1, maxWaitSeconds));
-        return onClient(ctx, () -> {
+        String setup = onClient(ctx, () -> {
             LocalPlayer p = ctx.player();
             AbstractContainerMenu raw = p.containerMenu;
             if (!(raw instanceof AbstractFurnaceMenu menu)) {
@@ -1945,15 +1948,26 @@ public final class AiCrafting {
                         if (fs < 0) {
                             return "ERROR: Furnace needs fuel (" + fid + ") but none in inventory.";
                         }
-                        moveOnePickupToSlot(ctx, fs, AbstractFurnaceMenu.FUEL_SLOT);
+                        if (!moveOnePickupToSlot(ctx, fs, AbstractFurnaceMenu.FUEL_SLOT)) {
+                            return "ERROR: Could not place fuel into furnace.";
+                        }
                         sleepAi(80);
                     }
                 }
             }
-            long deadline = System.currentTimeMillis() + capWait * 1000L;
-            while (System.currentTimeMillis() < deadline) {
-                if (MistralAgent.isCancelled()) {
-                    return "Cancelled waiting for furnace result.";
+            return "READY";
+        });
+        if (!"READY".equals(setup)) {
+            return setup;
+        }
+        long deadline = System.currentTimeMillis() + capWait * 1000L;
+        while (System.currentTimeMillis() < deadline) {
+            if (MistralAgent.isCancelled()) {
+                return "Cancelled waiting for furnace result.";
+            }
+            String poll = onClient(ctx, () -> {
+                if (!(ctx.player().containerMenu instanceof AbstractFurnaceMenu menu)) {
+                    return "ERROR: Furnace GUI closed before output could be collected.";
                 }
                 try {
                     if (!menu.getSlot(AbstractFurnaceMenu.RESULT_SLOT).getItem().isEmpty()) {
@@ -1964,10 +1978,14 @@ public final class AiCrafting {
                 } catch (RuntimeException e) {
                     return "ERROR: Could not read furnace output slot.";
                 }
-                sleepAi(200);
+                return "WAIT";
+            });
+            if (!"WAIT".equals(poll)) {
+                return poll;
             }
-            return "TIMEOUT: No output after " + capWait + "s (add fuel, valid recipe, or wait longer).";
-        });
+            sleepAi(200);
+        }
+        return "TIMEOUT: No output after " + capWait + "s (add fuel, valid recipe, or wait longer).";
     }
 
     /** Smithing table: place template/base/addition from a {@link RecipeType#SMITHING} recipe id and take the result. */
@@ -2163,8 +2181,12 @@ public final class AiCrafting {
             if (menu.getSlot(4).getItem().isEmpty()) {
                 int fs = findItemSlot(menu, Items.BLAZE_POWDER);
                 if (fs >= 0) {
-                    moveOnePickupToSlot(ctx, fs, 4);
+                    if (!moveOnePickupToSlot(ctx, fs, 4)) {
+                        return "ERROR: Could not place blaze powder into brewing stand fuel slot.";
+                    }
                     sleepAi(70);
+                } else if (menu.getFuel() <= 0) {
+                    return "ERROR: Brewing stand needs blaze powder fuel but none is available.";
                 }
             }
             Identifier ingId = Identifier.tryParse(normalizeNamespacedId(ingredientItemIdRaw));

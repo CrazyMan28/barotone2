@@ -18,6 +18,7 @@
 package baritone.utils;
 
 import baritone.ai.GoalTracker;
+import baritone.ai.MissionQueue;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -50,10 +51,25 @@ public final class GoalHud {
 
         List<String> lines = new ArrayList<>();
         boolean idle = !snap.active && snap.goal.isEmpty();
-        lines.add((idle ? "AI GOAL IDLE" : (snap.active ? "AI GOAL" : "AI GOAL DONE"))
-                + (snap.planMode ? " PLAN" : ""));
+        MissionQueue.Snapshot queue = MissionQueue.snapshot();
+        String title = (idle ? "AI GOAL IDLE" : (snap.active ? "AI GOAL" : "AI GOAL DONE"))
+                + (snap.planMode ? " PLAN" : "");
+        if (queue.paused) {
+            title += " PAUSED";
+        }
+        if (!queue.pending.isEmpty()) {
+            title += " Q:" + queue.pending.size();
+        }
+        lines.add(title);
         if (!snap.status.isEmpty()) {
             lines.add(shorten(snap.status, font, maxWidth - 12));
+        }
+        if (queue.paused) {
+            lines.add("Queue paused");
+        }
+        if (!queue.pending.isEmpty()) {
+            MissionQueue.Mission next = queue.pending.get(0);
+            lines.add(shorten("Next #" + next.id + ": " + next.goal, font, maxWidth - 12));
         }
         if (!snap.goal.isEmpty()) {
             lines.add(shorten(snap.goal, font, maxWidth - 12));

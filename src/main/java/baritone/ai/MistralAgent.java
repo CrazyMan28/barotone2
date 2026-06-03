@@ -27,6 +27,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import net.minecraft.ChatFormatting;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -80,6 +82,10 @@ public final class MistralAgent implements Helper {
             + "Use mine/goto/open_station/craft/farm instead.\n"
             + "- In #goal plan mode, call get_state, then set_goal_plan with concrete steps before movement/mining/crafting/opening actions. "
             + "Use update_goal_status and complete_goal_step as work progresses.\n"
+            + "- For separate follow-up work, call mission_enqueue instead of mixing unrelated goals into the current mission. "
+            + "Use mission_status to inspect queued missions.\n"
+            + "- Use memory_recall for saved bases, preferences, resource spots, and previous checkpoints. "
+            + "Use memory_remember for durable facts and memory_checkpoint after important progress.\n"
             + "- After long-running actions (mine, goto_*, farm, explore), call wait_until_idle (timeout_seconds=0 "
             + "waits until path + mine/farm/explore are idle).\n"
             + "- Re-check state with get_state after each major action (check mine_process_active, inventory_totals).\n"
@@ -94,7 +100,7 @@ public final class MistralAgent implements Helper {
             + "always use tools until finished.";
 
     private final BaritoneTools tools;
-    private final JsonArray history = new JsonArray();
+    private JsonArray history = new JsonArray();
     private final boolean planMode;
     private volatile boolean cancelled = false;
     private volatile Thread worker;
@@ -164,9 +170,20 @@ public final class MistralAgent implements Helper {
         RUNNING.set(this);
         tools.setForbidExplore(goalForbidsExplore(userGoal));
         GoalTracker.setStatus(planMode ? "Planning" : "Starting");
+        MissionMemory.recordCheckpointQuietly(userGoal, "agent_started", provider + ":" + model, "running");
+
+        // Feature 4: seed the conversation with the most relevant saved memories for this goal.
+        if (settings.mistralInjectMemory.value) {
+            String memoryContext = MissionMemory.contextForGoal(userGoal, 6);
+            if (memoryContext != null && !memoryContext.isEmpty()) {
+                history.add(message("system", "Relevant saved memory for this goal: " + memoryContext));
+            }
+        }
         history.add(message("user", userGoal));
 
-        OpenAiChatClient client = new OpenAiChatClient(endpoint, apiKey, provider);
+        OpenAiChatClient client = new OpenAiChatClient(endpoint, apiKey, provider,
+                settings.mistralMaxRetries.value, settings.mistralRetryBackoffMillis.value,
+                settings.mistralRequestTimeoutSeconds.value);
         JsonArray toolDefs = BaritoneTools.toolSchemas();
 
         int maxIter = settings.mistralMaxIterations.value;
@@ -174,6 +191,15 @@ public final class MistralAgent implements Helper {
         boolean verbose = settings.mistralVerbose.value;
         double temp = settings.mistralTemperature.value;
         int maxTok = settings.mistralMaxTokens.value;
+        int maxHistory = settings.mistralMaxHistoryMessages.value;
+        int keepRecent = settings.mistralKeepRecentMessages.value;
+        int maxMissionSeconds = settings.mistralMaxMissionSeconds.value;
+        long missionDeadline = maxMissionSeconds > 0
+                ? System.currentTimeMillis() + maxMissionSeconds * 1000L : 0L;
+
+        // Bug #3: keep inventory access for the mission, then restore the player's setting afterward.
+        boolean prevAllowInventory = settings.allowInventory.value;
+        MissionStats stats = new MissionStats(System.currentTimeMillis());
 
         logDirect(unlimited
                         ? "[AI] starting agent (provider=" + provider + ", model=" + model + ", unlimited rounds until done or ai stop)"
@@ -184,10 +210,19 @@ public final class MistralAgent implements Helper {
         try {
             while (true) {
                 round++;
+                // Feature 1: keep the conversation from growing without bound across long missions.
+                history = compactHistory(history, maxHistory, keepRecent, MissionMemory.summaryForPrompt());
                 if (!unlimited && round > maxIter) {
                     logDirect("[AI] reached max iterations (" + maxIter + "). Use set mistralMaxIterations 0 for unlimited.",
                             ChatFormatting.YELLOW);
                     GoalTracker.fail("Reached max iterations");
+                    return;
+                }
+                // Feature 5: wall-clock watchdog so an unlimited-rounds mission cannot run forever.
+                if (missionDeadline > 0L && System.currentTimeMillis() > missionDeadline) {
+                    logDirect("[AI] reached time budget (" + maxMissionSeconds + "s). Use set mistralMaxMissionSeconds 0 to disable.",
+                            ChatFormatting.YELLOW);
+                    GoalTracker.fail("Reached time budget");
                     return;
                 }
                 if (cancelled) {
@@ -205,13 +240,12 @@ public final class MistralAgent implements Helper {
                     GoalTracker.fail("API error: " + e.getMessage());
                     return;
                 }
-                history.add(am.raw);
-
                 if (verbose && am.content != null && !am.content.isEmpty()) {
                     logDirect("[AI:thought] " + truncate(am.content, 400), ChatFormatting.GRAY);
                 }
 
                 if (am.toolCalls == null || am.toolCalls.size() == 0) {
+                    history.add(am.raw);
                     if (cancelled) {
                         GoalTracker.fail("Cancelled");
                         return;
@@ -223,18 +257,47 @@ public final class MistralAgent implements Helper {
                     continue;
                 }
 
-                boolean doneCalled = false;
+                List<ParsedToolCall> toolCalls = new ArrayList<>();
+                boolean hasUnanswerableMalformedCall = false;
                 for (JsonElement tcEl : am.toolCalls) {
+                    ParsedToolCall parsed = parseToolCall(tcEl);
+                    if (!parsed.canRespondAsTool) {
+                        hasUnanswerableMalformedCall = true;
+                        GoalTracker.setStatus("Thinking... malformed tool call");
+                        history.add(message("user",
+                                "Your previous response contained a malformed tool call that could not be answered "
+                                        + "as a tool result: " + parsed.error
+                                        + ". Retry with a valid tool call containing id, function.name, and arguments."));
+                        break;
+                    }
+                    toolCalls.add(parsed);
+                }
+                if (hasUnanswerableMalformedCall) {
+                    continue;
+                }
+
+                history.add(am.raw);
+
+                boolean doneCalled = false;
+                for (ParsedToolCall tc : toolCalls) {
                     if (cancelled) {
                         logDirect("[AI] cancelled.", ChatFormatting.YELLOW);
                         GoalTracker.fail("Cancelled");
                         return;
                     }
-                    JsonObject tc = tcEl.getAsJsonObject();
-                    String callId = tc.has("id") ? tc.get("id").getAsString() : "";
-                    JsonObject fn = tc.getAsJsonObject("function");
-                    String fnName = fn.get("name").getAsString();
-                    JsonObject argsObj = parseArgs(fn);
+                    if (tc.error != null) {
+                        String content = "ERROR: " + tc.error
+                                + " Retry with a valid tool call containing function.name and valid JSON arguments.";
+                        history.add(toolMessage(tc.callId, tc.functionName, content));
+                        tools.observeResult(tc.functionName, content);
+                        if (verbose) {
+                            logDirect("[AI:result] " + truncate(content, 240), ChatFormatting.RED);
+                        }
+                        continue;
+                    }
+
+                    String fnName = tc.functionName;
+                    JsonObject argsObj = tc.arguments;
 
                     GoalTracker.setStatus("Calling " + fnName);
                     if (verbose) {
@@ -244,6 +307,12 @@ public final class MistralAgent implements Helper {
 
                     BaritoneTools.ToolResult result = tools.execute(fnName, argsObj);
                     tools.observeResult(fnName, result.content);
+                    stats.record(fnName, result.error);
+                    if (shouldCheckpointTool(fnName, result)) {
+                        MissionMemory.recordCheckpointQuietly(userGoal, fnName,
+                                result.content == null ? "" : result.content,
+                                result.done ? "done" : (result.error ? "error" : "ok"));
+                    }
 
                     if (verbose) {
                         String c = result.content == null ? "" : result.content;
@@ -251,12 +320,15 @@ public final class MistralAgent implements Helper {
                                 result.error ? ChatFormatting.RED : ChatFormatting.DARK_GRAY);
                     }
 
-                    history.add(toolMessage(callId, fnName, result.content == null ? "" : result.content));
+                    history.add(toolMessage(tc.callId, fnName, result.content == null ? "" : result.content));
 
                     if (result.done) {
                         logDirect("[AI] done: " + result.content, ChatFormatting.GREEN);
                         GoalTracker.finish(result.content);
+                        MissionMemory.recordCheckpointQuietly(userGoal, "agent_done", result.content, "done");
                         doneCalled = true;
+                        // Bug #2: done is terminal; do not run the rest of this batch's tool calls.
+                        break;
                     }
                 }
                 if (doneCalled) {
@@ -265,7 +337,34 @@ public final class MistralAgent implements Helper {
             }
         } finally {
             RUNNING.remove();
+            // Bug #3: restore the player's inventory-access setting the mission may have flipped.
+            settings.allowInventory.value = prevAllowInventory;
+            // Feature 5: emit and persist a one-line telemetry report for the mission.
+            if (stats.totalCalls() > 0) {
+                String report = stats.report(System.currentTimeMillis());
+                logDirect("[AI] mission summary: " + report, ChatFormatting.AQUA);
+                MissionMemory.recordCheckpointQuietly(userGoal, "report", report, "report");
+            }
         }
+    }
+
+    private static boolean shouldCheckpointTool(String fnName, BaritoneTools.ToolResult result) {
+        if (fnName == null || result == null) {
+            return false;
+        }
+        String name = fnName.toLowerCase(java.util.Locale.ROOT);
+        if (name.equals("done") || name.equals("memory_checkpoint")) {
+            return false;
+        }
+        if (result.error) {
+            return true;
+        }
+        return !(name.equals("get_state")
+                || name.equals("mission_status")
+                || name.equals("memory_recall")
+                || name.equals("update_goal_status")
+                || name.equals("complete_goal_step")
+                || name.equals("say"));
     }
 
     private static boolean goalForbidsExplore(String goal) {
@@ -288,6 +387,91 @@ public final class MistralAgent implements Helper {
                 || g.contains("no wandering");
     }
 
+    /**
+     * Bounds conversation growth while preserving OpenAI tool-call/tool-result pairing. Keeps the leading
+     * system message(s) and the first user message (the original goal) untouched, keeps the most recent
+     * {@code keepRecent} messages (cut aligned to a non-tool boundary so no tool result is orphaned), and
+     * collapses the middle into one short summary message. Returns the same array when nothing is dropped.
+     */
+    static JsonArray compactHistory(JsonArray history, int maxMessages, int keepRecent, String summaryTail) {
+        if (history == null || maxMessages <= 0 || history.size() <= maxMessages) {
+            return history;
+        }
+        int size = history.size();
+        int headerEnd = 0;
+        while (headerEnd < size && "system".equals(roleOf(history.get(headerEnd)))) {
+            headerEnd++;
+        }
+        if (headerEnd < size && "user".equals(roleOf(history.get(headerEnd)))) {
+            headerEnd++;
+        }
+        int keepFrom = Math.max(headerEnd, size - Math.max(1, keepRecent));
+        // Never let the kept block begin on a tool result whose parent assistant message was dropped.
+        while (keepFrom < size && "tool".equals(roleOf(history.get(keepFrom)))) {
+            keepFrom++;
+        }
+        if (keepFrom <= headerEnd) {
+            return history;
+        }
+        int droppedCount = keepFrom - headerEnd;
+        JsonArray compacted = new JsonArray();
+        for (int i = 0; i < headerEnd; i++) {
+            compacted.add(history.get(i));
+        }
+        String tail = summaryTail == null || summaryTail.isEmpty() ? "none" : summaryTail;
+        compacted.add(message("user", "[Earlier progress summarized -- " + droppedCount
+                + " older messages omitted. Recent checkpoints: " + tail + "]"));
+        for (int i = keepFrom; i < size; i++) {
+            compacted.add(history.get(i));
+        }
+        return compacted;
+    }
+
+    private static String roleOf(JsonElement el) {
+        if (el == null || !el.isJsonObject()) {
+            return "";
+        }
+        JsonObject obj = el.getAsJsonObject();
+        if (!obj.has("role") || obj.get("role").isJsonNull()) {
+            return "";
+        }
+        try {
+            return obj.get("role").getAsString();
+        } catch (RuntimeException e) {
+            return "";
+        }
+    }
+
+    static ParsedToolCall parseToolCall(JsonElement tcEl) {
+        if (tcEl == null || !tcEl.isJsonObject()) {
+            return ParsedToolCall.unanswerable("tool call entry is not a JSON object");
+        }
+        JsonObject tc = tcEl.getAsJsonObject();
+        String callId = stringMember(tc, "id");
+        if (callId.isEmpty()) {
+            return ParsedToolCall.unanswerable("tool call is missing id");
+        }
+        if (!tc.has("function") || !tc.get("function").isJsonObject()) {
+            return ParsedToolCall.error(callId, "invalid_tool_call", "tool call is missing function object");
+        }
+        JsonObject fn = tc.getAsJsonObject("function");
+        String fnName = stringMember(fn, "name");
+        if (fnName.isEmpty()) {
+            return ParsedToolCall.error(callId, "invalid_tool_call", "tool call function is missing name");
+        }
+        JsonObject args = parseArgs(fn);
+        if (args == null) {
+            return ParsedToolCall.error(callId, fnName,
+                    "arguments were not a valid JSON object; send arguments as a JSON object");
+        }
+        return ParsedToolCall.valid(callId, fnName, args);
+    }
+
+    /**
+     * Parses a tool call's {@code arguments}. Returns an empty object when no arguments are supplied, the
+     * parsed object when valid, or {@code null} when the value is malformed (not an object, or an
+     * unparseable string) so the caller can surface a corrective error to the model.
+     */
     private static JsonObject parseArgs(JsonObject fn) {
         if (!fn.has("arguments") || fn.get("arguments").isJsonNull()) {
             return new JsonObject();
@@ -297,14 +481,61 @@ public final class MistralAgent implements Helper {
             return el.getAsJsonObject();
         }
         if (el.isJsonPrimitive()) {
+            String raw = el.getAsString().trim();
+            if (raw.isEmpty()) {
+                return new JsonObject();
+            }
             try {
-                JsonElement parsed = JsonParser.parseString(el.getAsString());
+                JsonElement parsed = JsonParser.parseString(raw);
                 if (parsed.isJsonObject()) {
                     return parsed.getAsJsonObject();
                 }
             } catch (RuntimeException ignored) {}
         }
-        return new JsonObject();
+        return null;
+    }
+
+    private static String stringMember(JsonObject obj, String member) {
+        if (obj == null || !obj.has(member) || obj.get(member).isJsonNull()) {
+            return "";
+        }
+        try {
+            return obj.get(member).getAsString().trim();
+        } catch (RuntimeException e) {
+            return "";
+        }
+    }
+
+    static final class ParsedToolCall {
+        final boolean canRespondAsTool;
+        final String callId;
+        final String functionName;
+        final JsonObject arguments;
+        final String error;
+
+        private ParsedToolCall(boolean canRespondAsTool,
+                               String callId,
+                               String functionName,
+                               JsonObject arguments,
+                               String error) {
+            this.canRespondAsTool = canRespondAsTool;
+            this.callId = callId;
+            this.functionName = functionName;
+            this.arguments = arguments == null ? new JsonObject() : arguments;
+            this.error = error;
+        }
+
+        static ParsedToolCall valid(String callId, String functionName, JsonObject arguments) {
+            return new ParsedToolCall(true, callId, functionName, arguments, null);
+        }
+
+        static ParsedToolCall error(String callId, String functionName, String error) {
+            return new ParsedToolCall(true, callId, functionName, new JsonObject(), error);
+        }
+
+        static ParsedToolCall unanswerable(String error) {
+            return new ParsedToolCall(false, "", "invalid_tool_call", new JsonObject(), error);
+        }
     }
 
     private static JsonObject message(String role, String content) {

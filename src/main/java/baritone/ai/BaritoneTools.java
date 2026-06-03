@@ -24,6 +24,8 @@ import baritone.api.behavior.IPathingBehavior;
 import baritone.api.command.manager.ICommandManager;
 import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.IPlayerContext;
+import baritone.cache.WorldData;
+import baritone.command.defaults.AiCommand;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import net.minecraft.client.player.LocalPlayer;
@@ -38,6 +40,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.ItemStack;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -72,6 +75,7 @@ public final class BaritoneTools {
         this.baritone = baritone;
         this.ctx = baritone.getPlayerContext();
         this.commands = baritone.getCommandManager();
+        scopeMissionMemory();
     }
 
     public void setForbidExplore(boolean forbidExplore) {
@@ -324,6 +328,51 @@ public final class BaritoneTools {
                         param("step_index", "integer", "One-based step index to mark complete.", true),
                         param("status", "string", "Optional short current status.", false)
                 )));
+        arr.add(fn("mission_enqueue",
+                "Queue another independent AI mission to run after the current mission finishes.",
+                params(
+                        param("goal", "string", "Natural-language mission to queue.", true),
+                        param("plan_mode", "boolean", "Whether the queued mission should use the side-HUD plan mode (default true).", false)
+                )));
+        arr.add(fn("mission_status",
+                "Show the active mission and pending mission queue.",
+                params()));
+        arr.add(fn("mission_pause",
+                "Pause the mission queue so pending missions do not auto-start. The current agent continues its current turn.",
+                params()));
+        arr.add(fn("mission_resume",
+                "Resume the mission queue and start the next pending mission if no agent is active.",
+                params()));
+        arr.add(fn("mission_retry",
+                "Queue a retry of the last finished mission.",
+                params()));
+        arr.add(fn("memory_remember",
+                "Persist a useful fact for future missions, such as base location, chest contents, player preference, or resource spot.",
+                params(
+                        param("key", "string", "Stable short key, e.g. base, wood_chest, no_explore_preference.", true),
+                        param("value", "string", "Fact to remember.", true),
+                        param("category", "string", "Optional category, e.g. location, preference, resource, warning.", false),
+                        param("include_position", "boolean", "Attach the current dimension and player block position (default false).", false)
+                )));
+        arr.add(fn("memory_recall",
+                "Recall saved mission memory and optionally recent checkpoints.",
+                params(
+                        param("query", "string", "Optional search text for key/value/category/dimension.", false),
+                        param("category", "string", "Optional exact category filter.", false),
+                        param("include_checkpoints", "boolean", "Whether to include recent checkpoint matches (default false).", false)
+                )));
+        arr.add(fn("memory_forget",
+                "Forget one saved memory by key.",
+                params(
+                        param("key", "string", "Memory key to forget.", true)
+                )));
+        arr.add(fn("memory_checkpoint",
+                "Persist an explicit checkpoint for the current mission.",
+                params(
+                        param("name", "string", "Short checkpoint name.", true),
+                        param("detail", "string", "What changed or what was learned.", false),
+                        param("status", "string", "Optional status, e.g. ok, blocked, warning.", false)
+                )));
         arr.add(fn("stop",
                 "Cancel all current Baritone tasks and pathing.",
                 params()));
@@ -530,6 +579,38 @@ public final class BaritoneTools {
                             ? args.get("status").getAsString() : "";
                     GoalTracker.completeStep(step, status);
                     return ok("Goal step " + step + " marked complete.");
+                }
+                case "mission_enqueue":
+                    return ok(missionEnqueue(args));
+                case "mission_status":
+                    return ok(MissionQueue.describe());
+                case "mission_pause":
+                    MissionQueue.pause();
+                    GoalTracker.setStatus("Mission queue paused");
+                    return ok("Mission queue paused. Active mission will continue; pending missions will wait.");
+                case "mission_resume":
+                    AiCommand.resumeMissionQueue(baritone, new ChatLog());
+                    return ok(MissionQueue.describe());
+                case "mission_retry":
+                    return ok(AiCommand.retryLastMission(baritone, new ChatLog()));
+                case "memory_remember":
+                    return ok(memoryRemember(args));
+                case "memory_recall":
+                    return ok(memoryRecall(args));
+                case "memory_forget": {
+                    String key = args.get("key").getAsString();
+                    boolean removed = MissionMemory.forget(key);
+                    return ok(removed ? "Forgot memory: " + key : "No memory found for key: " + key);
+                }
+                case "memory_checkpoint": {
+                    String checkpointName = args.get("name").getAsString();
+                    String detail = (args.has("detail") && !args.get("detail").isJsonNull())
+                            ? args.get("detail").getAsString() : "";
+                    String status = (args.has("status") && !args.get("status").isJsonNull())
+                            ? args.get("status").getAsString() : "ok";
+                    GoalTracker.Snapshot snapshot = GoalTracker.snapshot();
+                    MissionMemory.Checkpoint checkpoint = MissionMemory.recordCheckpoint(snapshot.goal, checkpointName, detail, status);
+                    return ok("Saved checkpoint #" + checkpoint.id + ": " + checkpoint.name);
                 }
                 case "stop":
                     cancelBaritoneWork();
@@ -1037,6 +1118,11 @@ public final class BaritoneTools {
                     : BaritoneAPI.getSettings().mistralModel.value);
         } catch (RuntimeException ignored) {
         }
+        try {
+            s.addProperty("mission_memory_summary", MissionMemory.summaryForPrompt());
+        } catch (RuntimeException ignored) {
+            s.addProperty("mission_memory_summary", "unavailable");
+        }
         return s.toString();
     }
 
@@ -1055,6 +1141,69 @@ public final class BaritoneTools {
         String msg = a.get("message").getAsString();
         new ChatLog().log("[AI] " + msg);
         return "Said: " + msg;
+    }
+
+    private String missionEnqueue(JsonObject a) {
+        String goal = a.get("goal").getAsString();
+        boolean planMode = !a.has("plan_mode") || a.get("plan_mode").isJsonNull() || a.get("plan_mode").getAsBoolean();
+        MissionQueue.Mission mission = MissionQueue.enqueue(goal, planMode, "mission tool");
+        GoalTracker.setStatus("Queued mission #" + mission.id);
+        return "Queued mission #" + mission.id + " (" + MissionQueue.snapshot().pending.size()
+                + " pending): " + mission.goal;
+    }
+
+    private String memoryRemember(JsonObject a) {
+        String key = a.get("key").getAsString();
+        String value = a.get("value").getAsString();
+        String category = (a.has("category") && !a.get("category").isJsonNull())
+                ? a.get("category").getAsString() : "general";
+        boolean includePosition = a.has("include_position") && !a.get("include_position").isJsonNull()
+                && a.get("include_position").getAsBoolean();
+        MissionMemory.MemoryRecord memory = MissionMemory.remember(key, value, category, "agent",
+                includePosition ? currentMemoryLocation() : null);
+        return "Saved memory " + memory.key + " [" + memory.category + "].";
+    }
+
+    private String memoryRecall(JsonObject a) {
+        String query = (a.has("query") && !a.get("query").isJsonNull()) ? a.get("query").getAsString() : "";
+        String category = (a.has("category") && !a.get("category").isJsonNull()) ? a.get("category").getAsString() : "";
+        boolean includeCheckpoints = a.has("include_checkpoints") && !a.get("include_checkpoints").isJsonNull()
+                && a.get("include_checkpoints").getAsBoolean();
+        return MissionMemory.recall(query, category, includeCheckpoints);
+    }
+
+    private MissionMemory.Location currentMemoryLocation() {
+        try {
+            return AiCrafting.onClient(ctx, () -> {
+                BetterBlockPos feet = ctx.playerFeet();
+                String dimension = ctx.player().level().dimension().identifier().toString();
+                return new MissionMemory.Location(dimension, feet.x, feet.y, feet.z);
+            });
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    private void scopeMissionMemory() {
+        Path file = worldMemoryFile();
+        if (file != null) {
+            MissionMemory.useStorageFile(file);
+        }
+    }
+
+    private Path worldMemoryFile() {
+        try {
+            if (!(ctx.worldData() instanceof WorldData)) {
+                return null;
+            }
+            Path dimensionDir = ((WorldData) ctx.worldData()).directory;
+            Path namespaceDir = dimensionDir == null ? null : dimensionDir.getParent();
+            Path worldDir = namespaceDir == null ? dimensionDir : namespaceDir.getParent();
+            Path baseDir = worldDir == null ? dimensionDir : worldDir;
+            return baseDir == null ? null : baseDir.resolve("mission-memory.json");
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     // -------- helpers --------

@@ -1222,6 +1222,50 @@ public final class Settings {
     public final Setting<String> ollamaModel = new Setting<>("");
 
     /**
+     * Soft cap on the number of chat messages kept in the AI conversation before older tool steps are
+     * compacted into a short summary. Keeps long missions from overflowing the model context window and
+     * inflating cost. {@code 0} or less disables compaction (unbounded history).
+     */
+    public final Setting<Integer> mistralMaxHistoryMessages = new Setting<>(40);
+
+    /**
+     * When the AI conversation is compacted (see {@link #mistralMaxHistoryMessages}), this many of the
+     * most recent messages are always kept verbatim. The cut is aligned to a tool-call boundary so the
+     * provider never sees an orphaned tool result.
+     */
+    public final Setting<Integer> mistralKeepRecentMessages = new Setting<>(16);
+
+    /**
+     * Maximum number of automatic retries for a single AI chat request on transient failures
+     * (network errors, HTTP 429 rate limits, and 5xx). {@code 0} disables retries.
+     */
+    public final Setting<Integer> mistralMaxRetries = new Setting<>(3);
+
+    /**
+     * Base backoff in milliseconds between AI chat retries. The delay grows exponentially per attempt
+     * (base, 2x, 4x, ...) and a 429 {@code Retry-After} header, when present, takes precedence.
+     */
+    public final Setting<Integer> mistralRetryBackoffMillis = new Setting<>(1500);
+
+    /**
+     * Per-request timeout, in seconds, for AI chat completions. Replaces the old multi-hour timeout so a
+     * hung request fails fast and can be retried. Must be positive.
+     */
+    public final Setting<Integer> mistralRequestTimeoutSeconds = new Setting<>(120);
+
+    /**
+     * If true, the AI agent injects the most relevant saved memories (bases, resource spots, recent
+     * checkpoints) into the prompt at mission start so it plans with what it already knows.
+     */
+    public final Setting<Boolean> mistralInjectMemory = new Setting<>(true);
+
+    /**
+     * Wall-clock budget for a single AI mission, in seconds. When exceeded, the agent stops with
+     * "Reached time budget" between rounds. {@code 0} or less means unlimited.
+     */
+    public final Setting<Integer> mistralMaxMissionSeconds = new Setting<>(0);
+
+    /**
      * Distance to scan every tick for updates. Expanding this beyond player reach distance (i.e. setting it to 6 or above)
      * is only necessary in very large schematics where rescanning the whole thing is costly.
      */

@@ -31,8 +31,46 @@ public final class GoalTracker {
     private static Snapshot current = Snapshot.empty();
     private static String lastGoal = "";
     private static final List<String> history = new ArrayList<>();
+    private static HistoryStore historyStore;
 
     private GoalTracker() {}
+
+    /**
+     * Optional persistence backend for the recent-goal list so {@code goal history} / {@code goal retry}
+     * survive a restart. Left {@code null} in unit tests, which keeps {@link GoalTracker} file-free.
+     */
+    public interface HistoryStore {
+        void save(List<String> history);
+
+        List<String> load();
+    }
+
+    /** Installs a persistence backend and seeds the in-memory history from it (newest first). */
+    public static void setHistoryStore(HistoryStore store) {
+        synchronized (LOCK) {
+            historyStore = store;
+            if (store == null) {
+                return;
+            }
+            try {
+                List<String> loaded = store.load();
+                if (loaded == null) {
+                    return;
+                }
+                history.clear();
+                for (String goal : loaded) {
+                    String clean = clean(goal);
+                    if (!clean.isEmpty() && !history.contains(clean) && history.size() < HISTORY_LIMIT) {
+                        history.add(clean);
+                    }
+                }
+                if (!history.isEmpty()) {
+                    lastGoal = history.get(0);
+                }
+            } catch (RuntimeException ignored) {
+            }
+        }
+    }
 
     public static void start(String goal, boolean planMode) {
         synchronized (LOCK) {
@@ -219,6 +257,12 @@ public final class GoalTracker {
         while (history.size() > HISTORY_LIMIT) {
             history.remove(history.size() - 1);
         }
+        if (historyStore != null) {
+            try {
+                historyStore.save(new ArrayList<>(history));
+            } catch (RuntimeException ignored) {
+            }
+        }
     }
 
     static void resetForTests() {
@@ -226,6 +270,7 @@ public final class GoalTracker {
             current = Snapshot.empty();
             lastGoal = "";
             history.clear();
+            historyStore = null;
         }
     }
 
