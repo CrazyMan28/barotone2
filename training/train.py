@@ -98,13 +98,13 @@ def main():
             max_seq_length=MAX_SEQ,
             per_device_train_batch_size=2,
             gradient_accumulation_steps=4,
-            num_train_epochs=3,
+            num_train_epochs=2,
             learning_rate=2e-4,
             lr_scheduler_type="cosine",
             warmup_ratio=0.05,
             logging_steps=25,
             optim="adamw_8bit",
-            seed=7,
+            seed=11,
             output_dir=os.path.join(OUT_DIR, "checkpoints"),
             report_to="none",
         ),
@@ -134,11 +134,23 @@ def main():
     tokenizer.save_pretrained(lora_dir)
     print(f"LoRA adapter saved to {lora_dir}")
 
+    # unsloth's save_pretrained_gguf tries to auto-install llama.cpp and breaks on Fedora; merge to
+    # 16-bit safetensors here and convert with llama.cpp's pure-python converter instead.
     gguf_dir = os.path.join(OUT_DIR, "gguf")
-    model.save_pretrained_gguf(gguf_dir, tokenizer, quantization_method="q4_k_m")
-    print(f"GGUF exported to {gguf_dir}")
-    print("Next: ollama create baritone-brain -f", os.path.join(gguf_dir, "Modelfile"))
-    print("Then in Minecraft: #ollama use baritone-brain")
+    model.save_pretrained_merged(gguf_dir, tokenizer, save_method="merged_16bit")
+    converter = os.path.join(ROOT, "llama.cpp", "convert_hf_to_gguf.py")
+    gguf_file = os.path.join(OUT_DIR, "baritone-brain-q8_0.gguf")
+    if os.path.exists(converter):
+        import subprocess
+        import sys as _sys
+        subprocess.run([_sys.executable, converter, gguf_dir,
+                        "--outfile", gguf_file, "--outtype", "q8_0"], check=True)
+        print(f"GGUF exported to {gguf_file}")
+        print("Next: ollama create baritone-brain -f", os.path.join(OUT_DIR, "Modelfile"))
+        print("Then in Minecraft: #ollama use baritone-brain")
+    else:
+        print(f"Merged model saved to {gguf_dir}; clone llama.cpp and run convert_hf_to_gguf.py "
+              f"--outfile {gguf_file} --outtype q8_0")
 
 
 if __name__ == "__main__":

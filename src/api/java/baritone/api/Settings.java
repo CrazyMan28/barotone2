@@ -1237,9 +1237,10 @@ public final class Settings {
     public final Setting<Boolean> reflexFleeCreepers = new Setting<>(true);
 
     /**
-     * Distance in blocks at which the creeper-flee reflex engages.
+     * Distance in blocks at which the creeper-flee reflex engages. Within ~4.5 blocks the reflex
+     * panic-sprints directly away before any path is computed (a lit fuse beats the pathfinder).
      */
-    public final Setting<Double> reflexCreeperRadius = new Setting<>(5.0);
+    public final Setting<Double> reflexCreeperRadius = new Setting<>(7.0);
 
     /**
      * Survival reflex: when recently hurt and a hostile mob (not a creeper) is in melee range while the

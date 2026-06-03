@@ -34,11 +34,15 @@ ORES = {
 BLOCKS = {
     "stone": "minecraft:stone", "cobblestone": "minecraft:cobblestone", "sand": "minecraft:sand",
     "gravel": "minecraft:gravel", "obsidian": "minecraft:obsidian", "dirt": "minecraft:dirt",
-    "clay": "minecraft:clay", "logs": "minecraft:oak_log", "wood": "minecraft:oak_log",
+    "clay": "minecraft:clay",
     "oak logs": "minecraft:oak_log", "birch logs": "minecraft:birch_log",
     "spruce logs": "minecraft:spruce_log", "jungle logs": "minecraft:jungle_log",
     "glowstone": "minecraft:glowstone",
 }
+# Generic wood words mine ANY common log type (one call, multiple targets) - and never invent
+# block ids: "get soom wood" once produced minecraft:soulwood in-game.
+WOOD_WORDS = ["wood", "some wood", "logs", "lumber", "timber", "tree wood", "wood from trees"]
+WOOD_BLOCKS = ["minecraft:oak_log", "minecraft:birch_log", "minecraft:spruce_log", "minecraft:jungle_log"]
 PLAYERS = ["keven", "keven167", "steve", "alex", "notch", "bob", "ashley", "max", "leo", "zoe"]
 STATIONS = ["crafting_table", "furnace", "blast_furnace", "smoker", "brewing_stand",
             "stonecutter", "smithing_table", "anvil"]
@@ -89,7 +93,10 @@ TUNE_TPL = [
     ("ignore mobs and just work", "tune"), ("make your camera smoother", "tune"),
     ("aim faster", "tune"), ("dont break any blocks", "tune"), ("stay alive please", "tune"),
 ]
-CANCEL_TPL = ["stop", "stop it", "cancel", "stop everything", "halt", "stand down", "quit it", "stahp"]
+CANCEL_TPL = ["stop", "stop it", "cancel", "stop everything", "halt", "stand down", "quit it",
+              "stahp", "actually nvm stop everything", "nvm stop", "forget it stop", "abort",
+              "cancel that", "never mind", "stop what youre doing", "ok stop now"]
+WAIT_TPL = ["wait until youre done", "wait for it to finish", "let it finish first", "hold on until idle"]
 ESCALATE_TPL = [
     "build me a castle with towers", "make an automatic sugarcane farm", "decorate my base",
     "build a house shaped like a creeper", "set up a sorting system for my chests",
@@ -149,6 +156,10 @@ def main():
     for (word, block_id), tpl in itertools.product({**ORES, **BLOCKS}.items(), MINE_TPL):
         add(tpl.format(x=word), "mine", {"blocks": [block_id]})
 
+    # generic wood -> mine all common log types in one call
+    for word, tpl in itertools.product(WOOD_WORDS, MINE_TPL):
+        add(tpl.format(x=word), "mine", {"blocks": WOOD_BLOCKS})
+
     for p, tpl in itertools.product(PLAYERS, FOLLOW_TPL):
         add(tpl.format(p=p), "follow_player", {"name": p})
 
@@ -177,7 +188,9 @@ def main():
     for goal, tool in TUNE_TPL:
         add(goal, tool, {"request": goal})
     for tpl in CANCEL_TPL:
-        add(tpl, "run_command", {"command": "cancel"})
+        add(tpl, "stop", {})
+    for tpl in WAIT_TPL:
+        add(tpl, "wait_until_idle", {})
 
     # escalation: beyond the small brain -> hand off to the big model
     for goal in ESCALATE_TPL:

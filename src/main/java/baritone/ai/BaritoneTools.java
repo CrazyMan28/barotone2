@@ -780,6 +780,25 @@ public final class BaritoneTools {
             return "No blocks specified.";
         }
         List<String> expanded = expandMineBlockIds(blocks);
+        // Validate ids against the real block registry BEFORE claiming success. Without this a
+        // hallucinated id (e.g. "minecraft:soulwood") errors in chat while the mission reports
+        // "Mining: ..." and finishes having done nothing.
+        List<String> unknown = new ArrayList<>();
+        for (String id : expanded) {
+            net.minecraft.resources.Identifier rl = net.minecraft.resources.Identifier.tryParse(id);
+            if (rl == null || net.minecraft.core.registries.BuiltInRegistries.BLOCK.get(rl).isEmpty()) {
+                unknown.add(id);
+            }
+        }
+        if (!unknown.isEmpty()) {
+            StringBuilder err = new StringBuilder("ERROR: unknown block id(s): ").append(String.join(", ", unknown)).append('.');
+            List<String> hints = suggestBlockIds(unknown);
+            if (!hints.isEmpty()) {
+                err.append(" Did you mean: ").append(String.join(", ", hints)).append('?');
+            }
+            err.append(" Use real registry ids like minecraft:oak_log or minecraft:diamond_ore.");
+            return err.toString();
+        }
         StringBuilder cmd = new StringBuilder("mine");
         if (a.has("quantity") && !a.get("quantity").isJsonNull()) {
             int q = a.get("quantity").getAsInt();
@@ -1662,6 +1681,9 @@ public final class BaritoneTools {
     private static ToolResult ok(String s) {
         ToolResult r = new ToolResult();
         r.content = s;
+        // Tools signal failure by convention with an "ERROR:" prefix; reflect that in the flag so
+        // callers (telemetry, the brain fast path's escalation) see the failure instead of success.
+        r.error = s != null && s.startsWith("ERROR:");
         return r;
     }
 
@@ -1720,6 +1742,29 @@ public final class BaritoneTools {
         }
         String oneLine = s.replace('\n', ' ').replace('\r', ' ').trim();
         return oneLine.length() <= n ? oneLine : oneLine.substring(0, Math.max(0, n - 3)) + "...";
+    }
+
+    /** Fuzzy block-id suggestions for typo'd/hallucinated ids ("soulwood" -> oak_wood, soul_sand...). */
+    private static List<String> suggestBlockIds(List<String> unknownIds) {
+        List<String> hints = new ArrayList<>();
+        for (String id : unknownIds) {
+            String path = id.contains(":") ? id.substring(id.indexOf(':') + 1) : id;
+            for (String fragment : path.toLowerCase(Locale.ROOT).split("[_\\s]+")) {
+                if (fragment.length() < 3) {
+                    continue;
+                }
+                for (net.minecraft.resources.Identifier key
+                        : net.minecraft.core.registries.BuiltInRegistries.BLOCK.keySet()) {
+                    if (key.toString().contains(fragment) && !hints.contains(key.toString())) {
+                        hints.add(key.toString());
+                        if (hints.size() >= 6) {
+                            return hints;
+                        }
+                    }
+                }
+            }
+        }
+        return hints;
     }
 
     /** Result of executing a tool. */

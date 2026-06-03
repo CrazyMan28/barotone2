@@ -259,8 +259,33 @@ public final class ReflexProcess extends BaritoneProcessHelper {
     private PathingCommand tickFlee(LocalPlayer player) {
         List<Creeper> creepers = nearbyCreepers(player, Math.max(2D, Baritone.settings().reflexCreeperRadius.value) + 4D);
         if (creepers.isEmpty()) {
+            baritone.getInputOverrideHandler().clearAllKeys();
             return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
         }
+        // PANIC: a creeper inside blast range explodes faster than a path can be computed. Sprint
+        // directly away NOW; the smarter GoalRunAway pathing takes over once out of the kill zone.
+        Creeper nearest = creepers.get(0);
+        double nearestDist = Double.MAX_VALUE;
+        for (Creeper c : creepers) {
+            double d = player.distanceTo(c);
+            if (d < nearestDist) {
+                nearestDist = d;
+                nearest = c;
+            }
+        }
+        if (nearestDist <= 4.5D) {
+            Rotation away = RotationUtils.calcRotationFromVec3d(ctx.playerHead(),
+                    player.position().add(player.position().subtract(nearest.position()).normalize().scale(8D)),
+                    ctx.playerRotations());
+            baritone.getLookBehavior().updateTarget(new Rotation(away.getYaw(), 5F), true);
+            baritone.getInputOverrideHandler().setInputForceState(Input.MOVE_FORWARD, true);
+            baritone.getInputOverrideHandler().setInputForceState(Input.SPRINT, true);
+            if (player.horizontalCollision) {
+                baritone.getInputOverrideHandler().setInputForceState(Input.JUMP, true);
+            }
+            return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
+        }
+        baritone.getInputOverrideHandler().clearAllKeys();
         BlockPos[] from = creepers.stream().map(LivingEntity::blockPosition).toArray(BlockPos[]::new);
         return new PathingCommand(new GoalRunAway(16, from), PathingCommandType.FORCE_REVALIDATE_GOAL_AND_PATH);
     }
