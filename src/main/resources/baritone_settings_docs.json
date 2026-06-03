@@ -194,6 +194,7 @@
  "reflexFightBack": "Survival reflex: when recently hurt and a hostile mob (not a creeper) is in melee range while the bot is pathing or on an AI mission, face it and fight back until it is dead or out of range.",
  "reflexAntiDrown": "Survival reflex: swim up when air is running out underwater.",
  "reflexAntiLava": "Survival reflex: when in lava, float up and head for the nearest non-lava ground.",
+ "aiBrainShortPrompt": "Fast path for the fine-tuned baritone-brain ollama model: when the active ollama model name starts with \"baritone-brain\", the agent first sends a tiny schema-free prompt (the tools are baked into the model's weights) and executes the single tool call it returns - typically ~1 second instead of reading ~15k tokens of tool schemas. If the brain answers escalate (creative/multi-step requests), or its reply cannot be parsed, or the tool fails, the mission automatically falls back to the full prompt - on Mistral when an API key is set, otherwise on the current ollama model. Set false to always use the full prompt.",
  "ollamaBaseUrl": "Ollama base URL used by the ai command when #aiProvider is ollama.",
  "ollamaModel": "Ollama model name used by the ai command when #aiProvider is ollama.",
  "mistralMaxHistoryMessages": "Soft cap on the number of chat messages kept in the AI conversation before older tool steps are compacted into a short summary. Keeps long missions from overflowing the model context window and inflating cost. 0 or less disables compaction (unbounded history).",

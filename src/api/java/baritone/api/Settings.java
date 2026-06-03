@@ -1258,6 +1258,17 @@ public final class Settings {
     public final Setting<Boolean> reflexAntiLava = new Setting<>(true);
 
     /**
+     * Fast path for the fine-tuned {@code baritone-brain} ollama model: when the active ollama model
+     * name starts with "baritone-brain", the agent first sends a tiny schema-free prompt (the tools
+     * are baked into the model's weights) and executes the single tool call it returns - typically
+     * ~1 second instead of reading ~15k tokens of tool schemas. If the brain answers {@code escalate}
+     * (creative/multi-step requests), or its reply cannot be parsed, or the tool fails, the mission
+     * automatically falls back to the full prompt - on Mistral when an API key is set, otherwise on
+     * the current ollama model. Set false to always use the full prompt.
+     */
+    public final Setting<Boolean> aiBrainShortPrompt = new Setting<>(true);
+
+    /**
      * Ollama base URL used by the {@code ai} command when {@link #aiProvider} is {@code ollama}.
      */
     public final Setting<String> ollamaBaseUrl = new Setting<>("http://localhost:11434");

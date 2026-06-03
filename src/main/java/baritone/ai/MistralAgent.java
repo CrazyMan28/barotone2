@@ -183,6 +183,35 @@ public final class MistralAgent implements Helper {
         GoalTracker.setStatus(planMode ? "Planning" : "Starting");
         MissionMemory.recordCheckpointQuietly(userGoal, "agent_started", provider + ":" + model, "running");
 
+        // Fast path: the fine-tuned baritone-brain model answers a tiny schema-free prompt with one
+        // tool call (~1s). On escalate / parse failure / tool error we fall through to the full
+        // prompt below - preferring Mistral for the big path when an API key is available.
+        if (!planMode && "ollama".equals(provider) && BrainProtocol.isBrainModel(model)
+                && settings.aiBrainShortPrompt.value) {
+            try {
+                if (runBrainFastPath(settings, endpoint, model, userGoal)) {
+                    RUNNING.remove();
+                    return;
+                }
+            } catch (Exception e) {
+                logDirect("[AI] brain fast path failed (" + e.getMessage() + "); using full prompt.",
+                        ChatFormatting.YELLOW);
+            }
+            String bigKey = settings.mistralApiKey.value;
+            if (bigKey != null && !bigKey.isEmpty()) {
+                provider = "mistral";
+                apiKey = bigKey;
+                endpoint = settings.mistralEndpoint.value;
+                model = settings.mistralModel.value;
+                logDirect("[AI] escalating to " + provider + " (" + model + ") with full tools.",
+                        ChatFormatting.AQUA);
+            } else {
+                logDirect("[AI] escalating to full prompt on " + model + " (no Mistral key set).",
+                        ChatFormatting.AQUA);
+            }
+            GoalTracker.setStatus("Escalated to big model");
+        }
+
         // Feature 4: seed the conversation with the most relevant saved memories for this goal.
         if (settings.mistralInjectMemory.value) {
             String memoryContext = MissionMemory.contextForGoal(userGoal, 6);
@@ -357,6 +386,69 @@ public final class MistralAgent implements Helper {
                 MissionMemory.recordCheckpointQuietly(userGoal, "report", report, "report");
             }
         }
+    }
+
+    /**
+     * One-shot dispatcher for the fine-tuned baritone-brain model: tiny schema-free prompt in, one
+     * tool call out, executed immediately. Mirrors the training format (training/train.py), which is
+     * single-turn - so the fast path never loops; anything needing conversation escalates.
+     *
+     * @return true when the mission was fully handled; false to escalate to the full-prompt path
+     */
+    private boolean runBrainFastPath(Settings settings, String endpoint, String model, String userGoal) throws Exception {
+        GoalTracker.setStatus("Brain: thinking");
+        OpenAiChatClient client = new OpenAiChatClient(endpoint, "", "ollama",
+                settings.mistralMaxRetries.value, settings.mistralRetryBackoffMillis.value,
+                settings.mistralRequestTimeoutSeconds.value);
+        JsonArray messages = new JsonArray();
+        messages.add(message("system", BrainProtocol.SYSTEM_PROMPT));
+        messages.add(message("user", userGoal));
+        OpenAiChatClient.AssistantMessage am = client.chat(model, messages, null, 0.0, 300);
+
+        String fnName = null;
+        JsonObject args = null;
+        if (am.toolCalls != null && am.toolCalls.size() > 0) {
+            ParsedToolCall parsed = parseToolCall(am.toolCalls.get(0));
+            if (parsed.canRespondAsTool && parsed.error == null) {
+                fnName = parsed.functionName;
+                args = parsed.arguments;
+            }
+        }
+        if (fnName == null) {
+            BrainProtocol.Call call = BrainProtocol.extractToolCall(am.content);
+            if (call == null) {
+                logDirect("[AI:brain] reply had no tool call; escalating.", ChatFormatting.YELLOW);
+                return false;
+            }
+            fnName = call.name;
+            args = call.arguments;
+        }
+        if (BrainProtocol.ESCALATE.equalsIgnoreCase(fnName)) {
+            logDirect("[AI:brain] escalate: request is beyond the fast brain.", ChatFormatting.YELLOW);
+            return false;
+        }
+
+        GoalTracker.setStatus("Brain: " + fnName);
+        logDirect("[AI:brain] " + fnName + " " + truncate(args.toString(), 160), ChatFormatting.DARK_AQUA);
+        boolean prevAllowInventory = settings.allowInventory.value;
+        BaritoneTools.ToolResult result;
+        try {
+            result = tools.execute(fnName, args);
+        } finally {
+            settings.allowInventory.value = prevAllowInventory;
+        }
+        tools.observeResult(fnName, result.content);
+        if (result.error) {
+            logDirect("[AI:brain] tool error: " + truncate(result.content == null ? "" : result.content, 160)
+                    + " - escalating.", ChatFormatting.YELLOW);
+            return false;
+        }
+        String summary = result.content == null || result.content.isBlank()
+                ? "Dispatched " + fnName : result.content;
+        logDirect("[AI] done: " + truncate(summary, 240), ChatFormatting.GREEN);
+        GoalTracker.finish(summary);
+        MissionMemory.recordCheckpointQuietly(userGoal, "brain_" + fnName, summary, "done");
+        return true;
     }
 
     private static boolean shouldCheckpointTool(String fnName, BaritoneTools.ToolResult result) {
