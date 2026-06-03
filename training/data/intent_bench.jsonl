@@ -1,13 +1,13 @@
 {"goal": "mine diamonds", "category": "direct", "accept": [{"name": "mine", "args": {"blocks": ["minecraft:diamond_ore"]}}]}
-{"goal": "follow steve", "category": "direct", "accept": [{"name": "follow_player", "args": {"name": "steve"}}]}
+{"goal": "shadow steve for a bit", "category": "direct", "accept": [{"name": "follow_player", "args": {"name": "steve"}}]}
 {"goal": "go to 100 64 -200", "category": "direct", "accept": [{"name": "goto_coords", "args": {"x": 100, "y": 64, "z": -200}}]}
-{"goal": "stop", "category": "direct", "accept": [{"name": "stop"}, {"name": "run_command", "args": {"command": "cancel"}}]}
-{"goal": "open a furnace", "category": "direct", "accept": [{"name": "open_station", "args": {"station": "furnace"}}]}
-{"goal": "equip the bow", "category": "direct", "accept": [{"name": "equip_item", "args": {"item_id": "minecraft:bow"}}]}
-{"goal": "whats in your inventory", "category": "direct", "accept": [{"name": "get_state"}]}
-{"goal": "farm the crops", "category": "direct", "accept": [{"name": "farm"}]}
-{"goal": "check the ender chest", "category": "direct", "accept": [{"name": "get_ender_chest"}]}
-{"goal": "make a wooden pickaxe from trees", "category": "direct", "accept": [{"name": "mine_logs_then_make_wood_tool", "args": {"tool": "minecraft:wooden_pickaxe"}}]}
+{"goal": "hold up stop", "category": "direct", "accept": [{"name": "stop"}, {"name": "run_command", "args": {"command": "cancel"}}]}
+{"goal": "get a furnace open", "category": "direct", "accept": [{"name": "open_station", "args": {"station": "furnace"}}]}
+{"goal": "get the bow out", "category": "direct", "accept": [{"name": "equip_item", "args": {"item_id": "minecraft:bow"}}]}
+{"goal": "show me your inventory", "category": "direct", "accept": [{"name": "get_state"}]}
+{"goal": "do some farming", "category": "direct", "accept": [{"name": "farm"}]}
+{"goal": "peek in the ender chest", "category": "direct", "accept": [{"name": "get_ender_chest"}]}
+{"goal": "craft a wood pick starting from trees", "category": "direct", "accept": [{"name": "mine_logs_then_make_wood_tool", "args": {"tool": "minecraft:wooden_pickaxe"}}]}
 {"goal": "yo grab us some shiny blue rocks", "category": "slang", "accept": [{"name": "mine", "args": {"blocks": ["minecraft:diamond_ore", "minecraft:lapis_ore"]}}]}
 {"goal": "we runnin low on torches, snag some coal", "category": "slang", "accept": [{"name": "mine", "args": {"blocks": ["minecraft:coal_ore"]}}]}
 {"goal": "bro get them green gems from the jungle", "category": "slang", "accept": [{"name": "mine", "args": {"blocks": ["minecraft:emerald_ore"]}}]}
@@ -54,7 +54,7 @@
 {"goal": "what should we build next", "category": "escalate", "accept": [{"name": "escalate"}]}
 {"goal": "make this place look epic", "category": "escalate", "accept": [{"name": "escalate"}]}
 {"goal": "grab some dirt", "category": "no-escalate", "accept": [{"name": "mine", "args": {"blocks": ["minecraft:dirt"]}}]}
-{"goal": "follow alex", "category": "no-escalate", "accept": [{"name": "follow_player", "args": {"name": "alex"}}]}
+{"goal": "tag along with alex", "category": "no-escalate", "accept": [{"name": "follow_player", "args": {"name": "alex"}}]}
 {"goal": "come to 10 64 10", "category": "no-escalate", "accept": [{"name": "goto_coords", "args": {"x": 10, "y": 64, "z": 10}}]}
 {"goal": "stone please", "category": "no-escalate", "accept": [{"name": "mine", "args": {"blocks": ["minecraft:stone"]}}]}
 {"goal": "wheres your inventory at", "category": "no-escalate", "accept": [{"name": "get_state"}]}

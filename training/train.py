@@ -22,7 +22,13 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_FILES = [os.path.join(ROOT, "data", "synthetic.jsonl"),
               os.path.join(ROOT, "data", "harvested.jsonl")]
 OUT_DIR = os.path.join(ROOT, "outputs")
-BASE_MODEL = "unsloth/Qwen3-1.7B"
+# v5: parametrized so the same script trains candidate sizes, e.g.
+#   ./run_train.sh                                                  -> 1.7B, q8_0
+#   BRAIN_BASE=unsloth/Qwen3-4B BRAIN_TAG=-4b BRAIN_QUANT=q4_k_m BRAIN_BATCH=1 ./run_train.sh
+BASE_MODEL = os.environ.get("BRAIN_BASE", "unsloth/Qwen3-1.7B")
+BRAIN_TAG = os.environ.get("BRAIN_TAG", "")
+BRAIN_QUANT = os.environ.get("BRAIN_QUANT", "q8_0")
+BRAIN_BATCH = int(os.environ.get("BRAIN_BATCH", "2"))
 MAX_SEQ = 512
 EVAL_FRACTION = 0.05
 
@@ -76,11 +82,15 @@ def tool_json(record):
                       ensure_ascii=False)
 
 
-def training_texts(record):
+def training_pairs(record):
+    """(prompt, completion) pairs for BOTH runtime renderings. Separate columns let TRL apply
+    completion-only loss: gradient flows only through the answer tokens, not the prompt - the
+    model's capacity goes entirely into mapping goals to calls (v4 wasted capacity re-learning
+    its own system prompt)."""
     call = "<tool_call>\n" + tool_json(record) + "\n</tool_call><|im_end|>\n"
     return [
-        prompt_bare(record["goal"]) + "<think>\n\n</think>\n\n" + call,
-        prompt_think_false(record["goal"]) + call,
+        (prompt_bare(record["goal"]), "<think>\n\n</think>\n\n" + call),
+        (prompt_think_false(record["goal"]), call),
     ]
 
 
@@ -104,21 +114,23 @@ def main():
         random_state=7,
     )
 
-    texts = []
+    prompts, completions = [], []
     for r in train_records:
-        texts.extend(training_texts(r))
-    train_ds = Dataset.from_dict({"text": texts})
+        for p, c in training_pairs(r):
+            prompts.append(p)
+            completions.append(c)
+    train_ds = Dataset.from_dict({"prompt": prompts, "completion": completions})
 
     trainer = SFTTrainer(
         model=model,
         tokenizer=tokenizer,
         train_dataset=train_ds,
         args=SFTConfig(
-            dataset_text_field="text",
             max_seq_length=MAX_SEQ,
-            per_device_train_batch_size=2,
-            gradient_accumulation_steps=4,
-            num_train_epochs=3,
+            completion_only_loss=True,
+            per_device_train_batch_size=BRAIN_BATCH,
+            gradient_accumulation_steps=8 // BRAIN_BATCH,
+            num_train_epochs=4,
             learning_rate=2e-4,
             lr_scheduler_type="cosine",
             warmup_ratio=0.05,
@@ -172,12 +184,10 @@ def main():
     )
     subprocess.run([_sys.executable, "-c", merge_script], check=True)
     converter = os.path.join(ROOT, "llama.cpp", "convert_hf_to_gguf.py")
-    gguf_file = os.path.join(OUT_DIR, "baritone-brain-q8_0.gguf")
+    gguf_file = os.path.join(OUT_DIR, f"baritone-brain{BRAIN_TAG}-{BRAIN_QUANT}.gguf")
     if os.path.exists(converter):
-        import subprocess
-        import sys as _sys
         subprocess.run([_sys.executable, converter, gguf_dir,
-                        "--outfile", gguf_file, "--outtype", "q8_0"], check=True)
+                        "--outfile", gguf_file, "--outtype", BRAIN_QUANT], check=True)
         print(f"GGUF exported to {gguf_file}")
         print("Next: ollama create baritone-brain -f", os.path.join(OUT_DIR, "Modelfile"))
         print("Then in Minecraft: #ollama use baritone-brain")

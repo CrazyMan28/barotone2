@@ -86,17 +86,83 @@ STATION_TPL = [
     "open a {s}", "go use the {s}", "find a {s} and open it", "get to a {s}", "open the nearest {s}",
 ]
 EQUIP_TPL = ["equip the {i}", "hold the {i}", "switch to the {i}", "take out the {i}", "use the {i}"]
-TUNE_TPL = [
-    ("your head isnt turning fix it", "tune"), ("you wont break blocks fix your aim", "tune"),
-    ("be sneaky on this server", "tune"), ("go undercover", "tune"),
-    ("break blocks faster", "tune"), ("mine faster", "tune"), ("be careful out there", "tune"),
-    ("ignore mobs and just work", "tune"), ("make your camera smoother", "tune"),
-    ("aim faster", "tune"), ("dont break any blocks", "tune"), ("stay alive please", "tune"),
-]
+# Expanded x8 for v5: tune was 19 examples vs ~886 mine and scored 2/5 on the bench.
+# NONE of these may duplicate intent_bench.jsonl phrasings (contamination guard enforces it).
+TUNE_TPL = [(t, "tune") for t in [
+    # aim / look fixes
+    "your head isnt turning fix it", "you wont break blocks fix your aim",
+    "your camera is messed up", "you keep missing the blocks", "fix your looking",
+    "your head is stuck again", "you cant aim anymore", "somethings wrong with your aim",
+    "look at blocks properly", "your view is glitched", "fix how you look around",
+    "you wont look at stuff", "aim is bugged out", "camera fix now",
+    # break / mine speed
+    "break blocks faster", "mine faster", "dig quicker", "speed up the mining",
+    "work faster", "break stuff quicker", "mine at full speed", "stop mining so slow",
+    "hurry up with the digging", "max out your break speed", "faster breaking please",
+    # slower / gentle
+    "slow down the breaking", "take it easy on the mining", "break blocks gently",
+    # stealth
+    "be sneaky on this server", "go undercover", "act natural", "dont look like a bot",
+    "look human out there", "play it cool on this server", "blend in with the players",
+    "go incognito", "keep a low profile out here", "dont get us banned",
+    # reflexes on
+    "be careful out there", "stay alive please", "watch your back",
+    "keep yourself safe", "defend yourself out there", "dont let mobs kill you",
+    "guard yourself", "protect yourself while working",
+    # reflexes off
+    "ignore mobs and just work", "stop running from mobs", "quit dodging fights",
+    # smooth / snappy camera
+    "make your camera smoother", "make your turns smoother", "stop turning so sharp",
+    "ease up on the camera", "aim faster", "turn faster", "react quicker with your camera",
+    "make your aim instant", "snappier camera please",
+    # breaking on/off
+    "dont break any blocks", "no block breaking allowed", "youre allowed to break blocks again",
+]]
 CANCEL_TPL = ["stop", "stop it", "cancel", "stop everything", "halt", "stand down", "quit it",
               "stahp", "actually nvm stop everything", "nvm stop", "forget it stop", "abort",
-              "cancel that", "never mind", "stop what youre doing", "ok stop now"]
-WAIT_TPL = ["wait until youre done", "wait for it to finish", "let it finish first", "hold on until idle"]
+              "cancel that", "never mind", "stop what youre doing", "ok stop now",
+              # v5 synonyms (bench items "freeze" / "ABORT ABORT" deliberately excluded)
+              "halt right there", "knock it off", "thats enough", "pause everything",
+              "cut it out", "enough already", "stop right now", "cease", "drop everything"]
+WAIT_TPL = ["wait until youre done", "wait for it to finish", "let it finish first",
+            "hold on until idle", "hold on until youre done", "wait it out", "finish up first"]
+# v5 args-precision: reordered coordinate phrasings (bench showed coords-out-of-order misses)
+COORD_REORDER_TPL = [
+    "go to y {y} at x {x} z {z}", "x {x} z {z} then y {y}", "head to z {z} x {x} and y {y}",
+    "get to x {x} y {y} z {z} quick", "y {y} x {x} z {z}", "go z {z} y {y} x {x}",
+    "the spot is x {x} z {z} at height {y}", "coords are z {z} x {x} y {y}",
+]
+# v5 contrast pack: the model must pick the FIRST-mentioned target, not the distractor
+CONTRAST_FOLLOW_TPL = ["follow {p1} not {p2}", "stick with {p1} instead of {p2}",
+                       "go with {p1} and leave {p2}", "{p1} needs you, not {p2}"]
+CONTRAST_MINE_TPL = ["mine {a} not {b}", "get {a} skip the {b}", "i want {a} and no {b}",
+                     "{a} only, forget {b}"]
+# v5 station precision: exact station name in casual phrasings
+STATION_PRECISE_TPL = ["use the {s}", "i need the {s}", "get on the {s}", "open up the {s}",
+                       "find the {s} for me"]
+# v5 indirect-intent pack: the goal implies the tool without naming it
+INDIRECT_PACK = [
+    ("we got no torches left", "mine", {"blocks": ["minecraft:coal_ore"]}),
+    ("out of torches again", "mine", {"blocks": ["minecraft:coal_ore"]}),
+    ("furnace needs fuel asap", "mine", {"blocks": ["minecraft:coal_ore"]}),
+    ("we need building blocks", "mine", {"blocks": ["minecraft:cobblestone"]}),
+    ("we should make glass", "mine", {"blocks": ["minecraft:sand"]}),
+    ("my pick broke grab the diamond one", "equip_item", {"item_id": "minecraft:diamond_pickaxe"}),
+    ("shield up", "equip_item", {"item_id": "minecraft:shield"}),
+    ("arm yourself", "equip_item", {"item_id": "minecraft:iron_sword"}),
+    ("the farm is overgrown", "farm", {}),
+    ("crops are ready to pick", "farm", {}),
+    ("wheres all our stuff at", "get_state", {}),
+    ("did we bank the diamonds", "get_ender_chest", {}),
+    ("what did we store away", "get_ender_chest", {}),
+    ("need to smelt this iron", "open_station", {"station": "furnace"}),
+    ("lets repair the pickaxe", "open_station", {"station": "anvil"}),
+    ("time to upgrade gear to netherite", "open_station", {"station": "smithing_table"}),
+    ("cut some stone slabs", "open_station", {"station": "stonecutter"}),
+    ("brew some potions", "open_station", {"station": "brewing_stand"}),
+    ("chests are overflowing do something", "escalate", {"reason": "complex or creative request"}),
+    ("make the storage room bigger", "escalate", {"reason": "complex or creative request"}),
+]
 ESCALATE_TPL = [
     "build me a castle with towers", "make an automatic sugarcane farm", "decorate my base",
     "build a house shaped like a creeper", "set up a sorting system for my chests",
@@ -192,6 +258,28 @@ def main():
     for tpl in WAIT_TPL:
         add(tpl, "wait_until_idle", {})
 
+    # v5: args-precision - reordered coordinates
+    for _ in range(140):
+        x, y, z = rng.randint(-3000, 3000), rng.randint(-60, 200), rng.randint(-3000, 3000)
+        add(rng.choice(COORD_REORDER_TPL).format(x=x, y=y, z=z), "goto_coords", {"x": x, "y": y, "z": z})
+
+    # v5: contrast - first-mentioned target wins, distractor must be ignored
+    for _ in range(60):
+        p1, p2 = rng.sample(PLAYERS, 2)
+        add(rng.choice(CONTRAST_FOLLOW_TPL).format(p1=p1, p2=p2), "follow_player", {"name": p1})
+    mineable = list({**ORES, **BLOCKS}.items())
+    for _ in range(60):
+        (wa, ba), (wb, _) = rng.sample(mineable, 2)
+        add(rng.choice(CONTRAST_MINE_TPL).format(a=wa, b=wb), "mine", {"blocks": [ba]})
+
+    # v5: station precision - exact station names in casual phrasings
+    for s, tpl in itertools.product(STATIONS, STATION_PRECISE_TPL):
+        add(tpl.format(s=s.replace("_", " ")), "open_station", {"station": s})
+
+    # v5: indirect intent - the goal implies the tool without naming it
+    for goal, tool, targs in INDIRECT_PACK:
+        add(goal, tool, targs)
+
     # escalation: beyond the small brain -> hand off to the big model
     for goal in ESCALATE_TPL:
         for g in variants(goal, rng, p_typo=0.25):
@@ -205,7 +293,40 @@ def main():
         if r["goal"] not in seen:
             seen.add(r["goal"])
             unique.append(r)
+
+    # v5 rebalance: mine dominated the dataset (~886 vs 19 tune) and starved other categories.
+    # Cap single-block mine and generic-wood mine separately (seeded, reproducible).
+    def cap_group(items, predicate, cap):
+        grp = [r for r in items if predicate(r)]
+        rest = [r for r in items if not predicate(r)]
+        if len(grp) > cap:
+            grp = rng.sample(grp, cap)
+        return rest + grp
+
+    def is_single_mine(r):
+        c = r["calls"][0]
+        return c["name"] == "mine" and len(c["arguments"].get("blocks", [])) == 1
+
+    def is_wood_mine(r):
+        c = r["calls"][0]
+        return c["name"] == "mine" and len(c["arguments"].get("blocks", [])) > 1
+
+    unique = cap_group(unique, is_single_mine, 380)
+    unique = cap_group(unique, is_wood_mine, 200)
     rng.shuffle(unique)
+
+    # v5 contamination guard: the Intent Bench must NEVER appear in training data, or the
+    # benchmark stops measuring generalization. Hard-fail so a bad template can't slip through.
+    bench_path = os.path.join(ROOT, "data", "intent_bench.jsonl")
+    if os.path.exists(bench_path):
+        bench_goals = {json.loads(l)["goal"].strip().lower() for l in open(bench_path, encoding="utf-8")}
+        leaked = sorted({r["goal"].strip().lower() for r in unique} & bench_goals)
+        if leaked:
+            print("CONTAMINATION: these training goals duplicate intent_bench.jsonl items:")
+            for g in leaked:
+                print("  -", g)
+            raise SystemExit(1)
+        print(f"contamination check passed ({len(bench_goals)} bench goals, 0 leaks)")
 
     with open(OUT, "w", encoding="utf-8") as f:
         for r in unique:

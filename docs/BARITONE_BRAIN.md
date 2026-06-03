@@ -155,3 +155,20 @@ the field ~1:1), add tune/args/direct reinforcement to fix v4's regressions, con
 Anti-poison gate for all future candidates: `scripts/gate.sh <model>` — unloads models, runs the
 corruption sanity (fails fast on token salad), both Intent Bench paths, the legacy exam, and prints
 ship rules (beat champion on game path, no >2pt legacy regression, ties go to the champion).
+
+## v5s: UNDISPUTED CHAMPION (June 3, late night)
+
+Recipe: rebalanced data (mine capped 380+200wood, tune 19->98, args-precision/contrast/indirect/stop
+packs), completion-only loss (prompt tokens masked), 4 epochs, dual byte-exact formats, contamination
+guard (which caught and fixed 9 bench items that had leaked into training - all baselines re-measured
+on the cleaned bench and were UNCHANGED: v1 77.0/74.3, v4 78.4/74.3).
+
+Gate results: **83.8% Intent Bench on BOTH paths (+9.5 over v1/v4 on the game path), legacy 96.9%
+(ties v1), 0.4s avg, clean package.** All undisputed-bar conditions met. Lab predicted field exactly
+(98.0% holdout both formats).
+
+Deployed: `baritone-brain` on the user-space 0.30.3 engine; game points at it via
+`ollamaBaseUrl http://127.0.0.1:11435` (settings.txt); engine runs as systemd user service
+`ollama-new` (enabled, survives reboots). v1 remains on the old engine as rollback
+(`#set ollamaBaseUrl http://localhost:11434` to revert). Qwen3-4B (v5b) optional: base weights
+cached; train with `BRAIN_BASE=unsloth/Qwen3-4B BRAIN_TAG=-4b BRAIN_QUANT=q4_k_m BRAIN_BATCH=1 ./run_train.sh`.
