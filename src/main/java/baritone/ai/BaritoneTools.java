@@ -172,8 +172,9 @@ public final class BaritoneTools {
                         param("name", "string", "Setting name to reset.", true)
                 )));
         arr.add(fn("get_ender_chest",
-                "Return the player's last-known ender chest contents as item -> count. Contents sync when an ender "
-                        + "chest is opened; check this before planning crafting so you use what you actually have stored.",
+                "Open the player's ender chest and read its REAL contents as item -> count. Opens a reachable ender "
+                        + "chest, or PLACES one from inventory if none is nearby, then looks inside. Falls back to last-known "
+                        + "contents if it cannot open or place one. Use before planning crafting that relies on stored items.",
                 params()));
         arr.add(fn("open_station",
                 "Path to and open a nearby station/container GUI. Supported station values: crafting_table, furnace, "
@@ -460,7 +461,7 @@ public final class BaritoneTools {
                 case "reset_setting":
                     return ok(resetSetting(args));
                 case "get_ender_chest":
-                    return ok(AiCrafting.onClient(ctx, this::getEnderChestOnClient));
+                    return ok(AiCrafting.openEnderChestAndRead(ctx));
                 case "open_station":
                     return ok(openStation(args));
                 case "equip_item":
@@ -1066,21 +1067,6 @@ public final class BaritoneTools {
             out.append("\n... ").append(total - shown).append(" more matches; refine the filter");
         }
         return out.toString();
-    }
-
-    private String getEnderChestOnClient() {
-        LocalPlayer p = ctx.player();
-        JsonObject s = new JsonObject();
-        if (p == null) {
-            s.addProperty("error", "Player not in world");
-            return s.toString();
-        }
-        JsonObject totals = enderChestTotals(p);
-        s.add("ender_chest_totals", totals);
-        s.addProperty("note", totals.size() == 0
-                ? "Ender chest is empty or its contents are not yet known to the client; open an ender chest once to sync."
-                : "Last-known ender chest contents (open an ender chest to refresh).");
-        return s.toString();
     }
 
     private static JsonObject enderChestTotals(LocalPlayer p) {

@@ -35,6 +35,7 @@ import net.minecraft.tags.TagKey;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.Container;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.AbstractFurnaceMenu;
 import net.minecraft.world.inventory.AnvilMenu;
@@ -116,6 +117,7 @@ public final class AiCrafting {
 
     /** Last crafting table block we placed (for opening GUI). */
     private static volatile BlockPos lastPlacedCraftingTablePos;
+    private static volatile BlockPos lastEnderChestPos;
 
     private static final class JsonCraftingRecipe {
         final Identifier id;
@@ -2686,6 +2688,247 @@ public final class AiCrafting {
             return "OK: Opened crafting table GUI (" + res + ").";
         }
         return "RETRY";
+    }
+
+    /**
+     * Opens an ender chest and returns its real contents. Opens a reachable ender chest if one is within
+     * reach, otherwise places one from the player's inventory and opens that, then reads the synced
+     * contents. Falls back to the last-known contents if it cannot open or place one. The placed ender
+     * chest is intentionally left in the world (breaking it without silk touch would destroy it).
+     */
+    public static String openEnderChestAndRead(IPlayerContext ctx) {
+        if (Boolean.TRUE.equals(onClient(ctx, () -> !(ctx.player().containerMenu instanceof InventoryMenu)))) {
+            String c = readEnderChestContents(ctx);
+            onClient(ctx, () -> {
+                ctx.player().closeContainer();
+                return null;
+            });
+            return "A container was already open. " + c;
+        }
+        String opened = openReachableEnderChest(ctx);
+        if (opened.startsWith("Cancelled")) {
+            return opened;
+        }
+        if (!opened.startsWith("Opened") && !opened.startsWith("Already")) {
+            boolean hasChest = Boolean.TRUE.equals(onClient(ctx,
+                    () -> findItemSlot(ctx.player().inventoryMenu, Items.ENDER_CHEST) >= 0));
+            if (!hasChest) {
+                return "ERROR: No ender chest within reach and no ender chest item to place. Last known "
+                        + readEnderChestContents(ctx);
+            }
+            String placed = placeEnderChestBlock(ctx);
+            if (placed.startsWith("ERROR:")) {
+                return placed;
+            }
+            sleepAi(300);
+            String openPlaced = openPlacedEnderChest(ctx);
+            if (!openPlaced.startsWith("Opened") && !openPlaced.startsWith("Already")) {
+                return placed + " " + openPlaced;
+            }
+            opened = placed + " " + openPlaced;
+        }
+        sleepAi(300); // let the server sync the chest contents into the menu
+        String contents = readEnderChestContents(ctx);
+        onClient(ctx, () -> {
+            ctx.player().closeContainer();
+            return null;
+        });
+        return opened + " " + contents;
+    }
+
+    private static String openReachableEnderChest(IPlayerContext ctx) {
+        for (int attempt = 0; attempt < 12; attempt++) {
+            if (MistralAgent.isCancelled()) {
+                return "Cancelled while opening ender chest.";
+            }
+            BlockPos pos = onClient(ctx, () -> findReachableBlock(ctx.player(), 5, Blocks.ENDER_CHEST));
+            if (pos == null) {
+                return "WARN: No reachable ender chest.";
+            }
+            String r = openEnderChestAt(ctx, pos);
+            if (r.startsWith("Opened") || r.startsWith("Already") || r.startsWith("ERROR:")) {
+                return r;
+            }
+            sleepAi(100);
+        }
+        return "WARN: Could not open a reachable ender chest.";
+    }
+
+    private static String openPlacedEnderChest(IPlayerContext ctx) {
+        for (int attempt = 0; attempt < 36; attempt++) {
+            if (MistralAgent.isCancelled()) {
+                return "Cancelled while opening ender chest.";
+            }
+            BlockPos pos = lastEnderChestPos;
+            if (pos == null) {
+                return "ERROR: No remembered ender chest position.";
+            }
+            String r = openEnderChestAt(ctx, pos);
+            if (r.startsWith("Opened") || r.startsWith("Already") || r.startsWith("ERROR:")) {
+                return r;
+            }
+            sleepAi(110);
+        }
+        return "WARN: Could not open the placed ender chest GUI after retries.";
+    }
+
+    private static String openEnderChestAt(IPlayerContext ctx, BlockPos pos) {
+        if (pos == null) {
+            return "ERROR: No ender chest position.";
+        }
+        if (Boolean.TRUE.equals(onClient(ctx, () -> !(ctx.player().containerMenu instanceof InventoryMenu)))) {
+            return "Already open: a container.";
+        }
+        for (Direction face : Direction.values()) {
+            if (face == Direction.DOWN) {
+                continue;
+            }
+            Vec3 hitVec = Vec3.atCenterOf(pos).add(
+                    face.getStepX() * 0.52,
+                    face.getStepY() * 0.52,
+                    face.getStepZ() * 0.52);
+            if (!visiblyLookAt(ctx, hitVec, 28)) {
+                continue;
+            }
+            if (!waitCrosshairOnBlock(ctx, pos, 8, 50)) {
+                continue;
+            }
+            String r = onClient(ctx, () -> tryOpenEnderChestAtPosWithFace(ctx, pos, face, hitVec));
+            if (r.startsWith("OK:")) {
+                return r.substring(3).trim();
+            }
+            if (r.startsWith("ERROR:")) {
+                return r;
+            }
+            for (int wait = 0; wait < 6; wait++) {
+                if (Boolean.TRUE.equals(onClient(ctx, () -> !(ctx.player().containerMenu instanceof InventoryMenu)))) {
+                    return "Opened ender chest.";
+                }
+                sleepAi(75);
+            }
+        }
+        return "RETRY";
+    }
+
+    private static String tryOpenEnderChestAtPosWithFace(IPlayerContext ctx, BlockPos pos, Direction face, Vec3 hitVec) {
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer p = ctx.player();
+        if (!p.level().getBlockState(pos).is(Blocks.ENDER_CHEST)) {
+            return "ERROR: Block at " + pos + " is not an ender chest.";
+        }
+        p.closeContainer();
+        BlockHitResult hit = new BlockHitResult(hitVec, face.getOpposite(), pos, false);
+        InteractionResult res = mc.gameMode.useItemOn(p, InteractionHand.MAIN_HAND, hit);
+        p.swing(InteractionHand.MAIN_HAND);
+        if (!(p.containerMenu instanceof InventoryMenu)) {
+            return "OK: Opened ender chest (" + res + ").";
+        }
+        return "RETRY";
+    }
+
+    private static String placeEnderChestBlock(IPlayerContext ctx) {
+        TablePlacementPlan plan = onClient(ctx, () -> {
+            LocalPlayer p = ctx.player();
+            p.closeContainer();
+            if (!(p.containerMenu instanceof InventoryMenu)) {
+                return TablePlacementPlan.error("ERROR: place ender chest: expected player inventory menu.");
+            }
+            int slot = findItemSlot(p.inventoryMenu, Items.ENDER_CHEST);
+            if (slot < 0) {
+                return TablePlacementPlan.error("ERROR: No ender chest item in inventory.");
+            }
+            int hotbar = p.getInventory().getSelectedSlot();
+            ctx.playerController().windowClick(p.inventoryMenu.containerId, slot, hotbar, ClickType.SWAP, p);
+            p.getInventory().setSelectedSlot(hotbar);
+            BlockHitResult hit = findTablePlacementHit(p);
+            if (hit == null) {
+                return TablePlacementPlan.error("ERROR: No solid block in front to place the ender chest against.");
+            }
+            BlockPos placed = hit.getBlockPos().relative(hit.getDirection());
+            lastEnderChestPos = placed;
+            return TablePlacementPlan.ok(hit, placed);
+        });
+        if (plan.error != null) {
+            return plan.error;
+        }
+        if (!visiblyLookAt(ctx, plan.hit.getLocation(), 36)) {
+            return "ERROR: Could not visibly aim at the ender chest placement support block.";
+        }
+        if (!waitCrosshairOnBlock(ctx, plan.hit.getBlockPos(), 12, 50)) {
+            return "ERROR: Crosshair was not on the ender chest placement support block after the visible turn.";
+        }
+        String click = onClient(ctx, () -> {
+            Minecraft mc = Minecraft.getInstance();
+            LocalPlayer p = ctx.player();
+            if (!p.getInventory().getSelectedItem().is(Items.ENDER_CHEST)) {
+                int slot = findItemSlot(p.inventoryMenu, Items.ENDER_CHEST);
+                if (slot < 0) {
+                    return "ERROR: Ender chest left the hotbar before placement.";
+                }
+                int hotbar = p.getInventory().getSelectedSlot();
+                ctx.playerController().windowClick(p.inventoryMenu.containerId, slot, hotbar, ClickType.SWAP, p);
+                p.getInventory().setSelectedSlot(hotbar);
+            }
+            InteractionResult res = mc.gameMode.useItemOn(p, InteractionHand.MAIN_HAND, plan.hit);
+            p.swing(InteractionHand.MAIN_HAND);
+            return "CLICK: " + res;
+        });
+        if (click.startsWith("ERROR:")) {
+            return click;
+        }
+        if (!waitForBlock(ctx, plan.placed, Blocks.ENDER_CHEST, 30, 100)) {
+            return "ERROR: Ender chest did not appear at " + plan.placed + " after right-click (" + click + ").";
+        }
+        lastEnderChestPos = plan.placed;
+        return "Placed ender chest at ~" + lastEnderChestPos + ".";
+    }
+
+    private static String readEnderChestContents(IPlayerContext ctx) {
+        return onClient(ctx, () -> {
+            LocalPlayer p = ctx.player();
+            Container ender = p.getEnderChestInventory();
+            java.util.Map<String, Integer> counts = new java.util.LinkedHashMap<>();
+            for (int i = 0; i < ender.getContainerSize(); i++) {
+                ItemStack stack = ender.getItem(i);
+                if (stack == null || stack.isEmpty()) {
+                    continue;
+                }
+                counts.merge(stack.getItem().toString(), stack.getCount(), Integer::sum);
+            }
+            if (counts.isEmpty()) {
+                return "Ender chest is empty.";
+            }
+            StringBuilder sb = new StringBuilder("Ender chest contents:");
+            for (java.util.Map.Entry<String, Integer> e : counts.entrySet()) {
+                sb.append(' ').append(e.getKey()).append(" x").append(e.getValue()).append(';');
+            }
+            return sb.toString();
+        });
+    }
+
+    private static BlockPos findReachableBlock(LocalPlayer p, int radius, Block block) {
+        Level level = p.level();
+        BlockPos origin = p.blockPosition();
+        double reach = 5.25D;
+        double best = Double.MAX_VALUE;
+        BlockPos bestPos = null;
+        Vec3 eye = p.getEyePosition(1f);
+        for (int y = -2; y <= 2; y++) {
+            for (int x = -radius; x <= radius; x++) {
+                for (int z = -radius; z <= radius; z++) {
+                    BlockPos pos = origin.offset(x, y, z);
+                    if (!level.getBlockState(pos).is(block)) {
+                        continue;
+                    }
+                    double dist = eye.distanceToSqr(Vec3.atCenterOf(pos));
+                    if (dist <= reach * reach && dist < best) {
+                        best = dist;
+                        bestPos = pos;
+                    }
+                }
+            }
+        }
+        return bestPos;
     }
 
     private static void lookAtBlockCenter(LocalPlayer p, BlockPos pos) {
