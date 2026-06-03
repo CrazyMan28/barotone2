@@ -70,15 +70,25 @@ public class UndercoverCommand extends Command {
             logDirect("Undercover ON: visible block aiming, capped block-interaction turns, slower clicks/breaks; normal pathing kept.",
                     ChatFormatting.GREEN);
         } else if (mode.equals("off")) {
-            if (!enabled || snap == null) {
-                logDirect("Undercover was not on.", ChatFormatting.YELLOW);
-                return;
+            if (enabled && snap != null) {
+                snap.restore(s);
+                snap = null;
+                enabled = false;
+                SettingsUtil.save(s);
+                logDirect("Undercover OFF: restored your previous movement settings.", ChatFormatting.GREEN);
+            } else {
+                // No in-memory snapshot to restore from (e.g. undercover was turned on in a
+                // previous session and the game has since restarted - the stealth settings are
+                // still loaded from disk but the snapshot is gone). Force the look/interaction
+                // settings back to safe defaults so block breaking works again instead of leaving
+                // the player permanently stuck in undercover mode.
+                resetLookSettingsToDefaults(s);
+                snap = null;
+                enabled = false;
+                SettingsUtil.save(s);
+                logDirect("Undercover OFF: reset look/interaction settings to defaults (no prior snapshot found).",
+                        ChatFormatting.GREEN);
             }
-            snap.restore(s);
-            snap = null;
-            enabled = false;
-            SettingsUtil.save(s);
-            logDirect("Undercover OFF: restored your previous movement settings.", ChatFormatting.GREEN);
         } else if (mode.equals("setting") || mode.equals("settings") || mode.equals("gui")) {
             Minecraft mc = Minecraft.getInstance();
             mc.execute(() -> mc.setScreen(new UndercoverSettingsScreen(null)));
@@ -98,14 +108,39 @@ public class UndercoverCommand extends Command {
         double calm = 1D - aggression;
         s.allowSprint.value = true;
         s.smoothLook.value = true;
-        s.smoothLookTicks.value = Math.max(1, Math.max(s.undercoverSmoothLookTicks.value, 8 + (int) Math.round(calm * 16D)));
+        // Keep the smoothing window small. The old behaviour averaged the look over ~22 ticks,
+        // which makes the head lag so far behind the target that Baritone can never settle its
+        // aim on a block long enough to break it while pathing - that destroyed mining/tunnelling.
+        s.smoothLookTicks.value = Math.max(1, Math.min(8, s.undercoverSmoothLookTicks.value));
         s.blockFreeLook.value = false;
         s.freeLook.value = false;
-        s.strictVisibleBlockInteractions.value = true;
+        // Deliberately do NOT force strictVisibleBlockInteractions on here. Combined with the
+        // smooth/visible look it hard-gates every block break on an exact raytrace hit, which
+        // stops Baritone from breaking the blocks in its path (the thing it does best). Undercover
+        // should make looking *visible*, not make breaking impossible.
+        s.strictVisibleBlockInteractions.value = false;
         s.randomLooking113.value = 0D;
         s.randomLooking.value = 0D;
         s.rightClickSpeed.value = Math.max(1, Math.max(s.undercoverRightClickDelay.value, 4 + (int) Math.round(calm * 16D)));
         s.blockBreakSpeed.value = Math.max(1, Math.max(s.undercoverBlockBreakDelay.value, 6 + (int) Math.round(calm * 18D)));
+    }
+
+    /**
+     * Force the look / block-interaction settings that undercover mode touches back to their
+     * built-in defaults. Used as a recovery path when there is no in-memory snapshot to restore
+     * (e.g. after a game restart) so a persisted undercover profile can never permanently disable
+     * block breaking.
+     */
+    public static void resetLookSettingsToDefaults(Settings s) {
+        s.smoothLook.reset();
+        s.smoothLookTicks.reset();
+        s.blockFreeLook.reset();
+        s.freeLook.reset();
+        s.strictVisibleBlockInteractions.reset();
+        s.randomLooking.reset();
+        s.randomLooking113.reset();
+        s.rightClickSpeed.reset();
+        s.blockBreakSpeed.reset();
     }
 
     @Override
