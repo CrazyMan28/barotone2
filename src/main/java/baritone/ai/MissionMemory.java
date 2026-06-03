@@ -311,11 +311,14 @@ public final class MissionMemory {
                     }
                 }
             }
-            saveLocked();
+            saveQuietly();
         }
     }
 
-    /** Records the mission currently being attempted so it can be resumed if the game closes mid-mission. */
+    /**
+     * Records the mission currently being attempted so it can be resumed if the game closes mid-mission.
+     * Best-effort: a persistence failure must never crash the command that started the mission.
+     */
     public static void recordInFlightMission(String goal, boolean planMode) {
         synchronized (LOCK) {
             ensureLoaded();
@@ -325,11 +328,11 @@ public final class MissionMemory {
             }
             state.inFlightGoal = clean;
             state.inFlightPlanMode = planMode;
-            saveLocked();
+            saveQuietly();
         }
     }
 
-    /** Clears any recorded in-flight mission (called when a mission truly finishes). */
+    /** Clears any recorded in-flight mission (called when a mission truly finishes). Best-effort. */
     public static void clearInFlightMission() {
         synchronized (LOCK) {
             ensureLoaded();
@@ -338,7 +341,7 @@ public final class MissionMemory {
             }
             state.inFlightGoal = "";
             state.inFlightPlanMode = false;
-            saveLocked();
+            saveQuietly();
         }
     }
 
@@ -429,6 +432,14 @@ public final class MissionMemory {
         } catch (Exception e) {
             lastError = "Could not load mission-memory.json: " + e.getClass().getSimpleName();
             state = new State();
+        }
+    }
+
+    /** Save without throwing — for best-effort persistence (goal history, in-flight mission) that must not crash callers. */
+    private static void saveQuietly() {
+        try {
+            saveLocked();
+        } catch (RuntimeException ignored) {
         }
     }
 
