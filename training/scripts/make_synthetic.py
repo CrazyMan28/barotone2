@@ -41,7 +41,7 @@ BLOCKS = {
 }
 # Generic wood words mine ANY common log type (one call, multiple targets) - and never invent
 # block ids: "get soom wood" once produced minecraft:soulwood in-game.
-WOOD_WORDS = ["wood", "some wood", "logs", "lumber", "timber", "tree wood", "wood from trees"]
+WOOD_WORDS = ["wood", "some wood", "soom wood", "sum wood", "logs", "some logs", "lumber", "timber", "tree wood", "wood from trees", "trees"]
 WOOD_BLOCKS = ["minecraft:oak_log", "minecraft:birch_log", "minecraft:spruce_log", "minecraft:jungle_log"]
 PLAYERS = ["keven", "keven167", "steve", "alex", "notch", "bob", "ashley", "max", "leo", "zoe"]
 STATIONS = ["crafting_table", "furnace", "blast_furnace", "smoker", "brewing_stand",

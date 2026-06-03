@@ -50,16 +50,37 @@ def load_records():
     return records
 
 
-def to_messages(record):
-    # Train on the first call of each mission: the router's job is "goal -> first correct action".
+# v4 insight: v1-v3 trained on HuggingFace's jinja rendering, but the runtimes render DIFFERENTLY
+# (verified byte-exact against ollama 0.30 via prompt_eval_count probes):
+#   - ollama /api/chat with think:false appends " /no_think" to the user msg and prefills an empty
+#     think block in the assistant prefix
+#   - the mod's OpenAI-compat path (/v1/chat/completions) has no think param -> bare assistant
+#     prefix, no /no_think; the model must emit the think block itself
+# Training on BOTH real renderings removes the format drift that cost v3 ~4 points.
+
+def prompt_bare(goal):
+    return ("<|im_start|>system\n\n" + SYSTEM_PROMPT + "<|im_end|>\n"
+            "<|im_start|>user\n" + goal + "<|im_end|>\n"
+            "<|im_start|>assistant\n")
+
+
+def prompt_think_false(goal):
+    return ("<|im_start|>system\n\n" + SYSTEM_PROMPT + "<|im_end|>\n"
+            "<|im_start|>user\n" + goal + " /no_think<|im_end|>\n"
+            "<|im_start|>assistant\n<think>\n\n</think>\n\n")
+
+
+def tool_json(record):
     call = record["calls"][0]
-    tool_json = json.dumps({"name": call["name"], "arguments": call.get("arguments", {})},
-                           ensure_ascii=False)
-    assistant = "<think>\n\n</think>\n<tool_call>\n" + tool_json + "\n</tool_call>"
+    return json.dumps({"name": call["name"], "arguments": call.get("arguments", {})},
+                      ensure_ascii=False)
+
+
+def training_texts(record):
+    call = "<tool_call>\n" + tool_json(record) + "\n</tool_call><|im_end|>\n"
     return [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": record["goal"]},
-        {"role": "assistant", "content": assistant},
+        prompt_bare(record["goal"]) + "<think>\n\n</think>\n\n" + call,
+        prompt_think_false(record["goal"]) + call,
     ]
 
 
@@ -83,11 +104,10 @@ def main():
         random_state=7,
     )
 
-    def fmt(rec):
-        return tokenizer.apply_chat_template(to_messages(rec), tokenize=False,
-                                             add_generation_prompt=False)
-
-    train_ds = Dataset.from_dict({"text": [fmt(r) for r in train_records]})
+    texts = []
+    for r in train_records:
+        texts.extend(training_texts(r))
+    train_ds = Dataset.from_dict({"text": texts})
 
     trainer = SFTTrainer(
         model=model,
@@ -98,7 +118,7 @@ def main():
             max_seq_length=MAX_SEQ,
             per_device_train_batch_size=2,
             gradient_accumulation_steps=4,
-            num_train_epochs=2,
+            num_train_epochs=3,
             learning_rate=2e-4,
             lr_scheduler_type="cosine",
             warmup_ratio=0.05,
@@ -112,21 +132,21 @@ def main():
     trainer.train()
 
     # ----- holdout eval: exact tool-name match ------------------------------------------------
+    # Eval on BOTH runtime renderings - the game's bare OpenAI-compat format and ollama's
+    # /api/chat think:false format - so the in-process score predicts production behavior.
     FastLanguageModel.for_inference(model)
-    correct = 0
-    for rec in eval_records:
-        msgs = to_messages(rec)[:2]  # system + user
-        prompt = tokenizer.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True,
-                                               enable_thinking=False)
-        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-        out = model.generate(**inputs, max_new_tokens=120, do_sample=False,
-                             pad_token_id=tokenizer.eos_token_id)
-        text = tokenizer.decode(out[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
-        expected = rec["calls"][0]["name"]
-        if f'"name": "{expected}"' in text or f'"name":"{expected}"' in text:
-            correct += 1
-    print(f"holdout tool-name accuracy: {correct}/{len(eval_records)} "
-          f"({100.0 * correct / max(1, len(eval_records)):.1f}%)")
+    for label, render in (("game/bare", prompt_bare), ("ollama/think-false", prompt_think_false)):
+        correct = 0
+        for rec in eval_records:
+            inputs = tokenizer(render(rec["goal"]), return_tensors="pt").to(model.device)
+            out = model.generate(**inputs, max_new_tokens=120, do_sample=False,
+                                 pad_token_id=tokenizer.eos_token_id)
+            text = tokenizer.decode(out[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
+            expected = rec["calls"][0]["name"]
+            if f'"name": "{expected}"' in text or f'"name":"{expected}"' in text:
+                correct += 1
+        print(f"holdout tool-name accuracy [{label}]: {correct}/{len(eval_records)} "
+              f"({100.0 * correct / max(1, len(eval_records)):.1f}%)")
 
     # ----- save -------------------------------------------------------------------------------
     lora_dir = os.path.join(OUT_DIR, "lora")
@@ -134,10 +154,23 @@ def main():
     tokenizer.save_pretrained(lora_dir)
     print(f"LoRA adapter saved to {lora_dir}")
 
-    # unsloth's save_pretrained_gguf tries to auto-install llama.cpp and breaks on Fedora; merge to
-    # 16-bit safetensors here and convert with llama.cpp's pure-python converter instead.
+    # Merge in a FRESH python process with vanilla transformers+peft: unsloth's in-process merge
+    # (save_pretrained_merged / save_pretrained_gguf) produced corrupt weights for v3 and v4 -
+    # token-salad models that score 0%. The clean peft merge has been correct every time.
     gguf_dir = os.path.join(OUT_DIR, "gguf")
-    model.save_pretrained_merged(gguf_dir, tokenizer, save_method="merged_16bit")
+    import subprocess
+    import sys as _sys
+    merge_script = (
+        "import torch\n"
+        "from transformers import AutoModelForCausalLM, AutoTokenizer\n"
+        "from peft import PeftModel\n"
+        f"base = AutoModelForCausalLM.from_pretrained({BASE_MODEL!r}, torch_dtype=torch.bfloat16)\n"
+        f"m = PeftModel.from_pretrained(base, {lora_dir!r}).merge_and_unload()\n"
+        f"m.save_pretrained({gguf_dir!r})\n"
+        f"AutoTokenizer.from_pretrained({lora_dir!r}).save_pretrained({gguf_dir!r})\n"
+        "print('clean peft merge done')\n"
+    )
+    subprocess.run([_sys.executable, "-c", merge_script], check=True)
     converter = os.path.join(ROOT, "llama.cpp", "convert_hf_to_gguf.py")
     gguf_file = os.path.join(OUT_DIR, "baritone-brain-q8_0.gguf")
     if os.path.exists(converter):

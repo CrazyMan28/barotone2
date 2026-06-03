@@ -1,0 +1,74 @@
+{"goal": "mine diamonds", "category": "direct", "accept": [{"name": "mine", "args": {"blocks": ["minecraft:diamond_ore"]}}]}
+{"goal": "follow steve", "category": "direct", "accept": [{"name": "follow_player", "args": {"name": "steve"}}]}
+{"goal": "go to 100 64 -200", "category": "direct", "accept": [{"name": "goto_coords", "args": {"x": 100, "y": 64, "z": -200}}]}
+{"goal": "stop", "category": "direct", "accept": [{"name": "stop"}, {"name": "run_command", "args": {"command": "cancel"}}]}
+{"goal": "open a furnace", "category": "direct", "accept": [{"name": "open_station", "args": {"station": "furnace"}}]}
+{"goal": "equip the bow", "category": "direct", "accept": [{"name": "equip_item", "args": {"item_id": "minecraft:bow"}}]}
+{"goal": "whats in your inventory", "category": "direct", "accept": [{"name": "get_state"}]}
+{"goal": "farm the crops", "category": "direct", "accept": [{"name": "farm"}]}
+{"goal": "check the ender chest", "category": "direct", "accept": [{"name": "get_ender_chest"}]}
+{"goal": "make a wooden pickaxe from trees", "category": "direct", "accept": [{"name": "mine_logs_then_make_wood_tool", "args": {"tool": "minecraft:wooden_pickaxe"}}]}
+{"goal": "yo grab us some shiny blue rocks", "category": "slang", "accept": [{"name": "mine", "args": {"blocks": ["minecraft:diamond_ore", "minecraft:lapis_ore"]}}]}
+{"goal": "we runnin low on torches, snag some coal", "category": "slang", "accept": [{"name": "mine", "args": {"blocks": ["minecraft:coal_ore"]}}]}
+{"goal": "bro get them green gems from the jungle", "category": "slang", "accept": [{"name": "mine", "args": {"blocks": ["minecraft:emerald_ore"]}}]}
+{"goal": "accompany ashley pls", "category": "slang", "accept": [{"name": "follow_player", "args": {"name": "ashley"}}]}
+{"goal": "chop chop lumber time", "category": "slang", "accept": [{"name": "mine", "args": {"blocks": ["minecraft:oak_log", "minecraft:birch_log", "minecraft:spruce_log", "minecraft:jungle_log"]}}]}
+{"goal": "dig staright down for some redstone", "category": "slang", "accept": [{"name": "mine", "args": {"blocks": ["minecraft:redstone_ore"]}}]}
+{"goal": "i wanna be at -100 70 200 asap", "category": "slang", "accept": [{"name": "goto_coords", "args": {"x": -100, "y": 70, "z": 200}}]}
+{"goal": "get that ancient stuff from the nether", "category": "slang", "accept": [{"name": "mine", "args": {"blocks": ["minecraft:ancient_debris"]}}]}
+{"goal": "whats ur health lookin like", "category": "slang", "accept": [{"name": "get_state"}]}
+{"goal": "yeet over to 0 80 0", "category": "slang", "accept": [{"name": "goto_coords", "args": {"x": 0, "y": 80, "z": 0}}]}
+{"goal": "snatch sum gold for me", "category": "slang", "accept": [{"name": "mine", "args": {"blocks": ["minecraft:gold_ore"]}}]}
+{"goal": "pursue keven167", "category": "slang", "accept": [{"name": "follow_player", "args": {"name": "keven167"}}]}
+{"goal": "wield the shield", "category": "slang", "accept": [{"name": "equip_item", "args": {"item_id": "minecraft:shield"}}]}
+{"goal": "hands off the controls, stop moving", "category": "slang", "accept": [{"name": "stop"}, {"name": "run_command", "args": {"command": "cancel"}}]}
+{"goal": "get soom wood", "category": "slang", "accept": [{"name": "mine", "args": {"blocks": ["minecraft:oak_log", "minecraft:birch_log", "minecraft:spruce_log", "minecraft:jungle_log"]}}]}
+{"goal": "im starving bro check what food we got", "category": "indirect", "accept": [{"name": "get_state"}]}
+{"goal": "my sword broke, get the iron one out", "category": "indirect", "accept": [{"name": "equip_item", "args": {"item_id": "minecraft:iron_sword"}}]}
+{"goal": "we need fuel for the furnace", "category": "indirect", "accept": [{"name": "mine", "args": {"blocks": ["minecraft:coal_ore"]}}]}
+{"goal": "the house needs more glass, get sand", "category": "indirect", "accept": [{"name": "mine", "args": {"blocks": ["minecraft:sand"]}}]}
+{"goal": "lets see what loot we banked in storage", "category": "indirect", "accept": [{"name": "get_ender_chest"}, {"name": "get_state"}]}
+{"goal": "time to cook, find a furnace", "category": "indirect", "accept": [{"name": "open_station", "args": {"station": "furnace"}}, {"name": "goto_block", "args": {"block": "minecraft:furnace"}}]}
+{"goal": "keven keeps dying, stay close to him", "category": "indirect", "accept": [{"name": "follow_player", "args": {"name": "keven"}}]}
+{"goal": "i need to enchant stuff, get me lapis", "category": "indirect", "accept": [{"name": "mine", "args": {"blocks": ["minecraft:lapis_ore"]}}]}
+{"goal": "make yourself useful and tend the farm", "category": "indirect", "accept": [{"name": "farm"}]}
+{"goal": "take a break, stop working", "category": "indirect", "accept": [{"name": "stop"}, {"name": "run_command", "args": {"command": "cancel"}}]}
+{"goal": "go to exactly 1234 70 -4321", "category": "args", "accept": [{"name": "goto_coords", "args": {"x": 1234, "y": 70, "z": -4321}}]}
+{"goal": "follow zoe not steve", "category": "args", "accept": [{"name": "follow_player", "args": {"name": "zoe"}}]}
+{"goal": "mine iron not gold", "category": "args", "accept": [{"name": "mine", "args": {"blocks": ["minecraft:iron_ore"]}}]}
+{"goal": "go to y 12 at x 50 z 50", "category": "args", "accept": [{"name": "goto_coords", "args": {"x": 50, "y": 12, "z": 50}}]}
+{"goal": "get me two stacks of cobblestone", "category": "args", "accept": [{"name": "mine", "args": {"blocks": ["minecraft:cobblestone"]}}]}
+{"goal": "equip torch please", "category": "args", "accept": [{"name": "equip_item", "args": {"item_id": "minecraft:torch"}}]}
+{"goal": "stick with bob forever", "category": "args", "accept": [{"name": "follow_player", "args": {"name": "bob"}}]}
+{"goal": "open the blast furnace", "category": "args", "accept": [{"name": "open_station", "args": {"station": "blast_furnace"}}]}
+{"goal": "dig up the dark blue ore", "category": "args", "accept": [{"name": "mine", "args": {"blocks": ["minecraft:lapis_ore"]}}]}
+{"goal": "walk over to the closest anvil", "category": "args", "accept": [{"name": "goto_block", "args": {"block": "minecraft:anvil"}}, {"name": "open_station", "args": {"station": "anvil"}}]}
+{"goal": "build a cute starter house", "category": "escalate", "accept": [{"name": "escalate"}]}
+{"goal": "make me a full set of iron armor", "category": "escalate", "accept": [{"name": "escalate"}]}
+{"goal": "go trade with villagers for emeralds", "category": "escalate", "accept": [{"name": "escalate"}]}
+{"goal": "light up the whole cave so mobs dont spawn", "category": "escalate", "accept": [{"name": "escalate"}]}
+{"goal": "organize my chests by item type", "category": "escalate", "accept": [{"name": "escalate"}]}
+{"goal": "get me to the nether", "category": "escalate", "accept": [{"name": "escalate"}]}
+{"goal": "kill the ender dragon for me", "category": "escalate", "accept": [{"name": "escalate"}]}
+{"goal": "breed two cows and start a farm", "category": "escalate", "accept": [{"name": "escalate"}]}
+{"goal": "what should we build next", "category": "escalate", "accept": [{"name": "escalate"}]}
+{"goal": "make this place look epic", "category": "escalate", "accept": [{"name": "escalate"}]}
+{"goal": "grab some dirt", "category": "no-escalate", "accept": [{"name": "mine", "args": {"blocks": ["minecraft:dirt"]}}]}
+{"goal": "follow alex", "category": "no-escalate", "accept": [{"name": "follow_player", "args": {"name": "alex"}}]}
+{"goal": "come to 10 64 10", "category": "no-escalate", "accept": [{"name": "goto_coords", "args": {"x": 10, "y": 64, "z": 10}}]}
+{"goal": "stone please", "category": "no-escalate", "accept": [{"name": "mine", "args": {"blocks": ["minecraft:stone"]}}]}
+{"goal": "wheres your inventory at", "category": "no-escalate", "accept": [{"name": "get_state"}]}
+{"goal": "stop for a sec", "category": "no-escalate", "accept": [{"name": "stop"}, {"name": "run_command", "args": {"command": "cancel"}}]}
+{"goal": "harvest the wheat", "category": "no-escalate", "accept": [{"name": "farm"}]}
+{"goal": "get obsidian", "category": "no-escalate", "accept": [{"name": "mine", "args": {"blocks": ["minecraft:obsidian"]}}]}
+{"goal": "look inside the ender chest", "category": "no-escalate", "accept": [{"name": "get_ender_chest"}]}
+{"goal": "make a wooden axe starting from logs", "category": "no-escalate", "accept": [{"name": "mine_logs_then_make_wood_tool", "args": {"tool": "minecraft:wooden_axe"}}, {"name": "make_wood_tool_from_logs", "args": {"tool": "minecraft:wooden_axe"}}]}
+{"goal": "your aim is broken fix it", "category": "tune", "accept": [{"name": "tune"}]}
+{"goal": "be sneaky around here", "category": "tune", "accept": [{"name": "tune"}]}
+{"goal": "mine quicker bro", "category": "tune", "accept": [{"name": "tune"}]}
+{"goal": "careful out there buddy", "category": "tune", "accept": [{"name": "tune"}]}
+{"goal": "youre too jittery smooth it out", "category": "tune", "accept": [{"name": "tune"}]}
+{"goal": "ABORT ABORT", "category": "stop", "accept": [{"name": "stop"}, {"name": "run_command", "args": {"command": "cancel"}}]}
+{"goal": "freeze", "category": "stop", "accept": [{"name": "stop"}, {"name": "run_command", "args": {"command": "cancel"}}]}
+{"goal": "mine some iron then come back", "category": "compound", "accept": [{"name": "mine", "args": {"blocks": ["minecraft:iron_ore"]}}, {"name": "escalate"}]}
+{"goal": "follow keven and dont die", "category": "compound", "accept": [{"name": "follow_player", "args": {"name": "keven"}}]}

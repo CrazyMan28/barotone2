@@ -125,3 +125,20 @@ against the incumbent through the REAL runtime before shipping; unsloth's crashe
 old-engine numerics are both real failure modes; `ollama stop` everything before create+test
 (serialized requests + stale runners mislead). The user-space v0.30.3 stays installed for future
 retrains: `OLLAMA_HOST=127.0.0.1:11435 OLLAMA_MODELS=~/.local/ollama-new/models ~/.local/ollama-new/bin/ollama serve`.
+
+## v4 and the Intent Bench (June 3, night)
+
+Built `training/data/intent_bench.jsonl` + `scripts/bench.py`: 74 hand-written, never-trained
+phrasings scored on format / right-tool / right-ARGUMENTS / speed, plus escalation judgment, on
+both runtime renderings. v1's baseline: 77.0% FULL (chat), 74.3% (game path) — exposed stop 0/2
+and slang 9/15. v4 trained on byte-exact copies of BOTH runtime renderings (captured from ollama
+0.30 via prompt_eval_count probes; the mod's OpenAI-compat path renders bare, /api/chat think:false
+appends " /no_think" + prefills the think block) and doubled data. Result: 78.4% chat / 74.3% game
+path (exact tie with v1) / 92.2% legacy — better at slang (13/15), stop, escalation, worst-case
+speed; worse at direct/args/tune. **Tie does not unseat the champion: v1 stays.** unsloth's
+in-process merge corrupted v4's first package exactly like v3's (0% token salad) — train.py now
+merges via vanilla peft in a subprocess, which has been correct every time. Old ollama 0.23 mangles
+ALL freshly-converted GGUFs (v2/v3/v4); only the user-space 0.30.3 runs them.
+
+v5 recipe when more gameplay data is banked: keep dual-format training (lab scores now transfer to
+the field ~1:1), add tune/args/direct reinforcement to fix v4's regressions, consider 4 epochs.
