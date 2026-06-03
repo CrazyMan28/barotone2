@@ -72,7 +72,8 @@ public final class DefaultCommands {
                 new MistralCommand(baritone),
                 new OllamaCommand(baritone),
                 new AiCommand(baritone),
-                new UndercoverCommand(baritone)
+                new UndercoverCommand(baritone),
+                new ReflexCommand(baritone)
         ));
         ExecutionControlCommands prc = new ExecutionControlCommands(baritone);
         commands.add(prc.pauseCommand);

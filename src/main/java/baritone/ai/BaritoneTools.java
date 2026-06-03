@@ -27,6 +27,7 @@ import baritone.api.utils.IPlayerContext;
 import baritone.api.utils.SettingsUtil;
 import baritone.cache.WorldData;
 import baritone.command.defaults.AiCommand;
+import baritone.command.defaults.UndercoverCommand;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import net.minecraft.client.player.LocalPlayer;
@@ -148,6 +149,15 @@ public final class BaritoneTools {
                         param("y", "integer", "Origin Y (optional).", false),
                         param("z", "integer", "Origin Z (optional).", false)
                 )));
+        arr.add(fn("tune",
+                "PREFERRED when the player describes how Baritone should move/aim/break in plain English. Pass the "
+                        + "player's words verbatim; deterministic matching applies the right setting cluster and saves it. "
+                        + "Understands: 'head not turning / won't break blocks / fix aim', 'stealthy/undercover/legit', "
+                        + "'smoother look', 'snappy aim', 'break faster/slower', 'allow breaking / don't break'. "
+                        + "Returns exactly what changed, or a help text if nothing matched (then use set_setting).",
+                params(
+                        param("request", "string", "The player's tuning request in their own words.", true)
+                )));
         arr.add(fn("set_setting",
                 "Change a Baritone/AI setting at runtime. Validates the name and value, then confirms the applied value, "
                         + "e.g. allowBreak=true. Use list_settings to discover valid names. The API key is protected and cannot be set.",
@@ -157,12 +167,13 @@ public final class BaritoneTools {
                 )));
         arr.add(fn("list_settings",
                 "List Baritone/AI settings the agent can tune. With no filter, returns settings currently changed from "
-                        + "their defaults. With a filter substring, searches every setting name (e.g. 'allow', 'mine', 'mistral').",
+                        + "their defaults. With a filter substring, searches every setting's NAME and DOCUMENTATION "
+                        + "(e.g. 'break', 'look', 'sprint'), returning each match with a short doc snippet.",
                 params(
-                        param("filter", "string", "Optional name substring to search for, e.g. 'allow'.", false)
+                        param("filter", "string", "Optional substring to search names and docs for, e.g. 'break'.", false)
                 )));
         arr.add(fn("get_setting",
-                "Get one setting's current value, type, and default value.",
+                "Get one setting's full documentation, current value, type, and default value.",
                 params(
                         param("name", "string", "Setting name, e.g. allowBreak.", true)
                 )));
@@ -452,6 +463,8 @@ public final class BaritoneTools {
                     return ok(runRaw("explore"));
                 case "build_schematic":
                     return ok(buildSchematic(args));
+                case "tune":
+                    return ok(tune(args));
                 case "set_setting":
                     return ok(setSetting(args));
                 case "list_settings":
@@ -972,6 +985,83 @@ public final class BaritoneTools {
         return "Building schematic " + name + ".";
     }
 
+    private String tune(JsonObject a) {
+        String request = a.has("request") && !a.get("request").isJsonNull() ? a.get("request").getAsString() : "";
+        if (!BaritoneAPI.getSettings().mistralAllowSelfConfig.value) {
+            return "ERROR: AI self-config is disabled (mistralAllowSelfConfig=false). Ask the player to enable it.";
+        }
+        List<TuneIntents.Intent> intents = TuneIntents.match(request);
+        if (intents.isEmpty()) {
+            return TuneIntents.help();
+        }
+        Settings s = BaritoneAPI.getSettings();
+        return AiCrafting.onClient(ctx, () -> {
+            StringBuilder out = new StringBuilder("Tuned settings:");
+            for (TuneIntents.Intent intent : intents) {
+                switch (intent) {
+                    case FIX_AIM:
+                        UndercoverCommand.resetLookSettingsToDefaults(s);
+                        s.allowBreak.value = true;
+                        out.append("\n- fixed head/aim: look settings reset to defaults (freeLook=")
+                                .append(s.freeLook.value).append(", smoothLook=").append(s.smoothLook.value)
+                                .append(", strictVisibleBlockInteractions=").append(s.strictVisibleBlockInteractions.value)
+                                .append(", blockBreakSpeed=").append(s.blockBreakSpeed.value)
+                                .append(") and allowBreak=true");
+                        break;
+                    case STEALTH:
+                        UndercoverCommand.applyUndercoverProfile(s);
+                        out.append("\n- stealth: undercover profile applied (smoothLook=").append(s.smoothLook.value)
+                                .append(" over ").append(s.smoothLookTicks.value).append(" ticks, blockBreakSpeed=")
+                                .append(s.blockBreakSpeed.value).append("); breaking still works");
+                        break;
+                    case SMOOTH:
+                        s.smoothLook.value = true;
+                        s.smoothLookTicks.value = 6;
+                        s.strictVisibleBlockInteractions.value = false;
+                        out.append("\n- smooth look: smoothLook=true over 6 ticks");
+                        break;
+                    case SNAPPY:
+                        s.smoothLook.value = false;
+                        s.randomLooking.value = 0D;
+                        s.randomLooking113.value = 0D;
+                        out.append("\n- snappy aim: smoothLook=false, look jitter off");
+                        break;
+                    case BREAK_FASTER:
+                        s.blockBreakSpeed.value = 1;
+                        out.append("\n- break faster: blockBreakSpeed=1");
+                        break;
+                    case BREAK_SLOWER:
+                        s.blockBreakSpeed.value = 12;
+                        out.append("\n- break slower: blockBreakSpeed=12");
+                        break;
+                    case ALLOW_BREAK:
+                        s.allowBreak.value = true;
+                        out.append("\n- allowBreak=true");
+                        break;
+                    case NO_BREAK:
+                        s.allowBreak.value = false;
+                        out.append("\n- allowBreak=false");
+                        break;
+                    case REFLEX_ON:
+                        s.reflexesEnabled.value = true;
+                        out.append("\n- survival reflexes ON (auto-eat, flee creepers, fight back, anti-lava, anti-drown)");
+                        break;
+                    case REFLEX_OFF:
+                        s.reflexesEnabled.value = false;
+                        out.append("\n- survival reflexes OFF");
+                        break;
+                }
+            }
+            try {
+                SettingsUtil.save(s);
+                out.append("\nSaved (persists across restarts).");
+            } catch (Exception e) {
+                out.append("\nWARNING: could not save settings to disk: ").append(e.getMessage());
+            }
+            return out.toString();
+        });
+    }
+
     private String setSetting(JsonObject a) {
         String name = a.get("name").getAsString().trim();
         String value = a.get("value").getAsString();
@@ -1003,7 +1093,8 @@ public final class BaritoneTools {
             return "ERROR: Unknown setting '" + a.get("name").getAsString().trim()
                     + "'. Use list_settings to search valid names.";
         }
-        return describeSetting(setting);
+        String doc = SettingsDocs.describe(setting.getName());
+        return describeSetting(setting) + (doc.isEmpty() ? "" : "\nDocs: " + doc);
     }
 
     private String resetSetting(JsonObject a) {
@@ -1049,15 +1140,16 @@ public final class BaritoneTools {
             }
             return out.toString();
         }
-        out.append("Settings matching '").append(filter).append("':");
+        out.append("Settings matching '").append(filter).append("' (name or docs):");
         int total = 0;
         for (Settings.Setting<?> setting : settings.allSettings) {
-            if (!setting.getName().toLowerCase(Locale.ROOT).contains(filter)) {
+            if (!setting.getName().toLowerCase(Locale.ROOT).contains(filter)
+                    && !SettingsDocs.matches(setting.getName(), filter)) {
                 continue;
             }
             total++;
             if (shown < cap) {
-                out.append("\n- ").append(describeSetting(setting));
+                out.append("\n- ").append(describeSetting(setting)).append(docSnippet(setting.getName()));
                 shown++;
             }
         }
@@ -1101,6 +1193,17 @@ public final class BaritoneTools {
             return null;
         }
         return BaritoneAPI.getSettings().byLowerName.get(name.trim().toLowerCase(Locale.ROOT));
+    }
+
+    /**
+     * Short doc snippet appended to list_settings results; full text comes from get_setting.
+     */
+    private static String docSnippet(String settingName) {
+        String doc = SettingsDocs.describe(settingName);
+        if (doc.isEmpty()) {
+            return "";
+        }
+        return " — " + (doc.length() > 100 ? doc.substring(0, 97) + "..." : doc);
     }
 
     private static String describeSetting(Settings.Setting<?> setting) {
@@ -1318,6 +1421,18 @@ public final class BaritoneTools {
             s.addProperty("mission_memory_summary", MissionMemory.summaryForPrompt());
         } catch (RuntimeException ignored) {
             s.addProperty("mission_memory_summary", "unavailable");
+        }
+        try {
+            s.addProperty("reflexes_enabled", BaritoneAPI.getSettings().reflexesEnabled.value);
+            List<String> reflexes = ReflexLog.recent(4);
+            if (!reflexes.isEmpty()) {
+                JsonArray recent = new JsonArray();
+                for (String line : reflexes) {
+                    recent.add(line);
+                }
+                s.add("recent_reflexes", recent);
+            }
+        } catch (RuntimeException ignored) {
         }
         return s.toString();
     }

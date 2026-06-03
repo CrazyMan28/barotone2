@@ -1212,6 +1212,52 @@ public final class Settings {
     public final Setting<Boolean> mistralVerbose = new Setting<>(true);
 
     /**
+     * Master switch for survival reflexes: a deterministic, every-tick guardian that keeps the bot alive
+     * (auto-eat, flee creepers, fight back, escape lava, anti-drown) without waiting on the AI model.
+     * Reflexes interrupt the active Baritone process and hand control back automatically when the danger
+     * has passed, so missions resume where they left off.
+     */
+    public final Setting<Boolean> reflexesEnabled = new Setting<>(true);
+
+    /**
+     * Survival reflex: automatically eat safe food from the hotbar when hunger drops to
+     * {@link #reflexEatAtHunger} or below. Skips poisonous/odd foods (rotten flesh, pufferfish, etc.).
+     */
+    public final Setting<Boolean> reflexAutoEat = new Setting<>(true);
+
+    /**
+     * Hunger level (out of 20) at or below which the auto-eat reflex starts eating.
+     */
+    public final Setting<Integer> reflexEatAtHunger = new Setting<>(13);
+
+    /**
+     * Survival reflex: run away when a creeper gets within {@link #reflexCreeperRadius} blocks while the
+     * bot is pathing or on an AI mission. Creepers are the #1 bot killer.
+     */
+    public final Setting<Boolean> reflexFleeCreepers = new Setting<>(true);
+
+    /**
+     * Distance in blocks at which the creeper-flee reflex engages.
+     */
+    public final Setting<Double> reflexCreeperRadius = new Setting<>(5.0);
+
+    /**
+     * Survival reflex: when recently hurt and a hostile mob (not a creeper) is in melee range while the
+     * bot is pathing or on an AI mission, face it and fight back until it is dead or out of range.
+     */
+    public final Setting<Boolean> reflexFightBack = new Setting<>(true);
+
+    /**
+     * Survival reflex: swim up when air is running out underwater.
+     */
+    public final Setting<Boolean> reflexAntiDrown = new Setting<>(true);
+
+    /**
+     * Survival reflex: when in lava, float up and head for the nearest non-lava ground.
+     */
+    public final Setting<Boolean> reflexAntiLava = new Setting<>(true);
+
+    /**
      * Ollama base URL used by the {@code ai} command when {@link #aiProvider} is {@code ollama}.
      */
     public final Setting<String> ollamaBaseUrl = new Setting<>("http://localhost:11434");
