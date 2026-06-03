@@ -24,12 +24,14 @@ import baritone.api.behavior.IPathingBehavior;
 import baritone.api.command.manager.ICommandManager;
 import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.IPlayerContext;
+import baritone.api.utils.SettingsUtil;
 import baritone.cache.WorldData;
 import baritone.command.defaults.AiCommand;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.tags.ItemTags;
+import net.minecraft.world.Container;
 import net.minecraft.world.inventory.AbstractFurnaceMenu;
 import net.minecraft.world.inventory.AnvilMenu;
 import net.minecraft.world.inventory.BrewingStandMenu;
@@ -147,11 +149,32 @@ public final class BaritoneTools {
                         param("z", "integer", "Origin Z (optional).", false)
                 )));
         arr.add(fn("set_setting",
-                "Change a Baritone setting at runtime, e.g. allowBreak=true.",
+                "Change a Baritone/AI setting at runtime. Validates the name and value, then confirms the applied value, "
+                        + "e.g. allowBreak=true. Use list_settings to discover valid names. The API key is protected and cannot be set.",
                 params(
                         param("name", "string", "Setting name.", true),
-                        param("value", "string", "Setting value as a string.", true)
+                        param("value", "string", "New value as a string.", true)
                 )));
+        arr.add(fn("list_settings",
+                "List Baritone/AI settings the agent can tune. With no filter, returns settings currently changed from "
+                        + "their defaults. With a filter substring, searches every setting name (e.g. 'allow', 'mine', 'mistral').",
+                params(
+                        param("filter", "string", "Optional name substring to search for, e.g. 'allow'.", false)
+                )));
+        arr.add(fn("get_setting",
+                "Get one setting's current value, type, and default value.",
+                params(
+                        param("name", "string", "Setting name, e.g. allowBreak.", true)
+                )));
+        arr.add(fn("reset_setting",
+                "Reset one setting back to its default value.",
+                params(
+                        param("name", "string", "Setting name to reset.", true)
+                )));
+        arr.add(fn("get_ender_chest",
+                "Return the player's last-known ender chest contents as item -> count. Contents sync when an ender "
+                        + "chest is opened; check this before planning crafting so you use what you actually have stored.",
+                params()));
         arr.add(fn("open_station",
                 "Path to and open a nearby station/container GUI. Supported station values: crafting_table, furnace, "
                         + "blast_furnace, smoker, brewing_stand, stonecutter, smithing_table, anvil.",
@@ -385,8 +408,8 @@ public final class BaritoneTools {
                                 false)
                 )));
         arr.add(fn("get_state",
-                "Return a snapshot: position, dimension, health, hunger, hotbar, inventory_totals, has_wooden_pickaxe, "
-                        + "has_wooden_axe, pathing flag, goal, mine/farm/explore active, legit_mine setting.",
+                "Return a snapshot: position, dimension, health, hunger, hotbar, inventory_totals, ender_chest_totals, "
+                        + "has_wooden_pickaxe, has_wooden_axe, pathing flag, goal, mine/farm/explore active, legit_mine setting.",
                 params()));
         arr.add(fn("say",
                 "Print a short status message to the player's chat (visible only to them).",
@@ -430,6 +453,14 @@ public final class BaritoneTools {
                     return ok(buildSchematic(args));
                 case "set_setting":
                     return ok(setSetting(args));
+                case "list_settings":
+                    return ok(listSettings(args));
+                case "get_setting":
+                    return ok(getSetting(args));
+                case "reset_setting":
+                    return ok(resetSetting(args));
+                case "get_ender_chest":
+                    return ok(AiCrafting.onClient(ctx, this::getEnderChestOnClient));
                 case "open_station":
                     return ok(openStation(args));
                 case "equip_item":
@@ -941,10 +972,188 @@ public final class BaritoneTools {
     }
 
     private String setSetting(JsonObject a) {
-        String name = a.get("name").getAsString();
+        String name = a.get("name").getAsString().trim();
         String value = a.get("value").getAsString();
-        executeCommand("set " + name + " " + value);
-        return "Set " + name + " = " + value + ".";
+        if (isProtectedSetting(name)) {
+            return "ERROR: Setting '" + name + "' is protected and cannot be changed by the AI.";
+        }
+        if (!BaritoneAPI.getSettings().mistralAllowSelfConfig.value) {
+            return "ERROR: AI self-config is disabled (mistralAllowSelfConfig=false). Ask the player to enable it.";
+        }
+        Settings settings = BaritoneAPI.getSettings();
+        Settings.Setting<?> setting = findSetting(name);
+        if (setting == null) {
+            return "ERROR: Unknown setting '" + name + "'. Use list_settings to search valid names.";
+        }
+        return AiCrafting.onClient(ctx, () -> {
+            try {
+                SettingsUtil.parseAndApply(settings, setting.getName(), value);
+            } catch (Exception e) {
+                return "ERROR: Could not set " + setting.getName() + " to '" + value + "': "
+                        + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+            }
+            return "Set " + setting.getName() + " = " + safeValue(setting) + ".";
+        });
+    }
+
+    private String getSetting(JsonObject a) {
+        Settings.Setting<?> setting = findSetting(a.get("name").getAsString());
+        if (setting == null) {
+            return "ERROR: Unknown setting '" + a.get("name").getAsString().trim()
+                    + "'. Use list_settings to search valid names.";
+        }
+        return describeSetting(setting);
+    }
+
+    private String resetSetting(JsonObject a) {
+        String name = a.get("name").getAsString().trim();
+        if (isProtectedSetting(name)) {
+            return "ERROR: Setting '" + name + "' is protected and cannot be reset by the AI.";
+        }
+        if (!BaritoneAPI.getSettings().mistralAllowSelfConfig.value) {
+            return "ERROR: AI self-config is disabled (mistralAllowSelfConfig=false). Ask the player to enable it.";
+        }
+        Settings.Setting<?> setting = findSetting(name);
+        if (setting == null) {
+            return "ERROR: Unknown setting '" + name + "'. Use list_settings to search valid names.";
+        }
+        return AiCrafting.onClient(ctx, () -> {
+            setting.reset();
+            return "Reset " + setting.getName() + " to default = " + safeValue(setting) + ".";
+        });
+    }
+
+    private String listSettings(JsonObject a) {
+        String filter = (a.has("filter") && !a.get("filter").isJsonNull())
+                ? a.get("filter").getAsString().trim().toLowerCase(Locale.ROOT) : "";
+        Settings settings = BaritoneAPI.getSettings();
+        StringBuilder out = new StringBuilder();
+        final int cap = 40;
+        int shown = 0;
+        if (filter.isEmpty()) {
+            List<Settings.Setting> modified = SettingsUtil.modifiedSettings(settings);
+            out.append("Settings changed from default (").append(modified.size())
+                    .append("); pass a filter substring to search all ").append(settings.allSettings.size())
+                    .append(" settings:");
+            for (Settings.Setting<?> setting : modified) {
+                if (shown >= cap) {
+                    out.append("\n... ").append(modified.size() - shown).append(" more");
+                    break;
+                }
+                out.append("\n- ").append(describeSetting(setting));
+                shown++;
+            }
+            if (modified.isEmpty()) {
+                out.append("\n(all settings are at their defaults)");
+            }
+            return out.toString();
+        }
+        out.append("Settings matching '").append(filter).append("':");
+        int total = 0;
+        for (Settings.Setting<?> setting : settings.allSettings) {
+            if (!setting.getName().toLowerCase(Locale.ROOT).contains(filter)) {
+                continue;
+            }
+            total++;
+            if (shown < cap) {
+                out.append("\n- ").append(describeSetting(setting));
+                shown++;
+            }
+        }
+        if (total == 0) {
+            out.append("\n(no settings match; try a shorter substring)");
+        } else if (total > shown) {
+            out.append("\n... ").append(total - shown).append(" more matches; refine the filter");
+        }
+        return out.toString();
+    }
+
+    private String getEnderChestOnClient() {
+        LocalPlayer p = ctx.player();
+        JsonObject s = new JsonObject();
+        if (p == null) {
+            s.addProperty("error", "Player not in world");
+            return s.toString();
+        }
+        JsonObject totals = enderChestTotals(p);
+        s.add("ender_chest_totals", totals);
+        s.addProperty("note", totals.size() == 0
+                ? "Ender chest is empty or its contents are not yet known to the client; open an ender chest once to sync."
+                : "Last-known ender chest contents (open an ender chest to refresh).");
+        return s.toString();
+    }
+
+    private static JsonObject enderChestTotals(LocalPlayer p) {
+        JsonObject inv = new JsonObject();
+        try {
+            Container ender = p.getEnderChestInventory();
+            Map<String, Integer> counts = new LinkedHashMap<>();
+            for (int i = 0; i < ender.getContainerSize(); i++) {
+                ItemStack stack = ender.getItem(i);
+                if (stack == null || stack.isEmpty()) {
+                    continue;
+                }
+                counts.merge(stack.getItem().toString(), stack.getCount(), Integer::sum);
+            }
+            for (Map.Entry<String, Integer> e : counts.entrySet()) {
+                inv.addProperty(e.getKey(), e.getValue());
+            }
+        } catch (RuntimeException ignored) {
+        }
+        return inv;
+    }
+
+    static boolean isProtectedSetting(String name) {
+        if (name == null) {
+            return false;
+        }
+        return name.trim().toLowerCase(Locale.ROOT).equals("mistralapikey");
+    }
+
+    private static Settings.Setting<?> findSetting(String name) {
+        if (name == null) {
+            return null;
+        }
+        return BaritoneAPI.getSettings().byLowerName.get(name.trim().toLowerCase(Locale.ROOT));
+    }
+
+    private static String describeSetting(Settings.Setting<?> setting) {
+        if (isProtectedSetting(setting.getName())) {
+            return setting.getName() + " = (hidden) [protected]";
+        }
+        String type;
+        try {
+            type = SettingsUtil.settingTypeToString(setting);
+        } catch (RuntimeException e) {
+            type = "?";
+        }
+        return setting.getName() + " = " + safeValue(setting)
+                + " (type " + type + ", default " + safeDefault(setting) + ")";
+    }
+
+    private static String safeValue(Settings.Setting<?> setting) {
+        if (isProtectedSetting(setting.getName())) {
+            return "(hidden)";
+        }
+        if (SettingsUtil.javaOnlySetting(setting)) {
+            return "(java-only)";
+        }
+        try {
+            return SettingsUtil.settingValueToString(setting);
+        } catch (RuntimeException e) {
+            return String.valueOf(setting.value);
+        }
+    }
+
+    private static String safeDefault(Settings.Setting<?> setting) {
+        if (SettingsUtil.javaOnlySetting(setting)) {
+            return "(java-only)";
+        }
+        try {
+            return SettingsUtil.settingDefaultToString(setting);
+        } catch (RuntimeException e) {
+            return String.valueOf(setting.defaultValue);
+        }
     }
 
     private String openStation(JsonObject a) {
@@ -1096,6 +1305,7 @@ public final class BaritoneTools {
             inv.addProperty(e.getKey(), e.getValue());
         }
         s.add("inventory_totals", inv);
+        s.add("ender_chest_totals", enderChestTotals(p));
 
         try {
             s.addProperty("has_wooden_pickaxe", playerInventoryHas(p, Items.WOODEN_PICKAXE));

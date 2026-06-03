@@ -1266,6 +1266,13 @@ public final class Settings {
     public final Setting<Integer> mistralMaxMissionSeconds = new Setting<>(0);
 
     /**
+     * If true, the AI agent may tune its own configuration at runtime via the {@code list_settings} /
+     * {@code get_setting} / {@code set_setting} / {@code reset_setting} tools. The Mistral API key is always
+     * protected and can never be read or changed by the agent. Set false to make the agent config read-only.
+     */
+    public final Setting<Boolean> mistralAllowSelfConfig = new Setting<>(true);
+
+    /**
      * Distance to scan every tick for updates. Expanding this beyond player reach distance (i.e. setting it to 6 or above)
      * is only necessary in very large schematics where rescanning the whole thing is costly.
      */
