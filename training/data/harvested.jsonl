@@ -1,3 +1,21 @@
+{"goal": "make a wooden pickaxe from trees", "calls": [{"name": "mine_logs_then_make_wood_tool", "arguments": {"tool": "minecraft:wooden_pickaxe"}}], "source": "log:latest.log"}
+{"goal": "go to 100 70 100", "calls": [{"name": "goto_coords", "arguments": {"x": 100, "y": 70, "z": 100}}], "source": "log:latest.log"}
+{"goal": "get cobble for the wall", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:cobblestone"]}}], "source": "log:latest.log"}
+{"goal": "collect sum dirt quick", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:dirt"]}}], "source": "log:latest.log"}
+{"goal": "go to 0 70 0", "calls": [{"name": "goto_coords", "arguments": {"x": 0, "y": 70, "z": 0}}], "source": "log:latest.log"}
+{"goal": "get sum logs and make sticks", "calls": [{"name": "mine_logs_then_make_wood_tool", "arguments": {"tool": "minecraft:wooden_axe"}}], "source": "log:latest.log"}
+{"goal": "get sand", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:sand"]}}], "source": "log:latest.log"}
+{"goal": "get me cobblestone", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:cobblestone"]}}], "source": "log:latest.log"}
+{"goal": "mine logs and craft a crafting table", "calls": [{"name": "open_station", "arguments": {"station": "crafting_table"}}], "source": "log:latest.log"}
+{"goal": "grab dirt", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:dirt"]}}], "source": "log:latest.log"}
+{"goal": "get 5 logs and craft planks", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:oak_log", "minecraft:birch_log", "minecraft:spruce_log", "minecraft:jungle_log", "minecraft:dark_oak_log"]}}], "source": "log:latest.log"}
+{"goal": "make a crafting table and place it", "calls": [{"name": "open_station", "arguments": {"station": "crafting_table"}}], "source": "log:latest.log"}
+{"goal": "mine sum iron", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:iron_ore"]}}], "source": "log:latest.log"}
+{"goal": "stone pls", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:stone"]}}], "source": "log:latest.log"}
+{"goal": "get wood", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:oak_log", "minecraft:birch_log", "minecraft:spruce_log", "minecraft:jungle_log"]}}], "source": "log:latest.log"}
+{"goal": "mine sum logs bro", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:oak_log", "minecraft:birch_log", "minecraft:spruce_log", "minecraft:jungle_log"]}}], "source": "log:latest.log"}
+{"goal": "get me sum oak logs", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:oak_log"]}}], "source": "log:latest.log"}
+{"goal": "git me sum stone", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:stone"]}}], "source": "log:latest.log"}
 {"goal": "go to diamond ore and mine some", "calls": [{"name": "goto_block", "arguments": {"block": "diamond_ore"}}, {"name": "wait_until_idle", "arguments": {"timeout_seconds": 120}}, {"name": "mine", "arguments": {"blocks": ["diamond_ore"], "quantity": 3}}, {"name": "wait_until_idle", "arguments": {"timeout_seconds": 120}}, {"name": "get_state", "arguments": {}}], "source": "log:2026-05-13-3.log.gz"}
 {"goal": "mine wood", "calls": [{"name": "goto_block", "arguments": {"block": "oak_log"}}, {"name": "wait_until_idle", "arguments": {"timeout_seconds": 120}}, {"name": "mine", "arguments": {"blocks": ["oak_log"]}}, {"name": "wait_until_idle", "arguments": {"timeout_seconds": 180}}, {"name": "get_state", "arguments": {}}], "source": "log:2026-05-13-3.log.gz"}
 {"goal": "mine 5 logs and make a pic ax", "calls": [{"name": "mine", "arguments": {"blocks": ["oak_log", "birch_log", "spruce_log", "jungle_log", "acacia_log", "dark_oak_log", "mangrove_log", "cherry_log"], "quantity": 5}}, {"name": "wait_until_idle", "arguments": {"timeout_seconds": 120}}, {"name": "get_state", "arguments": {}}, {"name": "run_command", "arguments": {"command": "craft birch_planks"}}, {"name": "run_command", "arguments": {"command": "craft planks"}}, {"name": "run_command", "arguments": {"command": "craft 4 planks"}}], "source": "log:2026-05-13-3.log.gz"}
@@ -86,14 +104,12 @@
 {"goal": "get cobble stone", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:cobblestone"]}}, {"name": "get_state", "arguments": {}}], "source": "log:2026-06-01-1.log.gz"}
 {"goal": "get cobble stone 10 of it", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:cobblestone"], "quantity": 64}}, {"name": "get_state", "arguments": {}}], "source": "log:2026-06-01-1.log.gz"}
 {"goal": "follow 67girl", "calls": [{"name": "follow_player", "arguments": {"name": "67girl"}}], "source": "log:2026-06-02-1.log.gz"}
-{"goal": "what can you do", "calls": [{"name": "get_state", "arguments": {}}], "source": "log:2026-06-03-1.log.gz"}
-{"goal": "get stuff", "calls": [{"name": "explore", "arguments": {}}, {"name": "get_state", "arguments": {}}], "source": "log:2026-06-03-1.log.gz"}
-{"goal": "follow keven", "calls": [{"name": "follow_player", "arguments": {"name": "keven"}}], "source": "log:2026-06-03-3.log.gz"}
-{"goal": "get soom wood", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:soulwood"]}}], "source": "log:2026-06-03-4.log.gz"}
-{"goal": "hi", "calls": [{"name": "get_state", "arguments": {}}], "source": "log:2026-06-03-4.log.gz"}
-{"goal": "get jungal wood", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:jungle_log"]}}], "source": "log:2026-06-03-4.log.gz"}
-{"goal": "get jungal wood get only 20", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:jungle_log"]}}], "source": "log:2026-06-03-4.log.gz"}
-{"goal": "get wood", "calls": [{"name": "explore", "arguments": {}}], "source": "log:2026-06-03-4.log.gz"}
+{"goal": "follow keven", "calls": [{"name": "follow_player", "arguments": {"name": "keven"}}], "source": "log:2026-06-03-1.log.gz"}
+{"goal": "get soom wood", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:soulwood"]}}], "source": "log:2026-06-03-2.log.gz"}
+{"goal": "hi", "calls": [{"name": "get_state", "arguments": {}}], "source": "log:2026-06-03-2.log.gz"}
+{"goal": "get jungal wood", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:jungle_log"]}}], "source": "log:2026-06-03-2.log.gz"}
+{"goal": "get jungal wood get only 20", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:jungle_log"]}}], "source": "log:2026-06-03-2.log.gz"}
+{"goal": "get wood", "calls": [{"name": "explore", "arguments": {}}], "source": "log:2026-06-03-2.log.gz"}
 {"goal": "gimme geared", "calls": [{"name": "mine_logs_then_make_wood_tool", "arguments": {"tool": "pickaxe"}}, {"name": "get_state", "arguments": {}}, {"name": "wait_until_idle", "arguments": {}}, {"name": "get_state", "arguments": {}}, {"name": "make_wood_tool_from_logs", "arguments": {"tool": "pickaxe"}}, {"name": "get_state", "arguments": {}}], "source": "log:latest.log"}
 {"goal": "mine 1 block", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:stone"], "quantity": 1}}, {"name": "wait_until_idle", "arguments": {"timeout_seconds": 60}}, {"name": "get_state", "arguments": {}}], "source": "log:2026-05-13-1.log.gz"}
 {"goal": "make a wooded ax", "calls": [{"name": "wait_until_idle", "arguments": {"timeout_seconds": 120}}, {"name": "get_state", "arguments": {}}, {"name": "run_command", "arguments": {"command": "craft wooden_axe"}}, {"name": "run_command", "arguments": {"command": "craft minecraft:wooden_axe"}}, {"name": "run_command", "arguments": {"command": "craft wooden axe"}}, {"name": "run_command", "arguments": {"command": "inventory 1 0 3"}}], "source": "log:2026-05-13-1.log.gz"}
@@ -103,6 +119,7 @@
 {"goal": "get pork", "calls": [{"name": "goto_block", "arguments": {"block": "pig"}}, {"name": "wait_until_idle", "arguments": {"timeout_seconds": 120}}, {"name": "mine", "arguments": {"blocks": ["minecraft:porkchop"]}}, {"name": "wait_until_idle", "arguments": {"timeout_seconds": 120}}, {"name": "get_state", "arguments": {}}], "source": "log:2026-05-13-1.log.gz"}
 {"goal": "get potato", "calls": [{"name": "goto_block", "arguments": {"block": "potatoes"}}, {"name": "wait_until_idle", "arguments": {"timeout_seconds": 120}}, {"name": "mine", "arguments": {"blocks": ["minecraft:potatoes"]}}, {"name": "wait_until_idle", "arguments": {"timeout_seconds": 120}}, {"name": "get_state", "arguments": {}}], "source": "log:2026-05-13-1.log.gz"}
 {"goal": "cook the potatos i have", "calls": [{"name": "goto_block", "arguments": {"block": "furnace"}}, {"name": "wait_until_idle", "arguments": {"timeout_seconds": 120}}, {"name": "get_state", "arguments": {}}, {"name": "run_command", "arguments": {"command": "smelt potato"}}, {"name": "run_command", "arguments": {"command": "interact"}}, {"name": "run_command", "arguments": {"command": "chest"}}], "source": "log:2026-05-13-1.log.gz"}
+{"goal": "what can you do", "calls": [{"name": "get_state", "arguments": {}}], "source": "log:2026-05-13-1.log.gz"}
 {"goal": "kill all villigers", "calls": [{"name": "say", "arguments": {"message": "There is no tool available to selectively target and kill villagers. I will proceed to break all nearby workstations and then kill any remaining villagers manually."}}, {"name": "wait_until_idle", "arguments": {"timeout_seconds": 120}}, {"name": "mine", "arguments": {"blocks": ["minecraft:villager"], "quantity": 0}}, {"name": "wait_until_idle", "arguments": {"timeout_seconds": 120}}], "source": "log:2026-05-13-1.log.gz"}
 {"goal": "survive", "calls": [{"name": "goto_block", "arguments": {"block": "minecraft:oak_log"}}, {"name": "wait_until_idle", "arguments": {"timeout_seconds": 120}}], "source": "log:2026-05-13-1.log.gz"}
 {"goal": "get 1 log", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:oak_log"], "quantity": 1}}, {"name": "wait_until_idle", "arguments": {}}, {"name": "get_state", "arguments": {}}], "source": "log:2026-05-13-2.log.gz"}

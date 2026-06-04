@@ -181,3 +181,14 @@ answer to a non-informational goal escalates instead of ending the mission (Brai
 (2) bare-verb templates added; contamination guard switched to auto-drop for natural collisions
 (it correctly blocked "get obsidian" which is a bench item). v5r2 gate: **85.1% both paths,
 99.0% legacy (all-time record), 0.3-0.4s** - beats v5 on every number. Crowned as baritone-brain.
+
+## v6 attempt (June 4): gate held, v5r2 retains the crown
+
+Unattended pipeline (remote bridge + mission farm in a live world): 23/24 farmed missions, harvest
+114->131 real missions, v6 trained on all three sources (synthetic + real + 528 teacher examples
+covering all 56 tools). Gate: 82.4% chat / 79.7% game (bars: 85.1/85.1) -> NOT crowned. Escalation
+recall improved to 7/10 (the escalate pack worked) but core precision paid for it - the v4 lesson
+recurring: we grew the corpus 25% without re-applying per-class caps across the COMBINED dataset,
+so the broadened curriculum diluted the bench-critical categories at 1.7B capacity. v6.1 plan:
+global per-class caps over all sources, cap teacher escalate at ~80, audit farm-mission labels,
+and if 1.7B still stalls, play the Qwen3-4B card (weights cached).
