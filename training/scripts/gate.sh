@@ -15,7 +15,7 @@ MODEL="${1:?usage: gate.sh <model-name>}"
 ENGINE="${EVAL_OLLAMA:-http://127.0.0.1:11435}"
 OLLAMA_BIN="$HOME/.local/ollama-new/bin/ollama"
 # Reigning champion baselines (v1, measured June 3 2026) - update when a new champion is crowned.
-CHAMP_CHAT=83.8; CHAMP_BARE=83.8; CHAMP_LEGACY=96.9  # v5s, crowned June 3 2026
+CHAMP_CHAT=85.1; CHAMP_BARE=85.1; CHAMP_LEGACY=99.0  # v5r2, crowned June 3 2026
 
 echo "=== [1/5] unloading all models on $ENGINE ==="
 OLLAMA_HOST="${ENGINE#http://}" "$OLLAMA_BIN" ps 2>/dev/null | tail -n +2 | awk '{print $1}' \

@@ -50,6 +50,8 @@ ITEMS = ["minecraft:diamond_pickaxe", "minecraft:iron_sword", "minecraft:bucket"
          "minecraft:torch", "minecraft:bread", "minecraft:shield", "minecraft:bow"]
 
 MINE_TPL = [
+    # bare verbs first: "get wood" (no me/some) was never trained and misrouted in-game
+    "get {x}", "grab {x}", "fetch {x}", "get some {x}",
     "mine {x}", "mine some {x}", "go mine {x}", "get me {x}", "get me some {x}", "go get {x}",
     "i need {x}", "i need some {x}", "dig for {x}", "find {x}", "find me {x}", "farm up some {x}",
     "collect {x}", "go collect some {x}", "we need {x}", "gather {x}", "can you mine {x}",
@@ -320,13 +322,11 @@ def main():
     bench_path = os.path.join(ROOT, "data", "intent_bench.jsonl")
     if os.path.exists(bench_path):
         bench_goals = {json.loads(l)["goal"].strip().lower() for l in open(bench_path, encoding="utf-8")}
-        leaked = sorted({r["goal"].strip().lower() for r in unique} & bench_goals)
-        if leaked:
-            print("CONTAMINATION: these training goals duplicate intent_bench.jsonl items:")
-            for g in leaked:
-                print("  -", g)
-            raise SystemExit(1)
-        print(f"contamination check passed ({len(bench_goals)} bench goals, 0 leaks)")
+        before = len(unique)
+        unique = [r for r in unique if r["goal"].strip().lower() not in bench_goals]
+        dropped = before - len(unique)
+        print(f"contamination guard: dropped {dropped} bench-colliding goals "
+              f"({len(bench_goals)} bench items stay test-only)")
 
     with open(OUT, "w", encoding="utf-8") as f:
         for r in unique:

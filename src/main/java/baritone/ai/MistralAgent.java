@@ -427,6 +427,12 @@ public final class MistralAgent implements Helper {
             logDirect("[AI:brain] escalate: request is beyond the fast brain.", ChatFormatting.YELLOW);
             return false;
         }
+        if ("get_state".equalsIgnoreCase(fnName) && !BrainProtocol.looksInformational(userGoal)) {
+            // A lone pocket-check cannot complete an action goal ("get wood" -> get_state -> done
+            // was observed in-game). Treat it as brain confusion and use the full agent instead.
+            logDirect("[AI:brain] answered get_state for an action goal; escalating.", ChatFormatting.YELLOW);
+            return false;
+        }
 
         GoalTracker.setStatus("Brain: " + fnName);
         logDirect("[AI:brain] " + fnName + " " + truncate(args.toString(), 160), ChatFormatting.DARK_AQUA);

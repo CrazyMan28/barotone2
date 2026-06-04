@@ -69,6 +69,17 @@ public class BrainProtocolTest {
     }
 
     @Test
+    public void informationalGoalsKeepGetStateAnswers() {
+        assertTrue(BrainProtocol.looksInformational("whats in your inventory"));
+        assertTrue(BrainProtocol.looksInformational("show me your stuff"));
+        assertTrue(BrainProtocol.looksInformational("status report"));
+        assertTrue(BrainProtocol.looksInformational("where are you?"));
+        assertFalse(BrainProtocol.looksInformational("get wood"));
+        assertFalse(BrainProtocol.looksInformational("mine diamonds"));
+        assertFalse(BrainProtocol.looksInformational(null));
+    }
+
+    @Test
     public void brainModelDetection() {
         assertTrue(BrainProtocol.isBrainModel("baritone-brain"));
         assertTrue(BrainProtocol.isBrainModel("baritone-brain:latest"));

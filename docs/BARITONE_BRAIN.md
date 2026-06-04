@@ -172,3 +172,12 @@ Deployed: `baritone-brain` on the user-space 0.30.3 engine; game points at it vi
 `ollama-new` (enabled, survives reboots). v1 remains on the old engine as rollback
 (`#set ollamaBaseUrl http://localhost:11434` to revert). Qwen3-4B (v5b) optional: base weights
 cached; train with `BRAIN_BASE=unsloth/Qwen3-4B BRAIN_TAG=-4b BRAIN_QUANT=q4_k_m BRAIN_BATCH=1 ./run_train.sh`.
+
+## v5r2: champion patch (June 3, night) — best on every axis
+
+First in-game test exposed "get wood" -> get_state (bare "get/grab/fetch {x}" phrasings were never
+in training; ironically the typo'd "get soom wood" was). Fixes: (1) jar guard - a one-shot get_state
+answer to a non-informational goal escalates instead of ending the mission (BrainProtocol.looksInformational);
+(2) bare-verb templates added; contamination guard switched to auto-drop for natural collisions
+(it correctly blocked "get obsidian" which is a bench item). v5r2 gate: **85.1% both paths,
+99.0% legacy (all-time record), 0.3-0.4s** - beats v5 on every number. Crowned as baritone-brain.

@@ -53,6 +53,22 @@ public final class BrainProtocol {
         return model != null && model.trim().toLowerCase(Locale.ROOT).startsWith(MODEL_PREFIX);
     }
 
+    /**
+     * True when the goal reads like a status QUESTION, where answering with get_state genuinely
+     * completes the mission ("whats in your inventory"). For action goals ("get wood"), a one-shot
+     * get_state answer means the brain was confused - callers should escalate instead of finishing
+     * the mission with a pointless pocket-check (observed in-game with "get wood").
+     */
+    public static boolean looksInformational(String goal) {
+        if (goal == null) {
+            return false;
+        }
+        String g = goal.toLowerCase(Locale.ROOT);
+        return g.contains("?") || g.contains("what") || g.contains("how") || g.contains("where")
+                || g.contains("status") || g.contains("inventory") || g.contains("show me")
+                || g.contains("do you have") || g.contains("you got") || g.contains("report");
+    }
+
     /** A tool call extracted from the brain's reply. */
     public static final class Call {
         public final String name;
