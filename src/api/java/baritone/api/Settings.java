@@ -1259,6 +1259,14 @@ public final class Settings {
     public final Setting<Boolean> reflexAntiLava = new Setting<>(true);
 
     /**
+     * When true, lines written to {@code <gameDir>/baritone/remote_commands.txt} are executed as
+     * Baritone chat commands once per second and the file is truncated. Used for unattended
+     * training-data farming sessions driven from outside the game. Local filesystem only; no
+     * network surface. Off by default.
+     */
+    public final Setting<Boolean> aiRemoteBridge = new Setting<>(false);
+
+    /**
      * Fast path for the fine-tuned {@code baritone-brain} ollama model: when the active ollama model
      * name starts with "baritone-brain", the agent first sends a tiny schema-free prompt (the tools
      * are baked into the model's weights) and executes the single tool call it returns - typically
