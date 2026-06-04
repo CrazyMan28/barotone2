@@ -20,7 +20,8 @@ from trl import SFTConfig, SFTTrainer
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_FILES = [os.path.join(ROOT, "data", "synthetic.jsonl"),
-              os.path.join(ROOT, "data", "harvested.jsonl")]
+              os.path.join(ROOT, "data", "harvested.jsonl"),
+              os.path.join(ROOT, "data", "teacher.jsonl")]
 OUT_DIR = os.path.join(ROOT, "outputs")
 # v5: parametrized so the same script trains candidate sizes, e.g.
 #   ./run_train.sh                                                  -> 1.7B, q8_0

@@ -1,0 +1,528 @@
+{"goal": "change allowBreak to false", "calls": [{"name": "set_setting", "arguments": {"name": "allowBreak", "value": "false"}}], "source": "teacher"}
+{"goal": "bro turn off break blocks for me", "calls": [{"name": "set_setting", "arguments": {"name": "allowBreak", "value": "false"}}], "source": "teacher"}
+{"goal": "disable break pls", "calls": [{"name": "set_setting", "arguments": {"name": "allowBreak", "value": "false"}}], "source": "teacher"}
+{"goal": "make it so i cant break pls", "calls": [{"name": "set_setting", "arguments": {"name": "allowBreak", "value": "false"}}], "source": "teacher"}
+{"goal": "flip break off", "calls": [{"name": "set_setting", "arguments": {"name": "allowBreak", "value": "false"}}], "source": "teacher"}
+{"goal": "no breaky no more", "calls": [{"name": "set_setting", "arguments": {"name": "allowBreak", "value": "false"}}], "source": "teacher"}
+{"goal": "break on off now", "calls": [{"name": "set_setting", "arguments": {"name": "allowBreak", "value": "false"}}], "source": "teacher"}
+{"goal": "stop breakin stuff", "calls": [{"name": "set_setting", "arguments": {"name": "allowBreak", "value": "false"}}], "source": "teacher"}
+{"goal": "toggle break no more", "calls": [{"name": "set_setting", "arguments": {"name": "allowBreak", "value": "false"}}], "source": "teacher"}
+{"goal": "turn allowParkour on", "calls": [{"name": "set_setting", "arguments": {"name": "allowParkour", "value": "true"}}], "source": "teacher"}
+{"goal": "parkour mode on pls", "calls": [{"name": "set_setting", "arguments": {"name": "allowParkour", "value": "true"}}], "source": "teacher"}
+{"goal": "enable parkour for me", "calls": [{"name": "set_setting", "arguments": {"name": "allowParkour", "value": "true"}}], "source": "teacher"}
+{"goal": "make parkour work again", "calls": [{"name": "set_setting", "arguments": {"name": "allowParkour", "value": "true"}}], "source": "teacher"}
+{"goal": "yo let parkour be on", "calls": [{"name": "set_setting", "arguments": {"name": "allowParkour", "value": "true"}}], "source": "teacher"}
+{"goal": "turn parkour back on", "calls": [{"name": "set_setting", "arguments": {"name": "allowParkour", "value": "true"}}], "source": "teacher"}
+{"goal": "parkour go brr", "calls": [{"name": "set_setting", "arguments": {"name": "allowParkour", "value": "true"}}], "source": "teacher"}
+{"goal": "let me parkour again", "calls": [{"name": "set_setting", "arguments": {"name": "allowParkour", "value": "true"}}], "source": "teacher"}
+{"goal": "unstop parkour", "calls": [{"name": "set_setting", "arguments": {"name": "allowParkour", "value": "true"}}], "source": "teacher"}
+{"goal": "set your block reach to 5", "calls": [{"name": "set_setting", "arguments": {"name": "blockReachDistance", "value": "5"}}], "source": "teacher"}
+{"goal": "set block reach to 5 bro", "calls": [{"name": "set_setting", "arguments": {"name": "blockReachDistance", "value": "5"}}], "source": "teacher"}
+{"goal": "reach 5 blocks now pls", "calls": [{"name": "set_setting", "arguments": {"name": "blockReachDistance", "value": "5"}}], "source": "teacher"}
+{"goal": "make my block grab 5 pls", "calls": [{"name": "set_setting", "arguments": {"name": "blockReachDistance", "value": "5"}}], "source": "teacher"}
+{"goal": "set reach to 5 blocks", "calls": [{"name": "set_setting", "arguments": {"name": "blockReachDistance", "value": "5"}}], "source": "teacher"}
+{"goal": "block reach 5 now", "calls": [{"name": "set_setting", "arguments": {"name": "blockReachDistance", "value": "5"}}], "source": "teacher"}
+{"goal": "change reach to 5 blocks", "calls": [{"name": "set_setting", "arguments": {"name": "blockReachDistance", "value": "5"}}], "source": "teacher"}
+{"goal": "set dist to 5 blocks", "calls": [{"name": "set_setting", "arguments": {"name": "blockReachDistance", "value": "5"}}], "source": "teacher"}
+{"goal": "make it grab 5 blocks out", "calls": [{"name": "set_setting", "arguments": {"name": "blockReachDistance", "value": "5"}}], "source": "teacher"}
+{"goal": "what is your allowBreak setting", "calls": [{"name": "get_setting", "arguments": {"name": "allowBreak"}}], "source": "teacher"}
+{"goal": "hey bot is break on or off", "calls": [{"name": "get_setting", "arguments": {"name": "allowBreak"}}], "source": "teacher"}
+{"goal": "can u break stuff rn", "calls": [{"name": "get_setting", "arguments": {"name": "allowBreak"}}], "source": "teacher"}
+{"goal": "is break allowed atm", "calls": [{"name": "get_setting", "arguments": {"name": "allowBreak"}}], "source": "teacher"}
+{"goal": "break on or off", "calls": [{"name": "get_setting", "arguments": {"name": "allowBreak"}}], "source": "teacher"}
+{"goal": "what's ur break status bro", "calls": [{"name": "get_setting", "arguments": {"name": "allowBreak"}}], "source": "teacher"}
+{"goal": "bro u breakin stuff", "calls": [{"name": "get_setting", "arguments": {"name": "allowBreak"}}], "source": "teacher"}
+{"goal": "can u break blocks now", "calls": [{"name": "get_setting", "arguments": {"name": "allowBreak"}}], "source": "teacher"}
+{"goal": "break setting?", "calls": [{"name": "get_setting", "arguments": {"name": "allowBreak"}}], "source": "teacher"}
+{"goal": "show me the settings you changed", "calls": [{"name": "list_settings", "arguments": {}}], "source": "teacher"}
+{"goal": "show me what u changed bro", "calls": [{"name": "list_settings", "arguments": {}}], "source": "teacher"}
+{"goal": "whatcha changed", "calls": [{"name": "list_settings", "arguments": {}}], "source": "teacher"}
+{"goal": "list the changes pls", "calls": [{"name": "list_settings", "arguments": {}}], "source": "teacher"}
+{"goal": "what tweaks u did", "calls": [{"name": "list_settings", "arguments": {}}], "source": "teacher"}
+{"goal": "show me ur changes", "calls": [{"name": "list_settings", "arguments": {}}], "source": "teacher"}
+{"goal": "whats different now", "calls": [{"name": "list_settings", "arguments": {}}], "source": "teacher"}
+{"goal": "what u changed ay", "calls": [{"name": "list_settings", "arguments": {}}], "source": "teacher"}
+{"goal": "list the edits", "calls": [{"name": "list_settings", "arguments": {}}], "source": "teacher"}
+{"goal": "which settings have to do with sprint", "calls": [{"name": "list_settings", "arguments": {"filter": "sprint"}}], "source": "teacher"}
+{"goal": "bro which settings sprint", "calls": [{"name": "list_settings", "arguments": {"filter": "sprint"}}], "source": "teacher"}
+{"goal": "what makes me sprint faster", "calls": [{"name": "list_settings", "arguments": {"filter": "sprint"}}], "source": "teacher"}
+{"goal": "sprint related settings pls", "calls": [{"name": "list_settings", "arguments": {"filter": "sprint"}}], "source": "teacher"}
+{"goal": "whats sprint stuff", "calls": [{"name": "list_settings", "arguments": {"filter": "sprint"}}], "source": "teacher"}
+{"goal": "which tweaks affect sprint", "calls": [{"name": "list_settings", "arguments": {"filter": "sprint"}}], "source": "teacher"}
+{"goal": "bot whats sprint settings", "calls": [{"name": "list_settings", "arguments": {"filter": "sprint"}}], "source": "teacher"}
+{"goal": "what do i tweak for sprint", "calls": [{"name": "list_settings", "arguments": {"filter": "sprint"}}], "source": "teacher"}
+{"goal": "sprint settings list plz", "calls": [{"name": "list_settings", "arguments": {"filter": "sprint"}}], "source": "teacher"}
+{"goal": "reset allowParkour back to default", "calls": [{"name": "reset_setting", "arguments": {"name": "allowParkour"}}], "source": "teacher"}
+{"goal": "parkour back to normal now", "calls": [{"name": "reset_setting", "arguments": {"name": "allowParkour"}}], "source": "teacher"}
+{"goal": "unflip parkour to default", "calls": [{"name": "reset_setting", "arguments": {"name": "allowParkour"}}], "source": "teacher"}
+{"goal": "reset parkour mode pls", "calls": [{"name": "reset_setting", "arguments": {"name": "allowParkour"}}], "source": "teacher"}
+{"goal": "parkour off then back on", "calls": [{"name": "reset_setting", "arguments": {"name": "allowParkour"}}], "source": "teacher"}
+{"goal": "parkour go default", "calls": [{"name": "reset_setting", "arguments": {"name": "allowParkour"}}], "source": "teacher"}
+{"goal": "switch parkour back", "calls": [{"name": "reset_setting", "arguments": {"name": "allowParkour"}}], "source": "teacher"}
+{"goal": "parkour default now", "calls": [{"name": "reset_setting", "arguments": {"name": "allowParkour"}}], "source": "teacher"}
+{"goal": "reset parkour settings", "calls": [{"name": "reset_setting", "arguments": {"name": "allowParkour"}}], "source": "teacher"}
+{"goal": "remember this spot as my base", "calls": [{"name": "memory_remember", "arguments": {"key": "base", "value": "player base location", "include_position": true}}], "source": "teacher"}
+{"goal": "save this spot as base pls", "calls": [{"name": "memory_remember", "arguments": {"key": "base", "value": "player base location", "include_position": true}}], "source": "teacher"}
+{"goal": "mark here as base bro", "calls": [{"name": "memory_remember", "arguments": {"key": "base", "value": "player base location", "include_position": true}}], "source": "teacher"}
+{"goal": "set this as home spot", "calls": [{"name": "memory_remember", "arguments": {"key": "base", "value": "player base location", "include_position": true}}], "source": "teacher"}
+{"goal": "remember this spot home", "calls": [{"name": "memory_remember", "arguments": {"key": "base", "value": "player base location", "include_position": true}}], "source": "teacher"}
+{"goal": "save here as base", "calls": [{"name": "memory_remember", "arguments": {"key": "base", "value": "player base location", "include_position": true}}], "source": "teacher"}
+{"goal": "this spot is my base now", "calls": [{"name": "memory_remember", "arguments": {"key": "base", "value": "player base location", "include_position": true}}], "source": "teacher"}
+{"goal": "store this as my spot", "calls": [{"name": "memory_remember", "arguments": {"key": "base", "value": "player base location", "include_position": true}}], "source": "teacher"}
+{"goal": "base this spot", "calls": [{"name": "memory_remember", "arguments": {"key": "base", "value": "player base location", "include_position": true}}], "source": "teacher"}
+{"goal": "remember that the good cave is at the ravine", "calls": [{"name": "memory_remember", "arguments": {"key": "good cave", "value": "at the ravine"}}], "source": "teacher"}
+{"goal": "wait where was dat lit cave again near dat ravine bruh", "calls": [{"name": "memory_remember", "arguments": {"key": "good cave", "value": "at the ravine"}}], "source": "teacher"}
+{"goal": "oh rite, dat epic cave at da ravine right", "calls": [{"name": "memory_remember", "arguments": {"key": "good cave", "value": "at the ravine"}}], "source": "teacher"}
+{"goal": "what do you remember about my base", "calls": [{"name": "memory_recall", "arguments": {"query": "base"}}], "source": "teacher"}
+{"goal": "whatchu know abt mah baseee", "calls": [{"name": "memory_recall", "arguments": {"query": "base"}}], "source": "teacher"}
+{"goal": "yo remind me bout my base real quick", "calls": [{"name": "memory_recall", "arguments": {"query": "base"}}], "source": "teacher"}
+{"goal": "do you remember where the cave was", "calls": [{"name": "memory_recall", "arguments": {"query": "cave"}}], "source": "teacher"}
+{"goal": "u still rememda where dat cave was or did i dream it", "calls": [{"name": "memory_recall", "arguments": {"query": "cave"}}], "source": "teacher"}
+{"goal": "dont tell me u forgot da cave spot already", "calls": [{"name": "memory_recall", "arguments": {"query": "cave"}}], "source": "teacher"}
+{"goal": "forget what i told you about the base", "calls": [{"name": "memory_forget", "arguments": {"key": "base"}}], "source": "teacher"}
+{"goal": "nah forget dat base info i told u earlier", "calls": [{"name": "memory_forget", "arguments": {"key": "base"}}], "source": "teacher"}
+{"goal": "scrub dat base stuff from ur brain now", "calls": [{"name": "memory_forget", "arguments": {"key": "base"}}], "source": "teacher"}
+{"goal": "after this go mine some iron", "calls": [{"name": "mission_enqueue", "arguments": {"goal": "mine iron"}}], "source": "teacher"}
+{"goal": "after u done w dis go get sum iron pls", "calls": [{"name": "mission_enqueue", "arguments": {"goal": "mine iron"}}], "source": "teacher"}
+{"goal": "go do sum mining for iron wen ur free", "calls": [{"name": "mission_enqueue", "arguments": {"goal": "mine iron"}}], "source": "teacher"}
+{"goal": "queue up getting wood next", "calls": [{"name": "mission_enqueue", "arguments": {"goal": "get wood"}}], "source": "teacher"}
+{"goal": "next get wood ok", "calls": [{"name": "mission_enqueue", "arguments": {"goal": "get wood"}}], "source": "teacher"}
+{"goal": "queue up da wood collect after dis", "calls": [{"name": "mission_enqueue", "arguments": {"goal": "get wood"}}], "source": "teacher"}
+{"goal": "whats in your mission queue", "calls": [{"name": "mission_status", "arguments": {}}], "source": "teacher"}
+{"goal": "whats in ur next task list", "calls": [{"name": "mission_status", "arguments": {}}], "source": "teacher"}
+{"goal": "what u got lined up in da mission queue", "calls": [{"name": "mission_status", "arguments": {}}], "source": "teacher"}
+{"goal": "pause the mission queue", "calls": [{"name": "mission_pause", "arguments": {}}], "source": "teacher"}
+{"goal": "pause da mission queue for now", "calls": [{"name": "mission_pause", "arguments": {}}], "source": "teacher"}
+{"goal": "hold up on da queue real quick", "calls": [{"name": "mission_pause", "arguments": {}}], "source": "teacher"}
+{"goal": "resume your missions", "calls": [{"name": "mission_resume", "arguments": {}}], "source": "teacher"}
+{"goal": "pls keep them missions going", "calls": [{"name": "mission_resume", "arguments": {}}], "source": "teacher"}
+{"goal": "dont stop the grind just yet", "calls": [{"name": "mission_resume", "arguments": {}}], "source": "teacher"}
+{"goal": "resume these things will u", "calls": [{"name": "mission_resume", "arguments": {}}], "source": "teacher"}
+{"goal": "continue my dude", "calls": [{"name": "mission_resume", "arguments": {}}], "source": "teacher"}
+{"goal": "dont pause the bot pls", "calls": [{"name": "mission_resume", "arguments": {}}], "source": "teacher"}
+{"goal": "resume the grind bro", "calls": [{"name": "mission_resume", "arguments": {}}], "source": "teacher"}
+{"goal": "dont stop now", "calls": [{"name": "mission_resume", "arguments": {}}], "source": "teacher"}
+{"goal": "keep the missions coming", "calls": [{"name": "mission_resume", "arguments": {}}], "source": "teacher"}
+{"goal": "retry that last mission", "calls": [{"name": "mission_retry", "arguments": {}}], "source": "teacher"}
+{"goal": "try dat last thing again", "calls": [{"name": "mission_retry", "arguments": {}}], "source": "teacher"}
+{"goal": "do that thing u did b4", "calls": [{"name": "mission_retry", "arguments": {}}], "source": "teacher"}
+{"goal": "retry the last mission pls", "calls": [{"name": "mission_retry", "arguments": {}}], "source": "teacher"}
+{"goal": "one more time w that mission", "calls": [{"name": "mission_retry", "arguments": {}}], "source": "teacher"}
+{"goal": "do that again bro", "calls": [{"name": "mission_retry", "arguments": {}}], "source": "teacher"}
+{"goal": "retry like last time", "calls": [{"name": "mission_retry", "arguments": {}}], "source": "teacher"}
+{"goal": "that same mission again", "calls": [{"name": "mission_retry", "arguments": {}}], "source": "teacher"}
+{"goal": "one more go at dat last thing", "calls": [{"name": "mission_retry", "arguments": {}}], "source": "teacher"}
+{"goal": "build the house schematic", "calls": [{"name": "build_schematic", "arguments": {"name": "house"}}], "source": "teacher"}
+{"goal": "make da house thingy", "calls": [{"name": "build_schematic", "arguments": {"name": "house"}}], "source": "teacher"}
+{"goal": "build the house shcematic rn", "calls": [{"name": "build_schematic", "arguments": {"name": "house"}}], "source": "teacher"}
+{"goal": "construct house shematic now", "calls": [{"name": "build_schematic", "arguments": {"name": "house"}}], "source": "teacher"}
+{"goal": "do da house schematic", "calls": [{"name": "build_schematic", "arguments": {"name": "house"}}], "source": "teacher"}
+{"goal": "build house shematic pls", "calls": [{"name": "build_schematic", "arguments": {"name": "house"}}], "source": "teacher"}
+{"goal": "make da house design", "calls": [{"name": "build_schematic", "arguments": {"name": "house"}}], "source": "teacher"}
+{"goal": "house schematic go", "calls": [{"name": "build_schematic", "arguments": {"name": "house"}}], "source": "teacher"}
+{"goal": "build house thing now", "calls": [{"name": "build_schematic", "arguments": {"name": "house"}}], "source": "teacher"}
+{"goal": "build base.schem at 100 64 200", "calls": [{"name": "build_schematic", "arguments": {"name": "base", "x": 100, "y": 64, "z": 200}}], "source": "teacher"}
+{"goal": "place base.schem at 100 64 200", "calls": [{"name": "build_schematic", "arguments": {"name": "base", "x": 100, "y": 64, "z": 200}}], "source": "teacher"}
+{"goal": "build base.schem at 100 sixtyfour 200", "calls": [{"name": "build_schematic", "arguments": {"name": "base", "x": 100, "y": 64, "z": 200}}], "source": "teacher"}
+{"goal": "put base.schem at 100 64 200", "calls": [{"name": "build_schematic", "arguments": {"name": "base", "x": 100, "y": 64, "z": 200}}], "source": "teacher"}
+{"goal": "place da schem base at 100 sixtyfour 200", "calls": [{"name": "build_schematic", "arguments": {"name": "base", "x": 100, "y": 64, "z": 200}}], "source": "teacher"}
+{"goal": "build dat base.schem at 100 sixtyfour twenty", "calls": [{"name": "build_schematic", "arguments": {"name": "base", "x": 100, "y": 64, "z": 200}}], "source": "teacher"}
+{"goal": "put base.schem there at 1e2 sixtyfour 2e2", "calls": [{"name": "build_schematic", "arguments": {"name": "base", "x": 100, "y": 64, "z": 200}}], "source": "teacher"}
+{"goal": "place base.schem at 1hundred 64 2hundred", "calls": [{"name": "build_schematic", "arguments": {"name": "base", "x": 100, "y": 64, "z": 200}}], "source": "teacher"}
+{"goal": "build base.schem at 1e2 sixtyfour 2e2", "calls": [{"name": "build_schematic", "arguments": {"name": "base", "x": 100, "y": 64, "z": 200}}], "source": "teacher"}
+{"goal": "right click", "calls": [{"name": "right_click", "arguments": {}}], "source": "teacher"}
+{"goal": "right click bro", "calls": [{"name": "right_click", "arguments": {}}], "source": "teacher"}
+{"goal": "hit r-click", "calls": [{"name": "right_click", "arguments": {}}], "source": "teacher"}
+{"goal": "r click now", "calls": [{"name": "right_click", "arguments": {}}], "source": "teacher"}
+{"goal": "right click pls", "calls": [{"name": "right_click", "arguments": {}}], "source": "teacher"}
+{"goal": "do da right click", "calls": [{"name": "right_click", "arguments": {}}], "source": "teacher"}
+{"goal": "press r click", "calls": [{"name": "right_click", "arguments": {}}], "source": "teacher"}
+{"goal": "right click that thing", "calls": [{"name": "right_click", "arguments": {}}], "source": "teacher"}
+{"goal": "r click now pls", "calls": [{"name": "right_click", "arguments": {}}], "source": "teacher"}
+{"goal": "use the bucket on the water", "calls": [{"name": "use_item_on_block", "arguments": {"block_id": "minecraft:water", "item_id": "minecraft:bucket"}}], "source": "teacher"}
+{"goal": "use da bucket on dat water", "calls": [{"name": "use_item_on_block", "arguments": {"block_id": "minecraft:water", "item_id": "minecraft:bucket"}}], "source": "teacher"}
+{"goal": "pour da bucket in da water", "calls": [{"name": "use_item_on_block", "arguments": {"block_id": "minecraft:water", "item_id": "minecraft:bucket"}}], "source": "teacher"}
+{"goal": "bucket the water", "calls": [{"name": "use_item_on_block", "arguments": {"block_id": "minecraft:water", "item_id": "minecraft:bucket"}}], "source": "teacher"}
+{"goal": "use bucket on water pls", "calls": [{"name": "use_item_on_block", "arguments": {"block_id": "minecraft:water", "item_id": "minecraft:bucket"}}], "source": "teacher"}
+{"goal": "pour water w bucket", "calls": [{"name": "use_item_on_block", "arguments": {"block_id": "minecraft:water", "item_id": "minecraft:bucket"}}], "source": "teacher"}
+{"goal": "use da bucket in da water", "calls": [{"name": "use_item_on_block", "arguments": {"block_id": "minecraft:water", "item_id": "minecraft:bucket"}}], "source": "teacher"}
+{"goal": "bucket that water", "calls": [{"name": "use_item_on_block", "arguments": {"block_id": "minecraft:water", "item_id": "minecraft:bucket"}}], "source": "teacher"}
+{"goal": "use bucket thing on water", "calls": [{"name": "use_item_on_block", "arguments": {"block_id": "minecraft:water", "item_id": "minecraft:bucket"}}], "source": "teacher"}
+{"goal": "use the hoe on that dirt", "calls": [{"name": "use_item_on_block", "arguments": {"block_id": "minecraft:dirt", "item_id": "minecraft:wooden_hoe"}}], "source": "teacher"}
+{"goal": "hoe da dirt over there", "calls": [{"name": "use_item_on_block", "arguments": {"block_id": "minecraft:dirt", "item_id": "minecraft:wooden_hoe"}}], "source": "teacher"}
+{"goal": "use dat hoe on dat dirt", "calls": [{"name": "use_item_on_block", "arguments": {"block_id": "minecraft:dirt", "item_id": "minecraft:wooden_hoe"}}], "source": "teacher"}
+{"goal": "hoe dat dirt", "calls": [{"name": "use_item_on_block", "arguments": {"block_id": "minecraft:dirt", "item_id": "minecraft:wooden_hoe"}}], "source": "teacher"}
+{"goal": "use hoe on dirt pls", "calls": [{"name": "use_item_on_block", "arguments": {"block_id": "minecraft:dirt", "item_id": "minecraft:wooden_hoe"}}], "source": "teacher"}
+{"goal": "hoe dat ground", "calls": [{"name": "use_item_on_block", "arguments": {"block_id": "minecraft:dirt", "item_id": "minecraft:wooden_hoe"}}], "source": "teacher"}
+{"goal": "hoe da dirt thing", "calls": [{"name": "use_item_on_block", "arguments": {"block_id": "minecraft:dirt", "item_id": "minecraft:wooden_hoe"}}], "source": "teacher"}
+{"goal": "till da dirt w hoe", "calls": [{"name": "use_item_on_block", "arguments": {"block_id": "minecraft:dirt", "item_id": "minecraft:wooden_hoe"}}], "source": "teacher"}
+{"goal": "use da hoe on dat dirt", "calls": [{"name": "use_item_on_block", "arguments": {"block_id": "minecraft:dirt", "item_id": "minecraft:wooden_hoe"}}], "source": "teacher"}
+{"goal": "close the chest", "calls": [{"name": "close_inventory_screens", "arguments": {}}], "source": "teacher"}
+{"goal": "close dat chest", "calls": [{"name": "close_inventory_screens", "arguments": {}}], "source": "teacher"}
+{"goal": "shut da chest", "calls": [{"name": "close_inventory_screens", "arguments": {}}], "source": "teacher"}
+{"goal": "close chest pls", "calls": [{"name": "close_inventory_screens", "arguments": {}}], "source": "teacher"}
+{"goal": "shut the chest bro", "calls": [{"name": "close_inventory_screens", "arguments": {}}], "source": "teacher"}
+{"goal": "close da storage box", "calls": [{"name": "close_inventory_screens", "arguments": {}}], "source": "teacher"}
+{"goal": "shut dat box", "calls": [{"name": "close_inventory_screens", "arguments": {}}], "source": "teacher"}
+{"goal": "close that chesy thing", "calls": [{"name": "close_inventory_screens", "arguments": {}}], "source": "teacher"}
+{"goal": "shut chest now", "calls": [{"name": "close_inventory_screens", "arguments": {}}], "source": "teacher"}
+{"goal": "close whatever screen is open", "calls": [{"name": "close_inventory_screens", "arguments": {}}], "source": "teacher"}
+{"goal": "close that screen real quick dude", "calls": [{"name": "close_inventory_screens", "arguments": {}}], "source": "teacher"}
+{"goal": "bro click off the menu ok", "calls": [{"name": "close_inventory_screens", "arguments": {}}], "source": "teacher"}
+{"goal": "gtg close that window", "calls": [{"name": "close_inventory_screens", "arguments": {}}], "source": "teacher"}
+{"goal": "aight im done with that gui", "calls": [{"name": "close_inventory_screens", "arguments": {}}], "source": "teacher"}
+{"goal": "drop the screen yeah", "calls": [{"name": "close_inventory_screens", "arguments": {}}], "source": "teacher"}
+{"goal": "whoops close the thing", "calls": [{"name": "close_inventory_screens", "arguments": {}}], "source": "teacher"}
+{"goal": "my bad close the menu", "calls": [{"name": "close_inventory_screens", "arguments": {}}], "source": "teacher"}
+{"goal": "yo click outta there", "calls": [{"name": "close_inventory_screens", "arguments": {}}], "source": "teacher"}
+{"goal": "say hello everyone in chat", "calls": [{"name": "say", "arguments": {"message": "hello everyone"}}], "source": "teacher"}
+{"goal": "hey everyone whats up", "calls": [{"name": "say", "arguments": {"message": "hello everyone"}}], "source": "teacher"}
+{"goal": "sup all", "calls": [{"name": "say", "arguments": {"message": "hello everyone"}}], "source": "teacher"}
+{"goal": "hello chat", "calls": [{"name": "say", "arguments": {"message": "hello everyone"}}], "source": "teacher"}
+{"goal": "yo what’s good guys", "calls": [{"name": "say", "arguments": {"message": "hello everyone"}}], "source": "teacher"}
+{"goal": "greetings peeps", "calls": [{"name": "say", "arguments": {"message": "hello everyone"}}], "source": "teacher"}
+{"goal": "hiya everyone", "calls": [{"name": "say", "arguments": {"message": "hello everyone"}}], "source": "teacher"}
+{"goal": "tops all", "calls": [{"name": "say", "arguments": {"message": "hello everyone"}}], "source": "teacher"}
+{"goal": "hey mods", "calls": [{"name": "say", "arguments": {"message": "hello everyone"}}], "source": "teacher"}
+{"goal": "tell keven good luck in chat", "calls": [{"name": "say", "arguments": {"message": "good luck keven"}}], "source": "teacher"}
+{"goal": "wish keven luck dude", "calls": [{"name": "say", "arguments": {"message": "good luck keven"}}], "source": "teacher"}
+{"goal": "tell keven break a leg", "calls": [{"name": "say", "arguments": {"message": "good luck keven"}}], "source": "teacher"}
+{"goal": "keven go win", "calls": [{"name": "say", "arguments": {"message": "good luck keven"}}], "source": "teacher"}
+{"goal": "good luck to keven pls", "calls": [{"name": "say", "arguments": {"message": "good luck keven"}}], "source": "teacher"}
+{"goal": "keven u got this", "calls": [{"name": "say", "arguments": {"message": "good luck keven"}}], "source": "teacher"}
+{"goal": "keven go crush it", "calls": [{"name": "say", "arguments": {"message": "good luck keven"}}], "source": "teacher"}
+{"goal": "tell keven smash it", "calls": [{"name": "say", "arguments": {"message": "good luck keven"}}], "source": "teacher"}
+{"goal": "hey keven do your thing", "calls": [{"name": "say", "arguments": {"message": "good luck keven"}}], "source": "teacher"}
+{"goal": "make a wooden axe from the logs you already have", "calls": [{"name": "make_wood_tool_from_logs", "arguments": {"tool": "minecraft:wooden_axe"}}], "source": "teacher"}
+{"goal": "make axe wood from my logs", "calls": [{"name": "make_wood_tool_from_logs", "arguments": {"tool": "minecraft:wooden_axe"}}], "source": "teacher"}
+{"goal": "craft wood axe will ya", "calls": [{"name": "make_wood_tool_from_logs", "arguments": {"tool": "minecraft:wooden_axe"}}], "source": "teacher"}
+{"goal": "yo turn logs into axe pls", "calls": [{"name": "make_wood_tool_from_logs", "arguments": {"tool": "minecraft:wooden_axe"}}], "source": "teacher"}
+{"goal": "wanna build wood axe real quick", "calls": [{"name": "make_wood_tool_from_logs", "arguments": {"tool": "minecraft:wooden_axe"}}], "source": "teacher"}
+{"goal": "logs to axe now", "calls": [{"name": "make_wood_tool_from_logs", "arguments": {"tool": "minecraft:wooden_axe"}}], "source": "teacher"}
+{"goal": "make that wood axe bro", "calls": [{"name": "make_wood_tool_from_logs", "arguments": {"tool": "minecraft:wooden_axe"}}], "source": "teacher"}
+{"goal": "quick axe wood", "calls": [{"name": "make_wood_tool_from_logs", "arguments": {"tool": "minecraft:wooden_axe"}}], "source": "teacher"}
+{"goal": "logs into axe for me", "calls": [{"name": "make_wood_tool_from_logs", "arguments": {"tool": "minecraft:wooden_axe"}}], "source": "teacher"}
+{"goal": "explore the area and map it out", "calls": [{"name": "explore", "arguments": {}}], "source": "teacher"}
+{"goal": "explore around a bit", "calls": [{"name": "explore", "arguments": {}}], "source": "teacher"}
+{"goal": "scout the area", "calls": [{"name": "explore", "arguments": {}}], "source": "teacher"}
+{"goal": "map this place out", "calls": [{"name": "explore", "arguments": {}}], "source": "teacher"}
+{"goal": "check out the nearby stuff", "calls": [{"name": "explore", "arguments": {}}], "source": "teacher"}
+{"goal": "explore a lil", "calls": [{"name": "explore", "arguments": {}}], "source": "teacher"}
+{"goal": "wander n map it", "calls": [{"name": "explore", "arguments": {}}], "source": "teacher"}
+{"goal": "go see what there is", "calls": [{"name": "explore", "arguments": {}}], "source": "teacher"}
+{"goal": "explore this spot", "calls": [{"name": "explore", "arguments": {}}], "source": "teacher"}
+{"goal": "wait until you are done with the current job", "calls": [{"name": "wait_until_idle", "arguments": {}}], "source": "teacher"}
+{"goal": "wait til ur done", "calls": [{"name": "wait_until_idle", "arguments": {}}], "source": "teacher"}
+{"goal": "chill til ur free", "calls": [{"name": "wait_until_idle", "arguments": {}}], "source": "teacher"}
+{"goal": "don’t rush im patient", "calls": [{"name": "wait_until_idle", "arguments": {}}], "source": "teacher"}
+{"goal": "no worries take ur time", "calls": [{"name": "wait_until_idle", "arguments": {}}], "source": "teacher"}
+{"goal": "im cool just finish up", "calls": [{"name": "wait_until_idle", "arguments": {}}], "source": "teacher"}
+{"goal": "keep going at ur own pace", "calls": [{"name": "wait_until_idle", "arguments": {}}], "source": "teacher"}
+{"goal": "im good don’t stress", "calls": [{"name": "wait_until_idle", "arguments": {}}], "source": "teacher"}
+{"goal": "take all the time u need", "calls": [{"name": "wait_until_idle", "arguments": {}}], "source": "teacher"}
+{"goal": "smelt all my iron ore", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "smelt all my iron pls", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "fire up all the iron ore", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "make my iron shine", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "cook all that iron ore", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "turn my iron ore into ingots", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "smelt every piece of iron", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "all iron ore smelt now", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "yeet all my iron in the furnace", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "cook this raw beef in the furnace", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "barbecue this steak", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "cook this meaty", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "fire up the beef", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "cook the raw meat", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "smelt this beefy piece", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "got beef? fry it up", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "cook dis raw meat bro", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "yes please cook that beef", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "craft me a chest", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "gimmie a chest pls", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "need a chest bro", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "craft me a chest ty", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "hey can u craft me a chest", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "make me a chest rn", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "pls give me a chest", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "chest me one", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "give me a chest asap", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "craft sticks from these planks", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "sticks from planks pls", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "make some sticks from these planks bro", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "craft sticks off these planks ty", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "can u turn these planks into sticks", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "stick em from planks rn", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "pls sticks from planks", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "turn these into sticks", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "sticks from planks plzz", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "make me an iron pickaxe", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "iron pickaxe pls", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "gimmie an iron pick bro", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "make me an iron pickaxe ty", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "hey can u craft an iron pickaxe", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "iron pickaxe me", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "need an iron pickaxe rn", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "iron pickaxe plz", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "pick me up an iron pickaxe", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "craft a bed", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "bed pls", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "make me a bed bro", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "craft a bed ty", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "hey can u make a bed", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "need a bed rn", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "bed me one", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "gimmie a bed plz", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "make that bed", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "brew me a speed potion", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "speed potion pls", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "brew speed for me bro", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "make me a speed potion ty", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "hey can u brew a speed potion", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "need a speed potion rn", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "speed potion me one", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "gimmie a speed potion plz", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "whip up a speed one", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "combine these books on the anvil", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "books on anvil pls", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "combine these books bro", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "anvil these books ty", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "hey can u combine these books on the anvil", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "need these books combined rn", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "gimmie combined books on anvil plz", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "do that anvil thing w these", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "upgrade my sword to netherite", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "anvil em together", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "netherite my sword bro", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "upgrade my sword to netherite pls", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "make my sword netherite ty", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "hey can u upgrade my sword to netherite", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "need my sword netherite rn", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "netherite this sword for me", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "sword to netherite plz", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "do the netherite thing to my sword", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "cut these blocks on the stonecutter", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "stonecut these blocks bro", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "cut these for me on stonecutter pls", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "stonecutter these blocks ty", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "hey can u cut these on the stonecutter", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "need these blocks cut rn", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "cut em on stonecutter plz", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "stonecut this stuff", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "do the stonecutter thing", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "what recipes can you make at the table", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "what can u craft at a crafting table tho", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "recipes fr the table? listem", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "yo wat stuff u can make at the craft bench", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "what's cookin with the crafting table?", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "table recipes? drop it", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "wut can u do with a crafting table rn", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "tell me the table smth u can make", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "craftin table stuff pls", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "make me a plan for getting full iron", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "how to get like a full inv of iron ingots?", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "iron farm strategy pls ty", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "need a path to max iron barrin", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "best way to fill up on iron real quick", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "yo help w a iron runplan", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "explain iron grind fro full stack", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "full iron guide? link or smth", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "how to mass iron wout dying", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "go fight the ender dragon", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "lets jack the ender dragon lol", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "time to pop the dragon boss", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "go crash the dragon party", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "end fight? u got this", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "dragon time. no backsies", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "gotta yeet the ender dragon rn", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "end boss incoming. go yeet it", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "dragon hunt mode. activate", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "go kill the wither", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "lets summon and yeet the wither", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "wither kill mission. who’s comin", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "pls go nuke the wither skull boss", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "summon the wither & end it", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "wither time? lets roll", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "who’s down to body the wither", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "wither hunt squad. go get em", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "go gib the wither skeleton", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "make me full netherite armor", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "need full netherite set asap", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "craft me a full bling netherite suit", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "netherite armor upgrade? help pls", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "go full godd armor set k", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "netherite set in progress pls join", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "what’s the move to full netherite", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "full netherite set or bust", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "netherite armor quest? accept", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "get me a full set of diamond gear", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "need all diamond gear pls", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "diamond everything. go go go", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "fill up on diamonds asap", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "diamond gear grind time", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "y u no give me diamond stuff", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "full diamond set mode active", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "diamonds or bust. go mine", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "need everythin diamond rn", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "clear out this whole cave of mobs", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "cave cleanup time. lets kill alot", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "who wants to yeet cave mobs w me", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "clear this cave of creepers n stuff", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "cave is haunted. go ghost em", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "mob purge in this cave. join?", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "cave stuffed. lets empty it", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "cave full o mobs. go brrr", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "cave cleanup raid. who’s in", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "flatten this mountain", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "lets bulldoze this mountain tj", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "this hill gotta go. u up?", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "flatten this mountain pls ty", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "mountain demolition time", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "who wants to level this mountain", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "this mount is tall af. chop it", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "mountain smoother. lets go", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "flatten or nothing. go go go", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "dig out a huge underground base", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "need to bust out dat underground base lol", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "gotta dig up dat big ol base bro", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "time to clear out dat underbase huh", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "diggin out dat underground spot eh", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "dig me out dis huge base real quick", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "yo clean dat base undergroun pls", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "time to excavate dat big sub-base", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "need to hollow out dat underground area", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "get everything we need for the nether trip", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "grab all da stuff for da nether trip", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "yo get da stuff we need for da nether", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "collect evrythin for da nether run real quick", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "we need al da nether supplies ugh", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "get da gear for dat nether trip nao", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "need all da nether prep stuff fast", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "yo prep da nether stash lol", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "grab da nether necessities quick", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "farm levels until you have 30", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "farm xp till u get to 30 pls", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "grind levels til u hit 30 yeah", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "keep farmin till u got 30 levels bro", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "farm dem levels til u reach thirty", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "yo grind xp until u have 30 levels", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "keep xp farmin til u hit thirty", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "farm levels til u get to 30 lol", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "grind dem xp til u got 30 levels", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "collect one of every flower", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "grab one of each flower real quick", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "need one of evry flower lol", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "collect one of each flower type", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "get one of evry bloom u can find", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "grab all da diffrent flowers quick", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "need one of each flower type quest", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "yo grab one of evry flower pls", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "collect one of each flower type fast", "calls": [{"name": "escalate", "arguments": {"reason": "complex or creative request"}}], "source": "teacher"}
+{"goal": "its getting dark get wood quick", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:oak_log", "minecraft:birch_log", "minecraft:spruce_log", "minecraft:jungle_log"]}}], "source": "teacher"}
+{"goal": "night comin get wood rn", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:oak_log", "minecraft:birch_log", "minecraft:spruce_log", "minecraft:jungle_log"]}}], "source": "teacher"}
+{"goal": "quick get some logs b4 dark", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:oak_log", "minecraft:birch_log", "minecraft:spruce_log", "minecraft:jungle_log"]}}], "source": "teacher"}
+{"goal": "wood plz b4 it gets too dark", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:oak_log", "minecraft:birch_log", "minecraft:spruce_log", "minecraft:jungle_log"]}}], "source": "teacher"}
+{"goal": "grab wood rn b4 it gets sketch", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:oak_log", "minecraft:birch_log", "minecraft:spruce_log", "minecraft:jungle_log"]}}], "source": "teacher"}
+{"goal": "yo get sum wood quick b4 darkness", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:oak_log", "minecraft:birch_log", "minecraft:spruce_log", "minecraft:jungle_log"]}}], "source": "teacher"}
+{"goal": "need wood fast b4 nightfall", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:oak_log", "minecraft:birch_log", "minecraft:spruce_log", "minecraft:jungle_log"]}}], "source": "teacher"}
+{"goal": "quick gather wood b4 it's pitch black", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:oak_log", "minecraft:birch_log", "minecraft:spruce_log", "minecraft:jungle_log"]}}], "source": "teacher"}
+{"goal": "wood lol it's gettin late", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:oak_log", "minecraft:birch_log", "minecraft:spruce_log", "minecraft:jungle_log"]}}], "source": "teacher"}
+{"goal": "the furnace is empty go get coal", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:coal_ore"]}}], "source": "teacher"}
+{"goal": "furnace empty go mine coal", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:coal_ore"]}}], "source": "teacher"}
+{"goal": "yo furnace outta coal go get some", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:coal_ore"]}}], "source": "teacher"}
+{"goal": "need coal for da furnace run", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:coal_ore"]}}], "source": "teacher"}
+{"goal": "grab sum coal b4 da furnace goes out", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:coal_ore"]}}], "source": "teacher"}
+{"goal": "yo furnace dead go get coal pls", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:coal_ore"]}}], "source": "teacher"}
+{"goal": "coal for da furnace rn", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:coal_ore"]}}], "source": "teacher"}
+{"goal": "need coal quick for da furnace", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:coal_ore"]}}], "source": "teacher"}
+{"goal": "go mine coal furnace is empty", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:coal_ore"]}}], "source": "teacher"}
+{"goal": "creepers blew up the yard get dirt to patch it", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:dirt"]}}], "source": "teacher"}
+{"goal": "creepers bombed da yard get dirt to fix", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:dirt"]}}], "source": "teacher"}
+{"goal": "get dirt to patch da crater from creepers", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:dirt"]}}], "source": "teacher"}
+{"goal": "creepers wrecked da yard grab dirt", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:dirt"]}}], "source": "teacher"}
+{"goal": "dirt plz to fill da holes creepers made", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:dirt"]}}], "source": "teacher"}
+{"goal": "yo creepers made a mess get dirt", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:dirt"]}}], "source": "teacher"}
+{"goal": "need dirt to repair da yard quick", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:dirt"]}}], "source": "teacher"}
+{"goal": "grab dirt to cover da blast marks", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:dirt"]}}], "source": "teacher"}
+{"goal": "dirt for da yard repair mission", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:dirt"]}}], "source": "teacher"}
+{"goal": "we are out of torches grab coal", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:coal_ore"]}}], "source": "teacher"}
+{"goal": "furnace outta torches go mine coal", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:coal_ore"]}}], "source": "teacher"}
+{"goal": "yo torches gone go get coal quick", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:coal_ore"]}}], "source": "teacher"}
+{"goal": "need coal for torches furnace dead", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:coal_ore"]}}], "source": "teacher"}
+{"goal": "grab sum coal for torches rn", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:coal_ore"]}}], "source": "teacher"}
+{"goal": "coal for da torches yo b4 dark", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:coal_ore"]}}], "source": "teacher"}
+{"goal": "torches are out go get coal plz", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:coal_ore"]}}], "source": "teacher"}
+{"goal": "need torches furnace empty go get coal", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:coal_ore"]}}], "source": "teacher"}
+{"goal": "quick coal for torches b4 night", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:coal_ore"]}}], "source": "teacher"}
+{"goal": "before night comes get some stone", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:stone"]}}], "source": "teacher"}
+{"goal": "gotta grab some stones b4 night", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:stone"]}}], "source": "teacher"}
+{"goal": "need stone b4 dark out bro", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:stone"]}}], "source": "teacher"}
+{"goal": "quick some stone b4 night hits", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:stone"]}}], "source": "teacher"}
+{"goal": "stone pls we low on resources", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:stone"]}}], "source": "teacher"}
+{"goal": "stone rn we almost night tbh", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:stone"]}}], "source": "teacher"}
+{"goal": "stone so we safe from creepa", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:stone"]}}], "source": "teacher"}
+{"goal": "stone cuz night coming aiya", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:stone"]}}], "source": "teacher"}
+{"goal": "stone fast we boutta get mobbed", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:stone"]}}], "source": "teacher"}
+{"goal": "my tools broke get iron so we can fix them", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:iron_ore"]}}], "source": "teacher"}
+{"goal": "tools ded get iron to fixem", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:iron_ore"]}}], "source": "teacher"}
+{"goal": "my pickes are done get iron fix plz", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:iron_ore"]}}], "source": "teacher"}
+{"goal": "tools dead get iron we need 2 repair", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:iron_ore"]}}], "source": "teacher"}
+{"goal": "my tools turnt to dust get iron now", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:iron_ore"]}}], "source": "teacher"}
+{"goal": "tools broke need iron to craft new ones", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:iron_ore"]}}], "source": "teacher"}
+{"goal": "iron pls my tools ded", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:iron_ore"]}}], "source": "teacher"}
+{"goal": "pick n stuff broke get iron quick", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:iron_ore"]}}], "source": "teacher"}
+{"goal": "get iron my tools turned to scrap", "calls": [{"name": "mine", "arguments": {"blocks": ["minecraft:iron_ore"]}}], "source": "teacher"}
+{"goal": "keven went ahead follow him", "calls": [{"name": "follow_player", "arguments": {"name": "keven"}}], "source": "teacher"}
+{"goal": "keven scooted gotta tail him", "calls": [{"name": "follow_player", "arguments": {"name": "keven"}}], "source": "teacher"}
+{"goal": "kevin left go after him", "calls": [{"name": "follow_player", "arguments": {"name": "keven"}}], "source": "teacher"}
+{"goal": "keven ahead catch up", "calls": [{"name": "follow_player", "arguments": {"name": "keven"}}], "source": "teacher"}
+{"goal": "keven went ahead u go follow", "calls": [{"name": "follow_player", "arguments": {"name": "keven"}}], "source": "teacher"}
+{"goal": "keven left come on bgoghim", "calls": [{"name": "follow_player", "arguments": {"name": "keven"}}], "source": "teacher"}
+{"goal": "keven ahead dont lag we gotta follow", "calls": [{"name": "follow_player", "arguments": {"name": "keven"}}], "source": "teacher"}
+{"goal": "kevin ditched lets follow that guy", "calls": [{"name": "follow_player", "arguments": {"name": "keven"}}], "source": "teacher"}
+{"goal": "keven outta sight gotta keep up", "calls": [{"name": "follow_player", "arguments": {"name": "keven"}}], "source": "teacher"}
+{"goal": "im heading to the village meet me at 200 70 -500", "calls": [{"name": "goto_coords", "arguments": {"x": 200, "y": 70, "z": -500}}], "source": "teacher"}
+{"goal": "viliage runninv see u at 200 -500", "calls": [{"name": "goto_coords", "arguments": {"x": 200, "y": 70, "z": -500}}], "source": "teacher"}
+{"goal": "village i go meet at 200 70 -500", "calls": [{"name": "goto_coords", "arguments": {"x": 200, "y": 70, "z": -500}}], "source": "teacher"}
+{"goal": "village 200 70 -500 come quick", "calls": [{"name": "goto_coords", "arguments": {"x": 200, "y": 70, "z": -500}}], "source": "teacher"}
+{"goal": "heading viliage im at 200 70 -500", "calls": [{"name": "goto_coords", "arguments": {"x": 200, "y": 70, "z": -500}}], "source": "teacher"}
+{"goal": "meet at villiage 200 70 -500 gotcha", "calls": [{"name": "goto_coords", "arguments": {"x": 200, "y": 70, "z": -500}}], "source": "teacher"}
+{"goal": "village run in meet u at 200 -500", "calls": [{"name": "goto_coords", "arguments": {"x": 200, "y": 70, "z": -500}}], "source": "teacher"}
+{"goal": "200 70 -500 village i go now", "calls": [{"name": "goto_coords", "arguments": {"x": 200, "y": 70, "z": -500}}], "source": "teacher"}
+{"goal": "viliage 200 70 -500 dont be late", "calls": [{"name": "goto_coords", "arguments": {"x": 200, "y": 70, "z": -500}}], "source": "teacher"}
+{"goal": "mobs everywhere get the shield out", "calls": [{"name": "equip_item", "arguments": {"item_id": "minecraft:shield"}}], "source": "teacher"}
+{"goal": "mobs ewy get the shield quick", "calls": [{"name": "equip_item", "arguments": {"item_id": "minecraft:shield"}}], "source": "teacher"}
+{"goal": "mobs everywher get the squar out rn", "calls": [{"name": "equip_item", "arguments": {"item_id": "minecraft:shield"}}], "source": "teacher"}
+{"goal": "shield out mobs all around", "calls": [{"name": "equip_item", "arguments": {"item_id": "minecraft:shield"}}], "source": "teacher"}
+{"goal": "mobs ded get the shield in hands", "calls": [{"name": "equip_item", "arguments": {"item_id": "minecraft:shield"}}], "source": "teacher"}
+{"goal": "mobs outta nowhere shield pls", "calls": [{"name": "equip_item", "arguments": {"item_id": "minecraft:shield"}}], "source": "teacher"}
+{"goal": "shield got mobs all over", "calls": [{"name": "equip_item", "arguments": {"item_id": "minecraft:shield"}}], "source": "teacher"}
+{"goal": "mobs spawnin get the thing that blocks", "calls": [{"name": "equip_item", "arguments": {"item_id": "minecraft:shield"}}], "source": "teacher"}
+{"goal": "shield out mobs everywhere bro", "calls": [{"name": "equip_item", "arguments": {"item_id": "minecraft:shield"}}], "source": "teacher"}
+{"goal": "we are mining all night be careful out there", "calls": [{"name": "tune", "arguments": {"request": "be careful out there"}}], "source": "teacher"}
+{"goal": "mining all night watch ur back", "calls": [{"name": "tune", "arguments": {"request": "be careful out there"}}], "source": "teacher"}
+{"goal": "night mining be safu out there", "calls": [{"name": "tune", "arguments": {"request": "be careful out there"}}], "source": "teacher"}
+{"goal": "mining toda night keep eyes peeled", "calls": [{"name": "tune", "arguments": {"request": "be careful out there"}}], "source": "teacher"}
+{"goal": "all night mine stay alert out", "calls": [{"name": "tune", "arguments": {"request": "be careful out there"}}], "source": "teacher"}
+{"goal": "mining rn night time stay sharp", "calls": [{"name": "tune", "arguments": {"request": "be careful out there"}}], "source": "teacher"}
+{"goal": "mining alla night dont take steve for granite", "calls": [{"name": "tune", "arguments": {"request": "be careful out there"}}], "source": "teacher"}
+{"goal": "mining toda night skrt skrt", "calls": [{"name": "tune", "arguments": {"request": "be careful out there"}}], "source": "teacher"}
+{"goal": "diggin alla night keep head up", "calls": [{"name": "tune", "arguments": {"request": "be careful out there"}}], "source": "teacher"}
+{"goal": "server has anticheat act natural", "calls": [{"name": "tune", "arguments": {"request": "act natural"}}], "source": "teacher"}
+{"goal": "ac is on just chill no sus", "calls": [{"name": "tune", "arguments": {"request": "act natural"}}], "source": "teacher"}
+{"goal": "dont do crazy stuff anti sus", "calls": [{"name": "tune", "arguments": {"request": "act natural"}}], "source": "teacher"}
+{"goal": "server watchin dont do fast", "calls": [{"name": "tune", "arguments": {"request": "act natural"}}], "source": "teacher"}
+{"goal": "just vibin cuz ac is on", "calls": [{"name": "tune", "arguments": {"request": "act natural"}}], "source": "teacher"}
+{"goal": "no speed no xray just play normal", "calls": [{"name": "tune", "arguments": {"request": "act natural"}}], "source": "teacher"}
+{"goal": "ac is lurking keep it natural", "calls": [{"name": "tune", "arguments": {"request": "act natural"}}], "source": "teacher"}
+{"goal": "no zoom no fast dont do nothing sus", "calls": [{"name": "tune", "arguments": {"request": "act natural"}}], "source": "teacher"}
+{"goal": "just act normal ac is out", "calls": [{"name": "tune", "arguments": {"request": "act natural"}}], "source": "teacher"}
+{"goal": "the lag is bad stop for now", "calls": [{"name": "stop", "arguments": {}}], "source": "teacher"}
+{"goal": "lagg bad pause real quick", "calls": [{"name": "stop", "arguments": {}}], "source": "teacher"}
+{"goal": "server lag gotta hold up", "calls": [{"name": "stop", "arguments": {}}], "source": "teacher"}
+{"goal": "lag yikes ft for now", "calls": [{"name": "stop", "arguments": {}}], "source": "teacher"}
+{"goal": "lag so bad hold up a sec", "calls": [{"name": "stop", "arguments": {}}], "source": "teacher"}
+{"goal": "lagggins stop rn", "calls": [{"name": "stop", "arguments": {}}], "source": "teacher"}
+{"goal": "lag turnt off for now wait", "calls": [{"name": "stop", "arguments": {}}], "source": "teacher"}
+{"goal": "server wheezing pause that", "calls": [{"name": "stop", "arguments": {}}], "source": "teacher"}
+{"goal": "lag bad pause work on it", "calls": [{"name": "stop", "arguments": {}}], "source": "teacher"}

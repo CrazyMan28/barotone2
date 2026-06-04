@@ -19,7 +19,8 @@ import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_FILES = [os.path.join(ROOT, "data", "synthetic.jsonl"),
-              os.path.join(ROOT, "data", "harvested.jsonl")]
+              os.path.join(ROOT, "data", "harvested.jsonl"),
+              os.path.join(ROOT, "data", "teacher.jsonl")]
 EVAL_FRACTION = 0.05
 
 SYSTEM_PROMPT = (
