@@ -37,6 +37,20 @@ END_RE = re.compile(r"\[CHAT\] \[Baritone\] \[AI\] (done|mission summary|stopped
 # control/meta words that are not real missions
 SKIP_GOALS = {"stop", "cancel", "pause", "resume", "recover", "status", "queue", "history"}
 
+# The BIG agent is instructed to "always begin with get_state", so 85% of real missions open
+# with an info preamble regardless of the goal. Training the one-shot brain on the FIRST call
+# taught it "get_state answers everything" (observed: 'mine wood' -> get_state). Skip the
+# preamble and label each mission with its first ACTION call instead.
+PREAMBLE_CALLS = {"get_state", "list_settings", "get_setting", "list_craftable_table_recipes",
+                  "list_crafting_recipes_for_output", "memory_recall", "mission_status"}
+
+
+def strip_preamble(calls):
+    for i, c in enumerate(calls):
+        if c["name"] not in PREAMBLE_CALLS:
+            return calls[i:]
+    return calls  # all-preamble missions (e.g. "what do you have") keep get_state as the label
+
 
 def iter_lines(path):
     opener = gzip.open if path.endswith(".gz") else open
@@ -102,6 +116,7 @@ def main():
             for goal, calls in harvest_file(path):
                 if goal.lower() in SKIP_GOALS or not calls:
                     continue
+                calls = strip_preamble(calls)
                 rec = {"goal": goal, "calls": calls[:6], "source": "log:" + os.path.basename(path)}
                 key = json.dumps([rec["goal"], rec["calls"]], sort_keys=True)
                 if key not in seen:
