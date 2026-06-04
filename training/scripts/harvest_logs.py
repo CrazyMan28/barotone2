@@ -30,8 +30,8 @@ LOG_DIRS = [
 
 GOAL_RE = re.compile(r"\[CHAT\] \[Baritone\] > (?:ai|goal) (.+)$")
 START_RE = re.compile(r"\[CHAT\] \[Baritone\] \[AI\] started mission #\d+ (?:ai|goal)(?: plan)?: (.+)$")
-CALL_RE = re.compile(r"\[CHAT\] \[Baritone\] \[AI:call\] (\w+) (\{.*\})\s*$")
-CALL_NOARGS_RE = re.compile(r"\[CHAT\] \[Baritone\] \[AI:call\] (\w+)\s*$")
+CALL_RE = re.compile(r"\[CHAT\] \[Baritone\] \[AI:(?:call|brain)\] (\w+) (\{.*\})\s*$")
+CALL_NOARGS_RE = re.compile(r"\[CHAT\] \[Baritone\] \[AI:(?:call|brain)\] (\w+)\s*$")
 END_RE = re.compile(r"\[CHAT\] \[Baritone\] \[AI\] (done|mission summary|stopped)")
 
 # control/meta words that are not real missions
