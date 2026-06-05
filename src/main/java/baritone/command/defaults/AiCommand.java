@@ -17,6 +17,7 @@
 
 package baritone.command.defaults;
 
+import baritone.ai.AgentTelemetry;
 import baritone.ai.GoalTracker;
 import baritone.ai.MissionMemory;
 import baritone.ai.MissionQueue;
@@ -137,6 +138,15 @@ public class AiCommand extends Command {
             args.getString();
             args.requireMax(0);
             logDirect(GoalTracker.describe() + "\n" + MissionQueue.describe(), ChatFormatting.GRAY);
+            return;
+        }
+        if (first.equals("session")) {
+            args.getString();
+            String sessionId = args.rawRest().trim();
+            AgentTelemetry.setSession(sessionId);
+            logDirect(sessionId.isEmpty()
+                    ? "Telemetry session cleared."
+                    : "Telemetry session set to " + sessionId, ChatFormatting.AQUA);
             return;
         }
         if (first.equals("clearqueue")) {

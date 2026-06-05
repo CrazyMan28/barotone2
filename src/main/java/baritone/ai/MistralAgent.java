@@ -28,7 +28,9 @@ import com.google.gson.JsonParser;
 import net.minecraft.ChatFormatting;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -340,6 +342,7 @@ public final class MistralAgent implements Helper {
                     JsonObject argsObj = tc.arguments;
 
                     GoalTracker.setStatus("Calling " + fnName);
+                    emitToolCall(fnName, argsObj.toString());
                     if (verbose) {
                         logDirect("[AI:call] " + fnName + " " + truncate(argsObj.toString(), 200),
                                 ChatFormatting.DARK_AQUA);
@@ -354,9 +357,10 @@ public final class MistralAgent implements Helper {
                                 result.done ? "done" : (result.error ? "error" : "ok"));
                     }
 
+                    String resultContent = result.content == null ? "" : result.content;
+                    emitToolResult(fnName, !result.error, resultContent);
                     if (verbose) {
-                        String c = result.content == null ? "" : result.content;
-                        logDirect("[AI:result] " + truncate(c, 240),
+                        logDirect("[AI:result] " + truncate(resultContent, 240),
                                 result.error ? ChatFormatting.RED : ChatFormatting.DARK_GRAY);
                     }
 
@@ -424,6 +428,7 @@ public final class MistralAgent implements Helper {
             args = call.arguments;
         }
         if (BrainProtocol.ESCALATE.equalsIgnoreCase(fnName)) {
+            AgentTelemetry.emit("brain_escalate", "reason", "request beyond fast brain");
             logDirect("[AI:brain] escalate: request is beyond the fast brain.", ChatFormatting.YELLOW);
             return false;
         }
@@ -670,6 +675,21 @@ public final class MistralAgent implements Helper {
             return "";
         }
         return s.length() <= n ? s : s.substring(0, n) + "...";
+    }
+
+    private static void emitToolCall(String name, String args) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("name", name == null ? "" : name);
+        data.put("args", truncate(args == null ? "" : args, 200));
+        AgentTelemetry.emit("tool_call", data);
+    }
+
+    private static void emitToolResult(String name, boolean ok, String summary) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("name", name == null ? "" : name);
+        data.put("ok", ok);
+        data.put("summary", truncate(summary == null ? "" : summary, 200));
+        AgentTelemetry.emit("tool_result", data);
     }
 
     private static String normalizeProvider(String raw) {

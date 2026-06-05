@@ -19,7 +19,9 @@ package baritone.ai;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Small shared state object for the AI goal HUD and goal-related tools.
@@ -82,6 +84,7 @@ public final class GoalTracker {
                 remember(cleanGoal);
             }
         }
+        AgentTelemetry.emit("mission_start", "goal", clean(goal));
     }
 
     public static void setStatus(String status) {
@@ -107,6 +110,11 @@ public final class GoalTracker {
                 }
             }
             current = current.withSteps(steps).withStatus(steps.isEmpty() ? "Running" : "Plan ready");
+            List<String> stepTexts = new ArrayList<>(steps.size());
+            for (Step step : steps) {
+                stepTexts.add(step.text);
+            }
+            AgentTelemetry.emit("plan", "steps", stepTexts);
         }
     }
 
@@ -125,6 +133,11 @@ public final class GoalTracker {
             current = current.withSteps(steps).withStatus(status == null || status.isBlank()
                     ? "Completed step " + (idx + 1)
                     : clean(status));
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("index", idx + 1);
+            data.put("status", status == null || status.isBlank() ? "done" : clean(status));
+            data.put("total", steps.size());
+            AgentTelemetry.emit("step_complete", data);
         }
     }
 
@@ -137,6 +150,10 @@ public final class GoalTracker {
                     .withFinishedAt(System.currentTimeMillis())
                     .withStatus(prefixStatus("Done", summary));
         }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("summary", clean(summary));
+        data.put("success", true);
+        AgentTelemetry.emit("mission_done", data);
     }
 
     public static void fail(String summary) {
@@ -148,6 +165,7 @@ public final class GoalTracker {
                     .withFinishedAt(System.currentTimeMillis())
                     .withStatus(prefixStatus("Stopped", summary));
         }
+        AgentTelemetry.emit("mission_fail", "summary", clean(summary));
     }
 
     public static void hide() {

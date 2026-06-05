@@ -17,6 +17,7 @@
 
 package baritone.utils;
 
+import baritone.ai.AgentTelemetry;
 import baritone.ai.GoalTracker;
 import baritone.ai.MissionQueue;
 import net.minecraft.client.Minecraft;
@@ -24,9 +25,14 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class GoalHud {
+
+    /** Throttle so the position telemetry stream stays at most one event per second. */
+    private static volatile long lastPositionEmit = 0L;
 
     private GoalHud() {}
 
@@ -38,6 +44,11 @@ public final class GoalHud {
         GoalTracker.Snapshot snap = GoalTracker.snapshot();
         if (!snap.visible) {
             return;
+        }
+        // Position telemetry rides the HUD tick (player is guaranteed present here) but only while an
+        // AI goal is actually active, throttled to once per second so the launcher's event stream stays light.
+        if (snap.active) {
+            emitPositionThrottled(mc);
         }
         if (snap.shouldAutoHide(System.currentTimeMillis(), 15_000L)) {
             GoalTracker.hide();
@@ -102,6 +113,29 @@ public final class GoalHud {
                 color = 0xFFE6E6E6;
             }
             graphics.drawString(font, lines.get(i), x, y + i * lineH, color, true);
+        }
+    }
+
+    private static void emitPositionThrottled(Minecraft mc) {
+        long now = System.currentTimeMillis();
+        if (now - lastPositionEmit < 1000L) {
+            return;
+        }
+        lastPositionEmit = now;
+        try {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("x", mc.player.getBlockX());
+            data.put("y", mc.player.getBlockY());
+            data.put("z", mc.player.getBlockZ());
+            String dim = "";
+            try {
+                dim = mc.player.level().dimension().identifier().toString();
+            } catch (RuntimeException ignored) {
+            }
+            data.put("dim", dim);
+            AgentTelemetry.emit("position", data);
+        } catch (RuntimeException ignored) {
+            // Telemetry must never disrupt rendering.
         }
     }
 

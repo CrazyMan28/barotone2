@@ -36,6 +36,9 @@
 -keep class baritone.ai.MissionMemory$State { *; }
 -keep class baritone.ai.MissionMemory$MemoryRecord { *; }
 -keep class baritone.ai.MissionMemory$Checkpoint { *; }
+# Agent telemetry events are gson-serialized to stdout for the Kihi Launcher; keep field names (ts/session/kind/data) so they survive obfuscation
+-keep class baritone.ai.AgentTelemetry { *; }
+-keep class baritone.ai.AgentTelemetry$* { *; }
 -keepname class baritone.api.utils.BlockOptionalMeta # this name is exposed to the user, so we need to keep it in all builds
 
 # Keep any class or member annotated with @KeepName so we dont have to put everything in the script
