@@ -3477,6 +3477,13 @@ public final class AiCrafting {
         return true;
     }
 
+    /** Nearest open floored cell a station could be placed in (within radius), or null. Call on the
+     *  client thread. Powers the {@code look_around} tool so the agent can check BEFORE placing. */
+    public static BlockPos nearestPlaceableSpotOnClient(LocalPlayer p, int radius) {
+        BlockPos[] spot = findPlaceableStand(p, radius);
+        return spot == null ? null : spot[0];
+    }
+
     /** {placeCell, standCell}: an air cell with a sturdy floor + headroom, beside a standable cell. */
     private static BlockPos[] findPlaceableStand(LocalPlayer p, int radius) {
         Level level = p.level();

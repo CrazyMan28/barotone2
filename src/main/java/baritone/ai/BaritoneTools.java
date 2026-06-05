@@ -455,6 +455,14 @@ public final class BaritoneTools {
                         + "ticks_until_night, is_night, light_level, mob_spawn_risk, pathing/goal, mine/farm/explore active, "
                         + "mission_memory_summary (known locations), recent_reflexes. Use time/light/tools/food to plan survival.",
                 params()));
+        arr.add(fn("look_around",
+                "Sense your immediate surroundings BEFORE placing a crafting table/furnace (or when a "
+                        + "placement failed). Returns: looking_at (block you're aimed at + how far), "
+                        + "block_at_feet, block_below (the floor), headroom (air blocks above your head), "
+                        + "standing_on_solid, can_place_station (true if there's an open floored cell with "
+                        + "room nearby), and placeable_spot (its x,y,z, or null). If can_place_station is "
+                        + "false, goto open ground first instead of trying to place here.",
+                params()));
         arr.add(fn("say",
                 "Print a short status message to the player's chat (visible only to them).",
                 params(
@@ -709,6 +717,8 @@ public final class BaritoneTools {
                     return ok(waitUntilIdle(args));
                 case "get_state":
                     return ok(getState());
+                case "look_around":
+                    return ok(lookAround());
                 case "say":
                     return ok(say(args));
                 case "done": {
@@ -1855,6 +1865,62 @@ public final class BaritoneTools {
 
     private String getState() {
         return AiCrafting.onClient(ctx, this::getStateOnClient);
+    }
+
+    /** Placement-awareness snapshot: what I'm aimed at, my feet/head/floor, headroom, and whether
+     *  there's a usable spot to place a station nearby — so the agent checks BEFORE trying to place. */
+    private String lookAround() {
+        return AiCrafting.onClient(ctx, () -> {
+            JsonObject s = new JsonObject();
+            LocalPlayer p = ctx.player();
+            if (p == null) {
+                s.addProperty("error", "Player not in world");
+                return s.toString();
+            }
+            net.minecraft.world.level.Level level = p.level();
+            net.minecraft.core.BlockPos feet = ctx.playerFeet();
+            // What we're aimed at — manual raycast from the eyes (Minecraft.hitResult is stale on the AI thread).
+            net.minecraft.world.phys.HitResult hr = p.pick(5.5D, 0F, false);
+            if (hr instanceof net.minecraft.world.phys.BlockHitResult bhr
+                    && hr.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
+                net.minecraft.core.BlockPos lp = bhr.getBlockPos();
+                s.addProperty("looking_at", blockIdAt(level, lp));
+                s.addProperty("looking_at_pos", lp.getX() + "," + lp.getY() + "," + lp.getZ());
+                s.addProperty("looking_at_face", bhr.getDirection().getName());
+                double dist = Math.sqrt(p.getEyePosition(1F).distanceToSqr(net.minecraft.world.phys.Vec3.atCenterOf(lp)));
+                s.addProperty("looking_at_distance", Math.round(dist * 10) / 10.0);
+            } else {
+                s.addProperty("looking_at", "air (nothing solid within 5.5 blocks)");
+            }
+            s.addProperty("block_at_feet", blockIdAt(level, feet));
+            s.addProperty("block_at_head", blockIdAt(level, feet.above()));
+            s.addProperty("block_below", blockIdAt(level, feet.below()));
+            s.addProperty("standing_on_solid",
+                    level.getBlockState(feet.below()).isFaceSturdy(level, feet.below(), net.minecraft.core.Direction.UP));
+            int headroom = 0;
+            for (int i = 1; i <= 6; i++) {
+                if (level.getBlockState(feet.above(i)).isAir()) {
+                    headroom++;
+                } else {
+                    break;
+                }
+            }
+            s.addProperty("headroom", headroom);
+            net.minecraft.core.BlockPos spot = AiCrafting.nearestPlaceableSpotOnClient(p, 12);
+            s.addProperty("can_place_station", spot != null);
+            s.addProperty("placeable_spot", spot == null
+                    ? "none within 12 blocks — goto open ground first, then place"
+                    : spot.getX() + "," + spot.getY() + "," + spot.getZ());
+            return s.toString();
+        });
+    }
+
+    private static String blockIdAt(net.minecraft.world.level.Level level, net.minecraft.core.BlockPos pos) {
+        net.minecraft.world.level.block.state.BlockState st = level.getBlockState(pos);
+        if (st.isAir()) {
+            return "air";
+        }
+        return net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(st.getBlock()).toString();
     }
 
     private String getStateOnClient() {
