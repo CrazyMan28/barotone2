@@ -599,7 +599,21 @@ public final class BaritoneTools {
                 case "craft_recipe_at_table": {
                     String rid = args.get("recipe_id").getAsString();
                     String skip = alreadyHaveWoodToolSkip(rid);
-                    return ok(skip != null ? skip : AiCrafting.craftRecipeAtTable(ctx, rid));
+                    if (skip != null) {
+                        return ok(skip);
+                    }
+                    String r = AiCrafting.craftRecipeAtTable(ctx, rid);
+                    // Tools constantly fail on a missing intermediate (sticks/planks). Auto-supply the
+                    // basics from logs/planks and retry ONCE so "no sticks" can't stall a tool craft.
+                    if (r != null && (r.contains("Missing ingredient") || r.contains("Could not take matching"))) {
+                        AiCrafting.craftPlanksFromLogs(ctx, 8);
+                        AiCrafting.craftSticks(ctx, 2);
+                        String r2 = AiCrafting.craftRecipeAtTable(ctx, rid);
+                        r = r2.startsWith("ERROR") || r2.contains("Missing ingredient")
+                                ? r2 + " (after auto-crafting planks+sticks — you may still be missing the main material like cobblestone/iron_ingot)"
+                                : r2;
+                    }
+                    return ok(r);
                 }
                 case "list_craftable_table_recipes": {
                     int max = (args.has("max_entries") && !args.get("max_entries").isJsonNull())
