@@ -76,10 +76,9 @@ public final class ReflexProcess extends BaritoneProcessHelper {
     private long lastWorkingAt = Long.MIN_VALUE;
     private LivingEntity fightTarget;
     private boolean loggedNoFood;
-    // Flee watchdog: tracks one continuous-or-oscillating flee episode so it can be force-ended.
-    private long lastFleeTick = Long.MIN_VALUE;
-    private long fleeEpisodeStart = Long.MIN_VALUE;
-    private long fleeCooldownUntil = Long.MIN_VALUE;
+    // Flee watchdog: force-ends a flee episode that can't shake the mob (see ReflexPlanner.FleeWatchdog).
+    private final ReflexPlanner.FleeWatchdog fleeWatchdog =
+            new ReflexPlanner.FleeWatchdog(MAX_FLEE_TICKS, FLEE_COOLDOWN_TICKS, FLEE_EPISODE_GAP_TICKS);
 
     public ReflexProcess(Baritone baritone) {
         super(baritone);
@@ -150,23 +149,9 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         double engageRadius = Math.max(2D, s.reflexCreeperRadius.value);
         // Flee from creepers AND ranged skeletons (meleeing a skeleton just eats arrows).
         boolean mobsNear = s.reflexFleeCreepers.value && !nearbyFleeMobs(player, engageRadius).isEmpty();
-        // Track a flee "episode": oscillating in and out of range still counts as one episode
-        // (a gap longer than FLEE_EPISODE_GAP_TICKS starts a fresh one).
-        if (mobsNear) {
-            if (lastFleeTick == Long.MIN_VALUE || now - lastFleeTick > FLEE_EPISODE_GAP_TICKS) {
-                fleeEpisodeStart = now;
-            }
-            lastFleeTick = now;
-        }
-        boolean inCooldown = now < fleeCooldownUntil;
-        // Watchdog: stuck fleeing too long (creeper chasing / blocked path) -> stop trying for a
-        // cooldown so the mission can resume instead of looping. The agent has already put distance
-        // in; resuming beats freezing, and it can re-flee after the cooldown if still threatened.
-        if (mobsNear && !inCooldown && fleeEpisodeStart != Long.MIN_VALUE
-                && now - fleeEpisodeStart > MAX_FLEE_TICKS) {
-            fleeCooldownUntil = now + FLEE_COOLDOWN_TICKS;
-            inCooldown = true;
-        }
+        // Watchdog: if we've been fleeing too long without shaking the mob (creeper chasing / blocked
+        // path), give up for a cooldown so the mission resumes instead of oscillating "fleeing" forever.
+        boolean inCooldown = fleeWatchdog.suppressed(now, mobsNear);
         c.creeperNear = mobsNear && !inCooldown;
         c.fleeDone = inCooldown || nearbyFleeMobs(player, engageRadius + 4D).isEmpty();
 

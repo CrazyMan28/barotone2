@@ -146,4 +146,64 @@ public final class ReflexPlanner {
         }
         return !RISKY_FOODS.contains(path);
     }
+
+    /**
+     * Breaks the "stuck fleeing forever" loop. When a creeper or ranged skeleton keeps the bot
+     * pinned (blocking the only path, or chasing it in circles) it can never satisfy {@code fleeDone},
+     * so the FLEE reflex oscillates indefinitely and the mission never resumes. This watchdog times a
+     * single flee <em>episode</em> — tolerant of the bot bobbing in and out of engage range, since a
+     * gap shorter than {@code episodeGapTicks} is treated as the same episode — and, once an episode
+     * has run longer than {@code maxFleeTicks}, suppresses fleeing for {@code cooldownTicks} so the
+     * mission gets a window to make progress. After the cooldown it may flee again if still threatened.
+     *
+     * <p>Pure timing state (game ticks, 20/s); fed the tick clock + "is a flee-mob in range" each
+     * tick, so it is unit-testable without Minecraft.
+     */
+    public static final class FleeWatchdog {
+        private final int maxFleeTicks;
+        private final int cooldownTicks;
+        private final int episodeGapTicks;
+
+        private long lastFleeTick = Long.MIN_VALUE;
+        private long episodeStart = Long.MIN_VALUE;
+        private long cooldownUntil = Long.MIN_VALUE;
+
+        public FleeWatchdog(int maxFleeTicks, int cooldownTicks, int episodeGapTicks) {
+            this.maxFleeTicks = maxFleeTicks;
+            this.cooldownTicks = cooldownTicks;
+            this.episodeGapTicks = episodeGapTicks;
+        }
+
+        /**
+         * Advance the watchdog one tick.
+         *
+         * <p>While in cooldown we report "suppressed" and freeze episode tracking, so the moment the
+         * cooldown ends a still-present mob begins a <em>fresh</em> flee window. The bot therefore
+         * alternates flee&nbsp;&rarr;&nbsp;brief cooldown (mission progresses)&nbsp;&rarr;&nbsp;flee
+         * instead of either looping forever or permanently mining next to a creeper — each cooldown
+         * is a chance to path away, and it keeps respecting the danger the rest of the time.
+         *
+         * @param now      the current game tick
+         * @param mobsNear whether a flee-mob is within engage range this tick
+         * @return true if fleeing should be SUPPRESSED this tick (we have given up for a cooldown)
+         */
+        public boolean suppressed(long now, boolean mobsNear) {
+            if (now < cooldownUntil) {
+                return true; // in cooldown: stay out of the way and don't advance the episode timer
+            }
+            if (mobsNear) {
+                if (lastFleeTick == Long.MIN_VALUE || now - lastFleeTick > episodeGapTicks) {
+                    episodeStart = now; // fresh episode: first sighting, just-ended cooldown, or a lull
+                }
+                lastFleeTick = now;
+                if (episodeStart != Long.MIN_VALUE && now - episodeStart > maxFleeTicks) {
+                    cooldownUntil = now + cooldownTicks;
+                    lastFleeTick = Long.MIN_VALUE; // force a fresh window once the cooldown expires
+                    episodeStart = Long.MIN_VALUE;
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
 }
