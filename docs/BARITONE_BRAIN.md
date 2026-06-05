@@ -192,3 +192,14 @@ recurring: we grew the corpus 25% without re-applying per-class caps across the 
 so the broadened curriculum diluted the bench-critical categories at 1.7B capacity. v6.1 plan:
 global per-class caps over all sources, cap teacher escalate at ~80, audit farm-mission labels,
 and if 1.7B still stalls, play the Qwen3-4B card (weights cached).
+
+## THE 4B: new champion (June 4, night)
+
+Qwen3-4B (q4_k_m, 2.5GB) trained on the globally-rebalanced corpus (2513->2156 records: synthetic +
+131 real missions incl. the unattended farm + 528 teacher examples covering all 56 tools). Gate:
+**87.8% chat / 86.5% game (bars were 85.1/85.1), escalation judgment 10/10 + 9/10 (the dragon class
+SOLVED - every 1.7B fumbled it), legacy 96.8% on the hard 125-q holdout, 0.4-0.6s answers.**
+Pipeline note: convert_hf_to_gguf only emits f32/f16/bf16/q8_0 - q4_k_m needs llama-quantize
+(now built at llama.cpp/build/bin/llama-quantize; flow = convert f16 then quantize). v5r2 remains
+installed as baritone-brain-v5r2 (rollback). Crowned as baritone-brain on the user-space engine;
+the game picked it up with zero config changes.
