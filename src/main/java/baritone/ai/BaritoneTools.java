@@ -1092,6 +1092,16 @@ public final class BaritoneTools {
         for (String id : expanded) {
             cmd.append(' ').append(id);
         }
+        // Put the right tool in the HOTBAR first — autoTool only uses the hotbar, so an axe/pickaxe
+        // sitting in the main inventory would be ignored and the bot would mine with its bare hand.
+        boolean wantAxe = expanded.stream().anyMatch(id ->
+                id.contains("log") || id.contains("_wood") || id.contains("stem") || id.contains("bamboo"));
+        boolean wantPick = expanded.stream().anyMatch(id ->
+                id.contains("stone") || id.contains("ore") || id.contains("cobble") || id.contains("deepslate")
+                        || id.contains("obsidian") || id.contains("netherrack") || id.contains("terracotta"));
+        if (wantAxe || wantPick) {
+            AiCrafting.equipToolsToHotbar(ctx, wantAxe, wantPick);
+        }
         lastMineCommand = cmd.toString();   // remembered so wait_until_idle can relocate + retry if stuck
         executeCommand(lastMineCommand);
         return "Mining: " + cmd.substring(5).trim()

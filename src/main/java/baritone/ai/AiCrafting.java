@@ -3930,6 +3930,63 @@ public final class AiCrafting {
         return -1;
     }
 
+    private static final Item[] AXE_TIERS = {
+            Items.NETHERITE_AXE, Items.DIAMOND_AXE, Items.IRON_AXE, Items.GOLDEN_AXE, Items.STONE_AXE, Items.WOODEN_AXE
+    };
+    private static final Item[] PICKAXE_TIERS = {
+            Items.NETHERITE_PICKAXE, Items.DIAMOND_PICKAXE, Items.IRON_PICKAXE, Items.GOLDEN_PICKAXE, Items.STONE_PICKAXE, Items.WOODEN_PICKAXE
+    };
+
+    /**
+     * Make sure the best axe/pickaxe is in the HOTBAR so Baritone's autoTool can use it — autoTool only
+     * looks at the hotbar, so a tool sitting in the main inventory is ignored and the bot mines with its
+     * hand. Swaps the best matching tool up from the main inventory into the held slot if needed.
+     */
+    public static String equipToolsToHotbar(IPlayerContext ctx, boolean wantAxe, boolean wantPickaxe) {
+        return onClient(ctx, () -> {
+            LocalPlayer p = ctx.player();
+            if (p == null || !(p.containerMenu instanceof net.minecraft.world.inventory.InventoryMenu)) {
+                // only safe to rearrange when the plain inventory menu is open (not a chest/furnace)
+                p.closeContainer();
+            }
+            StringBuilder sb = new StringBuilder();
+            if (wantPickaxe) {
+                String r = swapBestToolToHotbar(ctx, p, PICKAXE_TIERS);
+                if (r != null) {
+                    sb.append(r).append(' ');
+                }
+            }
+            if (wantAxe) {
+                String r = swapBestToolToHotbar(ctx, p, AXE_TIERS);
+                if (r != null) {
+                    sb.append(r).append(' ');
+                }
+            }
+            return sb.toString().trim();
+        });
+    }
+
+    /** If the best owned tool of these tiers isn't already in the hotbar, swap it up from main inv. */
+    private static String swapBestToolToHotbar(IPlayerContext ctx, LocalPlayer p, Item[] tiers) {
+        for (Item tier : tiers) {
+            int menuSlot = findItemSlot(p.inventoryMenu, tier);
+            if (menuSlot < 0) {
+                continue; // don't own this tier; try the next-best
+            }
+            for (int h = 0; h < 9; h++) {
+                if (p.getInventory().getItem(h).is(tier)) {
+                    return null; // best owned tool already in the hotbar — autoTool will use it
+                }
+            }
+            int hotbar = p.getInventory().getSelectedSlot();
+            ctx.playerController().windowClick(p.inventoryMenu.containerId, menuSlot, hotbar, ClickType.SWAP, p);
+            net.minecraft.resources.Identifier id = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(tier);
+            return "moved " + (id == null ? "tool" : id.getPath()) + " to hotbar";
+        }
+        return null;
+    }
+
+
     private static int countItem(LocalPlayer p, Item item) {
         int n = 0;
         for (int i = 0; i < p.getInventory().getContainerSize(); i++) {
