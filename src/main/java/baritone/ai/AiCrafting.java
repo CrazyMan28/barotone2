@@ -2962,6 +2962,31 @@ public final class AiCrafting {
                 sleepAi(75);
             }
         }
+        // Direct fallback: the crosshair-gated pass above can fail in cramped/awkward terrain (the
+        // crosshair never settles on the table, so every face is skipped). We know exactly where the
+        // table is, so right-click each face with a hand-built hit WITHOUT the crosshair gate —
+        // best-effort aim only. This is what got placement reliable; mirror it for opening.
+        for (Direction face : new Direction[]{Direction.UP, Direction.NORTH, Direction.SOUTH,
+                Direction.EAST, Direction.WEST, Direction.DOWN}) {
+            if (MistralAgent.isCancelled()) {
+                return "RETRY";
+            }
+            Vec3 hitVec = Vec3.atCenterOf(pos).add(face.getStepX() * 0.5, face.getStepY() * 0.5, face.getStepZ() * 0.5);
+            visiblyLookAt(ctx, hitVec, 16);   // aim if we can, but don't bail when the crosshair won't settle
+            String r = onClient(ctx, () -> tryOpenTableAtPosWithFace(ctx, pos, face, hitVec));
+            if (r.startsWith("OK:")) {
+                return r.substring(3).trim();
+            }
+            if (r.startsWith("ERROR:")) {
+                return r;
+            }
+            for (int wait = 0; wait < 6; wait++) {
+                if (Boolean.TRUE.equals(onClient(ctx, () -> ctx.player().containerMenu instanceof CraftingMenu))) {
+                    return "Opened crafting table GUI.";
+                }
+                sleepAi(75);
+            }
+        }
         return "RETRY";
     }
 
