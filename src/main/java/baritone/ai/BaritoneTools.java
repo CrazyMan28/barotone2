@@ -1668,9 +1668,18 @@ public final class BaritoneTools {
                     return "Interrupted while opening " + station.displayName + ".";
                 }
             }
-            return "TIMEOUT: Did not open " + station.displayName + " after " + seconds + "s.";
+            return "TIMEOUT: Could not reach a " + station.displayName + " within " + seconds + "s "
+                    + "(none nearby). Don't keep retrying open_station — craft and place a fresh "
+                    + station.displayName + " here instead (you likely have the materials).";
         } finally {
             settings.rightClickContainerOnArrival.value = prevRightClick;
+            // Always stop the goto: a finished OR abandoned far-path must not keep dragging the agent
+            // across the map after this call returns (that stranded it 400+ blocks away mid-mission).
+            AiCrafting.onClient(ctx, () -> {
+                baritone.getCustomGoalProcess().onLostControl();
+                baritone.getPathingBehavior().cancelEverything();
+                return null;
+            });
         }
     }
 

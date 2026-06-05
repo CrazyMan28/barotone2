@@ -2543,6 +2543,16 @@ public final class AiCrafting {
                 return r;
             }
         }
+        // 1b) None in immediate reach: walk to the nearest one we can see nearby (e.g. a furnace we
+        // placed then stepped away from) and RE-USE it. Critical for furnaces — placing a second one
+        // would strand the smelting output in the first. Bounded radius so we never trek across the map.
+        BlockPos walked = walkToNearbyStation(ctx, block, 32);
+        if (walked != null) {
+            String r = openStationAtPositionVisible(ctx, walked, displayName, menuOpen);
+            if (r.startsWith("Opened") || r.startsWith("Already")) {
+                return r;
+            }
+        }
         // 2) place one from inventory next to the player, then open it
         boolean hasItem = Boolean.TRUE.equals(onClient(ctx,
                 () -> findItemSlot(ctx.player().inventoryMenu, item) >= 0));
@@ -2574,6 +2584,83 @@ public final class AiCrafting {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /** Nearest matching station block within {@code radius} (NOT limited to immediate reach). */
+    private static BlockPos findNearestStationBlock(LocalPlayer p, int radius,
+            net.minecraft.world.level.block.Block block) {
+        Level level = p.level();
+        BlockPos origin = p.blockPosition();
+        double best = Double.MAX_VALUE;
+        BlockPos bestPos = null;
+        for (int y = -4; y <= 4; y++) {
+            for (int x = -radius; x <= radius; x++) {
+                for (int z = -radius; z <= radius; z++) {
+                    BlockPos pos = origin.offset(x, y, z);
+                    if (!level.getBlockState(pos).is(block)) {
+                        continue;
+                    }
+                    double dist = origin.distSqr(pos);
+                    if (dist < best) {
+                        best = dist;
+                        bestPos = pos;
+                    }
+                }
+            }
+        }
+        return bestPos;
+    }
+
+    /**
+     * Path to a station block we can see within {@code radius} but isn't in immediate reach (e.g. a
+     * furnace we placed then stepped off of), so we re-use it instead of placing a second one. Returns
+     * the station pos once we're within reach of it, or null if none found / couldn't get there.
+     * Always releases the temporary goal so a failed attempt never leaves a goto running in the
+     * background (that strands the agent walking off across the map).
+     */
+    private static BlockPos walkToNearbyStation(IPlayerContext ctx,
+            net.minecraft.world.level.block.Block block, int radius) {
+        IBaritone b = BaritoneAPI.getProvider().getPrimaryBaritone();
+        if (b == null) {
+            return null;
+        }
+        BlockPos target = onClient(ctx, () -> findNearestStationBlock(ctx.player(), radius, block));
+        if (target == null) {
+            return null;
+        }
+        boolean already = Boolean.TRUE.equals(onClient(ctx, () -> withinReach(ctx.player(), target)));
+        if (already) {
+            return target;
+        }
+        try {
+            onClient(ctx, () -> {
+                b.getCustomGoalProcess().setGoalAndPath(new baritone.api.pathing.goals.GoalGetToBlock(target));
+                return null;
+            });
+            long deadline = System.currentTimeMillis() + 30_000L;
+            while (System.currentTimeMillis() < deadline) {
+                if (MistralAgent.isCancelled()) {
+                    break;
+                }
+                if (Boolean.TRUE.equals(onClient(ctx, () -> withinReach(ctx.player(), target)))) {
+                    return target;
+                }
+                if (!b.getPathingBehavior().isPathing() && !b.getPathingBehavior().getInProgress().isPresent()) {
+                    break; // path completed or couldn't progress
+                }
+                sleepAi(300);
+            }
+            return Boolean.TRUE.equals(onClient(ctx, () -> withinReach(ctx.player(), target))) ? target : null;
+        } finally {
+            onClient(ctx, () -> {
+                b.getCustomGoalProcess().onLostControl();
+                return null;
+            });
+        }
+    }
+
+    private static boolean withinReach(LocalPlayer p, BlockPos pos) {
+        return p.getEyePosition(1f).distanceToSqr(Vec3.atCenterOf(pos)) <= 5.5D * 5.5D;
     }
 
     private static BlockPos findReachableStation(LocalPlayer p, int radius,
