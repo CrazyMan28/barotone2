@@ -3350,6 +3350,13 @@ public final class AiCrafting {
         return bestHit;
     }
 
+    // Faces to try placing AGAINST, preference order: floor, then the 4 walls, then ceiling.
+    // Real placement works against any solid face — so a pit/tunnel (walls all around) still
+    // gives a valid spot even when there's no "air cell with a floor below".
+    private static final Direction[] PLACE_FACES = {
+            Direction.DOWN, Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.UP
+    };
+
     /** A valid place-against hit for a station at {@code cell}, or null if unsuitable. */
     private static BlockHitResult placementHitAt(LocalPlayer p, Level level, BlockPos cell, boolean airOnly) {
         BlockState st = level.getBlockState(cell);
@@ -3361,18 +3368,25 @@ public final class AiCrafting {
         if (cell.equals(feet) || cell.equals(feet.above())) {
             return null;
         }
-        // support block below must be solid-topped
-        BlockPos below = cell.below();
-        if (!level.getBlockState(below).isFaceSturdy(level, below, Direction.UP)) {
-            return null;
-        }
         // an entity (mob/player) occupying the cell blocks placement
         net.minecraft.world.phys.AABB box = new net.minecraft.world.phys.AABB(cell);
         if (!level.getEntities(p, box, e -> e instanceof net.minecraft.world.entity.LivingEntity).isEmpty()) {
             return null;
         }
-        Vec3 hitVec = Vec3.atBottomCenterOf(cell).relative(Direction.UP, 0.05);
-        return new BlockHitResult(hitVec, Direction.UP, below, false);
+        // place against ANY solid neighbouring face (floor preferred, then walls, then ceiling)
+        for (Direction toNeighbor : PLACE_FACES) {
+            BlockPos neighbor = cell.relative(toNeighbor);
+            Direction neighborFace = toNeighbor.getOpposite(); // face of the neighbor pointing at cell
+            if (!level.getBlockState(neighbor).isFaceSturdy(level, neighbor, neighborFace)) {
+                continue;
+            }
+            Vec3 hitVec = Vec3.atCenterOf(neighbor).add(
+                    neighborFace.getStepX() * 0.5,
+                    neighborFace.getStepY() * 0.5,
+                    neighborFace.getStepZ() * 0.5);
+            return new BlockHitResult(hitVec, neighborFace, neighbor, false);
+        }
+        return null;
     }
 
     // -------- internals --------
