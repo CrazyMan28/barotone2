@@ -1396,6 +1396,22 @@ public final class BaritoneTools {
         }
         return AiCrafting.onClient(ctx, () -> {
             try {
+                // Booleans (allowPlace/allowBreak/allowInventory/...) are set DIRECTLY —
+                // SettingsUtil.parseAndApply goes through name reflection that ProGuard can
+                // break in the shipped jar, which is what produced "Could not set allowPlace".
+                if (setting.value instanceof Boolean) {
+                    String v = value.trim().toLowerCase(java.util.Locale.US);
+                    Boolean parsed = (v.equals("true") || v.equals("1") || v.equals("yes") || v.equals("on")) ? Boolean.TRUE
+                            : (v.equals("false") || v.equals("0") || v.equals("no") || v.equals("off")) ? Boolean.FALSE
+                            : null;
+                    if (parsed == null) {
+                        return "ERROR: " + setting.getName() + " is a true/false setting; got '" + value + "'.";
+                    }
+                    @SuppressWarnings("unchecked")
+                    Settings.Setting<Boolean> bs = (Settings.Setting<Boolean>) setting;
+                    bs.value = parsed;
+                    return "Set " + setting.getName() + " = " + parsed + ".";
+                }
                 SettingsUtil.parseAndApply(settings, setting.getName(), value);
             } catch (Exception e) {
                 return "ERROR: Could not set " + setting.getName() + " to '" + value + "': "

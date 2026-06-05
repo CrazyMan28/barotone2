@@ -2439,6 +2439,7 @@ public final class AiCrafting {
             return "ERROR: makeWoodToolFromLogs requires recipe " + RECIPE_WOODEN_PICKAXE + " or " + RECIPE_WOODEN_AXE + ".";
         }
         BaritoneAPI.getSettings().allowInventory.value = true;
+        BaritoneAPI.getSettings().allowPlace.value = true; // placing the table needs this on
         try {
             IBaritone b = BaritoneAPI.getProvider().getPrimaryBaritone();
             if (b != null) {
@@ -2463,7 +2464,7 @@ public final class AiCrafting {
         sleepAi(200);
         log.append(craftCraftingTable(ctx)).append(" ");
         sleepAi(200);
-        String placed = placeCraftingTableBlock(ctx);
+        String placed = placeCraftingTableWithRetry(ctx);
         log.append(placed).append(" ");
         if (placed.startsWith("ERROR:")) {
             // Without a real table there is nothing to open or craft at — burning
@@ -2509,7 +2510,7 @@ public final class AiCrafting {
         if (!hasTable) {
             return "ERROR: No reachable crafting table and no crafting table item in inventory.";
         }
-        String placed = placeCraftingTableBlock(ctx);
+        String placed = placeCraftingTableWithRetry(ctx);
         sleepAi(350);
         if (placed.startsWith("ERROR:")) {
             return placed;
@@ -2549,8 +2550,12 @@ public final class AiCrafting {
             return "WARN: No reachable " + displayName + " within 6 blocks and no item to place one.";
         }
         BlockPos placed = placeStationBlock(ctx, item, block, displayName);
+        for (int attempt = 0; attempt < 3 && placed == null && !MistralAgent.isCancelled(); attempt++) {
+            nudgePlayer(ctx); // blocked spot (flower/mob/edge) — move and try again
+            placed = placeStationBlock(ctx, item, block, displayName);
+        }
         if (placed == null) {
-            return "ERROR: Could not place " + displayName + " (no spot in reach).";
+            return "ERROR: Could not place " + displayName + " — no clear spot nearby (try moving to open ground).";
         }
         sleepAi(350);
         String opened = openStationAtPositionVisible(ctx, placed, displayName, menuOpen);
@@ -3268,23 +3273,60 @@ public final class AiCrafting {
         }
     }
 
+    /** Step the player forward a moment to get off an obstructed/edge spot, then settle. */
+    private static void nudgePlayer(IPlayerContext ctx) {
+        IBaritone b = BaritoneAPI.getProvider().getPrimaryBaritone();
+        if (b == null) {
+            return;
+        }
+        onClient(ctx, () -> {
+            b.getInputOverrideHandler().setInputForceState(baritone.api.utils.input.Input.MOVE_FORWARD, true);
+            return null;
+        });
+        sleepAi(550); // ~11 ticks forward
+        onClient(ctx, () -> {
+            b.getInputOverrideHandler().clearAllKeys();
+            return null;
+        });
+        sleepAi(250);
+    }
+
+    /** Place a crafting table; if the spot is blocked (flower raytrace, mob, edge), move and retry. */
+    private static String placeCraftingTableWithRetry(IPlayerContext ctx) {
+        String r = placeCraftingTableBlock(ctx);
+        for (int attempt = 0; attempt < 3 && r.startsWith("ERROR:") && !MistralAgent.isCancelled(); attempt++) {
+            nudgePlayer(ctx);
+            r = placeCraftingTableBlock(ctx);
+        }
+        return r;
+    }
+
     private static BlockHitResult findTablePlacementHit(LocalPlayer p) {
+        // Two passes: prefer a PURE-AIR target first (a flower/grass in the cell makes the
+        // crosshair raytrace hit the plant instead of the support block, so placement aborts);
+        // only fall back to replaceable plants if no clean air spot exists. Both passes reject
+        // cells an entity is standing in (a chicken there makes placement physically fail).
+        for (boolean airOnly : new boolean[]{true, false}) {
+            BlockHitResult hit = findPlacementHitPass(p, airOnly);
+            if (hit != null) {
+                return hit;
+            }
+        }
+        return null;
+    }
+
+    private static BlockHitResult findPlacementHitPass(LocalPlayer p, boolean airOnly) {
         Level level = p.level();
         BlockPos feet = p.blockPosition();
         Direction dir = p.getDirection();
+        // 1) straight ahead, closest first
         for (int dist = 1; dist <= 4; dist++) {
-            BlockPos air = feet.relative(dir, dist);
-            BlockState airSt = level.getBlockState(air);
-            if (!airSt.canBeReplaced()) {
-                continue;
-            }
-            BlockPos below = air.below();
-            BlockState belowSt = level.getBlockState(below);
-            if (belowSt.isFaceSturdy(level, below, Direction.UP)) {
-                Vec3 hitVec = Vec3.atBottomCenterOf(air).relative(Direction.UP, 0.05);
-                return new BlockHitResult(hitVec, Direction.UP, below, false);
+            BlockHitResult h = placementHitAt(p, level, feet.relative(dir, dist), airOnly);
+            if (h != null) {
+                return h;
             }
         }
+        // 2) nearest valid cell in a small box around the player
         Vec3 eye = p.getEyePosition(1f);
         double maxDist = 5.25D * 5.25D;
         BlockHitResult bestHit = null;
@@ -3292,29 +3334,45 @@ public final class AiCrafting {
         for (int y = -1; y <= 1; y++) {
             for (int x = -3; x <= 3; x++) {
                 for (int z = -3; z <= 3; z++) {
-                    BlockPos air = feet.offset(x, y, z);
-                    if (!level.getBlockState(air).canBeReplaced()) {
-                        continue;
-                    }
-                    BlockPos below = air.below();
-                    BlockState belowSt = level.getBlockState(below);
-                    if (!belowSt.isFaceSturdy(level, below, Direction.UP)) {
-                        continue;
-                    }
-                    double dist = eye.distanceToSqr(Vec3.atCenterOf(air));
+                    BlockPos cell = feet.offset(x, y, z);
+                    double dist = eye.distanceToSqr(Vec3.atCenterOf(cell));
                     if (dist > maxDist || dist >= best) {
                         continue;
                     }
-                    Vec3 hitVec = Vec3.atBottomCenterOf(air).relative(Direction.UP, 0.05);
-                    bestHit = new BlockHitResult(hitVec, Direction.UP, below, false);
-                    best = dist;
+                    BlockHitResult h = placementHitAt(p, level, cell, airOnly);
+                    if (h != null) {
+                        bestHit = h;
+                        best = dist;
+                    }
                 }
             }
         }
-        if (bestHit != null) {
-            return bestHit;
+        return bestHit;
+    }
+
+    /** A valid place-against hit for a station at {@code cell}, or null if unsuitable. */
+    private static BlockHitResult placementHitAt(LocalPlayer p, Level level, BlockPos cell, boolean airOnly) {
+        BlockState st = level.getBlockState(cell);
+        if (airOnly ? !st.isAir() : !st.canBeReplaced()) {
+            return null;
         }
-        return null;
+        // never place where the player is standing
+        BlockPos feet = p.blockPosition();
+        if (cell.equals(feet) || cell.equals(feet.above())) {
+            return null;
+        }
+        // support block below must be solid-topped
+        BlockPos below = cell.below();
+        if (!level.getBlockState(below).isFaceSturdy(level, below, Direction.UP)) {
+            return null;
+        }
+        // an entity (mob/player) occupying the cell blocks placement
+        net.minecraft.world.phys.AABB box = new net.minecraft.world.phys.AABB(cell);
+        if (!level.getEntities(p, box, e -> e instanceof net.minecraft.world.entity.LivingEntity).isEmpty()) {
+            return null;
+        }
+        Vec3 hitVec = Vec3.atBottomCenterOf(cell).relative(Direction.UP, 0.05);
+        return new BlockHitResult(hitVec, Direction.UP, below, false);
     }
 
     // -------- internals --------
