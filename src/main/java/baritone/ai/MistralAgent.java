@@ -99,6 +99,8 @@ public final class MistralAgent implements Helper {
             + "NEVER re-craft a tool tier you already hold (don't make a 2nd wooden pickaxe), never craft a crafting table when you already have one, "
             + "and never mine more of a block you already have enough of — check get_state first. open_station automatically walks back to your "
             + "known_stations, so DON'T place or craft a second table/furnace; just call open_station and let it return to the one you built.\n"
+            + "- COBBLESTONE = mine minecraft:stone (cobblestone is the DROP from stone; it does not occur naturally, so in a desert/plains you must mine stone, which may be underground). You need a pickaxe to mine stone.\n"
+            + "- IF YOU DIED: get_state's mission memory shows death_drops at X,Y,Z — that's where ALL your items (pickaxe, tools, iron) dropped. FIRST goto_coords there and collect them (within ~5 minutes) before doing anything else. Without a pickaxe you cannot mine stone/ore. If the death spot is unreachable, re-craft a wooden pickaxe from logs and continue.\n"
             + "- smithing_recipe, stonecutter_cut, anvil_combine, brewing_load_stand require the matching block GUI open first.\n"
             + "- To make a wooden tool from scratch (no tool, no logs): make_wooden_tool(tool). "
             + "If logs are already in inventory: make_wood_tool_from_logs(tool). "

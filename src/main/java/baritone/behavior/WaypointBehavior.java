@@ -18,6 +18,7 @@
 package baritone.behavior;
 
 import baritone.Baritone;
+import baritone.ai.MissionMemory;
 import baritone.api.cache.IWaypoint;
 import baritone.api.cache.Waypoint;
 import baritone.api.event.events.BlockInteractEvent;
@@ -66,6 +67,19 @@ public class WaypointBehavior extends Behavior {
 
     @Override
     public void onPlayerDeath() {
+        // Record where we dropped our items so the AI agent can go collect them (and re-equip) after
+        // respawn instead of continuing tool-less (mining stone with bare hands). Independent of the
+        // death-waypoint setting below.
+        try {
+            net.minecraft.core.BlockPos drop = ctx.playerFeet();
+            String dim = ctx.world().dimension().identifier().toString();
+            MissionMemory.rememberLocation("death_drops",
+                    "I died and dropped ALL my items here. goto these coords to collect them before they "
+                            + "despawn (~5 min), then re-equip your pickaxe/tools. If too far, re-craft basics.",
+                    "death", dim, drop.getX(), drop.getY(), drop.getZ(), "death");
+        } catch (RuntimeException ignored) {
+            // never let memory bookkeeping break the death handler
+        }
         if (!Baritone.settings().doDeathWaypoints.value)
             return;
         Waypoint deathWaypoint = new Waypoint("death", Waypoint.Tag.DEATH, ctx.playerFeet());

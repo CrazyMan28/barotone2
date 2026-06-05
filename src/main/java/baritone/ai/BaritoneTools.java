@@ -1003,6 +1003,15 @@ public final class BaritoneTools {
                 }
             }
         }
+        // Cobblestone doesn't occur naturally — it's the DROP from mining stone. Asking Baritone to
+        // mine "cobblestone" finds zero blocks (especially in a desert/plains), so ALSO target stone
+        // (and deepslate, which drops cobbled_deepslate). This is THE fix for "won't mine down to stone".
+        if (ids.contains("minecraft:cobblestone")) {
+            ids.add("minecraft:stone");
+        }
+        if (ids.contains("minecraft:cobbled_deepslate")) {
+            ids.add("minecraft:deepslate");
+        }
         return new ArrayList<>(ids);
     }
 
@@ -1113,13 +1122,32 @@ public final class BaritoneTools {
             baritone.getMineProcess().cancel();
             return null;
         });
-        int[][] dirs = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}, {1, 1}, {-1, -1}, {1, -1}, {-1, 1}};
-        int[] d = dirs[(n - 1) % dirs.length];
-        int dist = 24 + 8 * n;                       // 32, 40, 48, 56, 64 blocks
-        final int tx = pos.x + d[0] * dist;
-        final int tz = pos.z + d[1] * dist;
-        executeCommand("goto " + tx + " " + tz);     // 2-arg goto = GoalXZ (any Y) -> walks to that column
-        long relDeadline = System.currentTimeMillis() + 30_000L;
+        // Alternate strategies so we escape BOTH common traps:
+        //  - DIG DOWN (odd tries): desert/plains where the stone/ore is buried under sand/dirt and
+        //    Baritone only paths to *exposed* targets. "goto <y>" tunnels straight down to expose it.
+        //  - MOVE SIDEWAYS (even tries): ice/ocean pocket where we must walk to reachable land.
+        boolean digDown = (n % 2 == 1);
+        final boolean down = digDown;
+        final int tx;
+        final int tz;
+        final int ty;
+        String cmd;
+        if (digDown) {
+            ty = Math.max(8, pos.y - 16 - 8 * ((n - 1) / 2)); // deeper each down-attempt: -16, -24, ...
+            tx = pos.x;
+            tz = pos.z;
+            cmd = "goto " + ty;                       // 1-arg goto = GoalYLevel -> digs a shaft down to stone
+        } else {
+            int[][] dirs = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}};
+            int[] d = dirs[((n / 2) - 1 + dirs.length) % dirs.length];
+            int dist = 24 + 8 * n;
+            tx = pos.x + d[0] * dist;
+            tz = pos.z + d[1] * dist;
+            ty = pos.y;
+            cmd = "goto " + tx + " " + tz;            // 2-arg goto = GoalXZ -> walk to that column
+        }
+        executeCommand(cmd);
+        long relDeadline = System.currentTimeMillis() + 45_000L; // digging a shaft can take longer than a walk
         IPathingBehavior pb = baritone.getPathingBehavior();
         try {
             while (System.currentTimeMillis() < relDeadline) {
@@ -1127,11 +1155,16 @@ public final class BaritoneTools {
                     break;
                 }
                 BetterBlockPos cur = feetSafe();
-                if (cur != null && Math.abs(cur.x - tx) + Math.abs(cur.z - tz) <= 6) {
-                    break;                            // arrived near the relocate target
+                if (cur != null) {
+                    if (down && cur.y <= ty + 1) {
+                        break;                        // reached target depth (stone should be exposed now)
+                    }
+                    if (!down && Math.abs(cur.x - tx) + Math.abs(cur.z - tz) <= 6) {
+                        break;                        // arrived near the relocate target
+                    }
                 }
                 if (!pb.isPathing() && !pb.getInProgress().isPresent()) {
-                    break;                            // relocate path finished or itself couldn't path
+                    break;                            // path finished or itself couldn't progress
                 }
                 Thread.sleep(400);
             }
@@ -1907,8 +1940,10 @@ public final class BaritoneTools {
                         cancelBaritoneWork();
                         lastMineCommand = null;
                         return "Mining stuck: couldn't reach the target block after relocating "
-                                + relocations + "x — likely an ice/ocean biome with no reachable stone. "
-                                + "goto solid land (or a different area) and mine again, or mine straight down to stone.";
+                                + relocations + "x (tried digging down AND moving sideways). The target may "
+                                + "be a block that doesn't occur naturally — to get COBBLESTONE, mine "
+                                + "minecraft:stone (it drops cobblestone). Make sure you have a pickaxe, "
+                                + "then mine minecraft:stone; or goto a different area.";
                     }
                     relocations++;
                     String resume = lastMineCommand;
