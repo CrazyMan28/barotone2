@@ -40,6 +40,30 @@ SYSTEM_PROMPT = (
 )
 
 
+def rebalance(records, rng):
+    """v6.1: global per-class caps over the COMBINED corpus. v4 and v6 both regressed the same
+    way - new data sources were added without re-balancing, so the grown pile drowned the
+    bench-critical skills. Capping at the corpus level means new sources can add knowledge but
+    never dominate. Caps mirror the proportions that made v5r2 champion."""
+    from collections import defaultdict
+    groups = defaultdict(list)
+    for r in records:
+        c = r["calls"][0]
+        name = c["name"]
+        if name == "mine" and len(c.get("arguments", {}).get("blocks", [])) > 1:
+            name = "mine_wood"  # generic-wood mining is its own balanced class
+        groups[name].append(r)
+    out = []
+    for name, items in sorted(groups.items()):
+        cap = 110 if name == "escalate" else (200 if name == "mine_wood" else 380)
+        if len(items) > cap:
+            items = rng.sample(items, cap)
+        out.extend(items)
+    dropped = len(records) - len(out)
+    print(f"global rebalance: {len(records)} -> {len(out)} records ({dropped} capped away)")
+    return out
+
+
 def load_records():
     records = []
     for path in DATA_FILES:
@@ -53,7 +77,9 @@ def load_records():
                     records.append(r)
             except json.JSONDecodeError:
                 pass
-    random.Random(7).shuffle(records)
+    rng = random.Random(7)
+    records = rebalance(records, rng)
+    rng.shuffle(records)
     return records
 
 

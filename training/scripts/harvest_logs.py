@@ -52,6 +52,22 @@ def strip_preamble(calls):
     return calls  # all-preamble missions (e.g. "what do you have") keep get_state as the label
 
 
+# v6.1 label audit: a goal like "mine wood" whose recorded first action is goto_block (the agent
+# WALKED to the tree before mining) teaches walking instead of mining. When the goal clearly wants
+# resources and a matching action appears later in the sequence, label from that action instead.
+RESOURCE_INTENT = ("mine", "get", "chop", "grab", "collect", "gather", "dig", "harvest", "farm up")
+ACTION_CALLS = {"mine", "mine_logs_then_make_wood_tool", "farm", "make_wood_tool_from_logs"}
+
+
+def audit_label(goal, calls):
+    g = goal.lower()
+    if calls and calls[0]["name"].startswith("goto") and any(w in g for w in RESOURCE_INTENT):
+        for i, c in enumerate(calls):
+            if c["name"] in ACTION_CALLS:
+                return calls[i:]
+    return calls
+
+
 def iter_lines(path):
     opener = gzip.open if path.endswith(".gz") else open
     try:
@@ -116,7 +132,7 @@ def main():
             for goal, calls in harvest_file(path):
                 if goal.lower() in SKIP_GOALS or not calls:
                     continue
-                calls = strip_preamble(calls)
+                calls = audit_label(goal, strip_preamble(calls))
                 rec = {"goal": goal, "calls": calls[:6], "source": "log:" + os.path.basename(path)}
                 key = json.dumps([rec["goal"], rec["calls"]], sort_keys=True)
                 if key not in seen:
