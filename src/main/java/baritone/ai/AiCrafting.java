@@ -2518,6 +2518,163 @@ public final class AiCrafting {
         return opened.startsWith("WARN:") ? placed + " " + opened : opened;
     }
 
+    /**
+     * Generic "ensure a usable station is open" for non-crafting-table stations
+     * (furnace, blast_furnace, smoker, brewing_stand, stonecutter, smithing_table,
+     * anvil). Each call: open a reachable one (radius 6) if present, else place one
+     * from inventory RIGHT NEXT to the player and open it. Never walks to a distant
+     * cached block — that's the caller's last-resort goto. {@code menuOpen} returns
+     * true when the correct station GUI is showing.
+     */
+    public static String openNearbyOrPlaceStation(IPlayerContext ctx,
+            net.minecraft.world.level.block.Block block,
+            net.minecraft.world.item.Item item,
+            String displayName,
+            java.util.concurrent.Callable<Boolean> menuOpen) {
+        if (stationMenuOpen(menuOpen)) {
+            return "Already open: " + displayName + ".";
+        }
+        // 1) open a reachable existing one
+        BlockPos near = onClient(ctx, () -> findReachableStation(ctx.player(), 6, block));
+        if (near != null) {
+            String r = openStationAtPositionVisible(ctx, near, displayName, menuOpen);
+            if (r.startsWith("Opened") || r.startsWith("Already")) {
+                return r;
+            }
+        }
+        // 2) place one from inventory next to the player, then open it
+        boolean hasItem = Boolean.TRUE.equals(onClient(ctx,
+                () -> findItemSlot(ctx.player().inventoryMenu, item) >= 0));
+        if (!hasItem) {
+            return "WARN: No reachable " + displayName + " within 6 blocks and no item to place one.";
+        }
+        BlockPos placed = placeStationBlock(ctx, item, block, displayName);
+        if (placed == null) {
+            return "ERROR: Could not place " + displayName + " (no spot in reach).";
+        }
+        sleepAi(350);
+        String opened = openStationAtPositionVisible(ctx, placed, displayName, menuOpen);
+        if (opened.startsWith("Opened") || opened.startsWith("Already")) {
+            return opened;
+        }
+        return "Placed " + displayName + " at " + placed + " but could not open its GUI yet (" + opened + ").";
+    }
+
+    private static boolean stationMenuOpen(java.util.concurrent.Callable<Boolean> menuOpen) {
+        try {
+            return Boolean.TRUE.equals(menuOpen.call());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static BlockPos findReachableStation(LocalPlayer p, int radius,
+            net.minecraft.world.level.block.Block block) {
+        Level level = p.level();
+        BlockPos origin = p.blockPosition();
+        double reach = 5.25D;
+        double best = Double.MAX_VALUE;
+        BlockPos bestPos = null;
+        Vec3 eye = p.getEyePosition(1f);
+        for (int y = -2; y <= 2; y++) {
+            for (int x = -radius; x <= radius; x++) {
+                for (int z = -radius; z <= radius; z++) {
+                    BlockPos pos = origin.offset(x, y, z);
+                    if (!level.getBlockState(pos).is(block)) {
+                        continue;
+                    }
+                    double dist = eye.distanceToSqr(Vec3.atCenterOf(pos));
+                    if (dist <= reach * reach && dist < best) {
+                        best = dist;
+                        bestPos = pos;
+                    }
+                }
+            }
+        }
+        return bestPos;
+    }
+
+    /** Place {@code item} against a support block adjacent to the player; returns the placed pos or null. */
+    private static BlockPos placeStationBlock(IPlayerContext ctx,
+            net.minecraft.world.item.Item item,
+            net.minecraft.world.level.block.Block block,
+            String displayName) {
+        TablePlacementPlan plan = onClient(ctx, () -> {
+            LocalPlayer p = ctx.player();
+            p.closeContainer();
+            if (!(p.containerMenu instanceof InventoryMenu)) {
+                return TablePlacementPlan.error("ERROR: expected player inventory menu.");
+            }
+            int slot = findItemSlot(p.inventoryMenu, item);
+            if (slot < 0) {
+                return TablePlacementPlan.error("ERROR: no " + displayName + " item.");
+            }
+            int hotbar = p.getInventory().getSelectedSlot();
+            ctx.playerController().windowClick(p.inventoryMenu.containerId, slot, hotbar, ClickType.SWAP, p);
+            p.getInventory().setSelectedSlot(hotbar);
+            BlockHitResult hit = findTablePlacementHit(p);
+            if (hit == null) {
+                return TablePlacementPlan.error("ERROR: no spot to place against.");
+            }
+            return TablePlacementPlan.ok(hit, hit.getBlockPos().relative(hit.getDirection()));
+        });
+        if (plan.error != null) {
+            return null;
+        }
+        if (!visiblyLookAt(ctx, plan.hit.getLocation(), 36) || !waitCrosshairOnBlock(ctx, plan.hit.getBlockPos(), 12, 50)) {
+            return null;
+        }
+        onClient(ctx, () -> {
+            Minecraft mc = Minecraft.getInstance();
+            LocalPlayer p = ctx.player();
+            if (!p.getInventory().getSelectedItem().is(item)) {
+                int slot = findItemSlot(p.inventoryMenu, item);
+                if (slot >= 0) {
+                    int hotbar = p.getInventory().getSelectedSlot();
+                    ctx.playerController().windowClick(p.inventoryMenu.containerId, slot, hotbar, ClickType.SWAP, p);
+                    p.getInventory().setSelectedSlot(hotbar);
+                }
+            }
+            mc.gameMode.useItemOn(p, InteractionHand.MAIN_HAND, plan.hit);
+            p.swing(InteractionHand.MAIN_HAND);
+            return null;
+        });
+        return waitForBlock(ctx, plan.placed, block, 30, 100) ? plan.placed : null;
+    }
+
+    /** Visible look at the block on each face and right-click until the station GUI opens. */
+    private static String openStationAtPositionVisible(IPlayerContext ctx, BlockPos pos, String displayName,
+            java.util.concurrent.Callable<Boolean> menuOpen) {
+        if (stationMenuOpen(menuOpen)) {
+            return "Already open: " + displayName + ".";
+        }
+        for (int attempt = 0; attempt < 3; attempt++) {
+            for (Direction face : Direction.values()) {
+                Vec3 hitVec = Vec3.atCenterOf(pos).add(face.getStepX() * 0.52, face.getStepY() * 0.52, face.getStepZ() * 0.52);
+                if (!visiblyLookAt(ctx, hitVec, 24) || !waitCrosshairOnBlock(ctx, pos, 8, 50)) {
+                    continue;
+                }
+                onClient(ctx, () -> {
+                    Minecraft mc = Minecraft.getInstance();
+                    LocalPlayer p = ctx.player();
+                    p.closeContainer();
+                    BlockHitResult hit = new BlockHitResult(hitVec, face.getOpposite(), pos, false);
+                    mc.gameMode.useItemOn(p, InteractionHand.MAIN_HAND, hit);
+                    p.swing(InteractionHand.MAIN_HAND);
+                    return null;
+                });
+                for (int wait = 0; wait < 6; wait++) {
+                    if (stationMenuOpen(menuOpen)) {
+                        return "Opened " + displayName + ".";
+                    }
+                    sleepAi(75);
+                }
+            }
+            sleepAi(120);
+        }
+        return "WARN: could not open " + displayName + " GUI.";
+    }
+
     private static String openReachableCraftingTable(IPlayerContext ctx) {
         if (Boolean.TRUE.equals(onClient(ctx, () -> ctx.player().containerMenu instanceof CraftingMenu))) {
             return "Already open: crafting table.";

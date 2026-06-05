@@ -189,8 +189,11 @@ public final class BaritoneTools {
                         + "contents if it cannot open or place one. Use before planning crafting that relies on stored items.",
                 params()));
         arr.add(fn("open_station",
-                "Path to and open a nearby station/container GUI. Supported station values: crafting_table, furnace, "
-                        + "blast_furnace, smoker, brewing_stand, stonecutter, smithing_table, anvil.",
+                "Open a station GUI. Opens a reachable one within 6 blocks, ELSE places one from your inventory right next "
+                        + "to you and opens that (so it's never far away). Only travels to a distant cached station if you "
+                        + "have none nearby and no item to place. Supported: crafting_table, furnace, blast_furnace, smoker, "
+                        + "brewing_stand, stonecutter, smithing_table, anvil. (Have the station's item in inventory for the "
+                        + "place-here path.)",
                 params(
                         param("station", "string", "Station type to open.", true),
                         param("max_wait_seconds", "integer", "Wait cap for pathing/opening (default 90, max 600).", false)
@@ -716,6 +719,9 @@ public final class BaritoneTools {
     // -------- individual tool implementations --------
 
     private boolean executeCommand(String command) {
+        if (command == null || command.trim().isEmpty()) {
+            return false; // never dispatch a blank command
+        }
         return AiCrafting.onClient(ctx, () -> commands.execute(command));
     }
 
@@ -1566,14 +1572,46 @@ public final class BaritoneTools {
         if (menuMatchesOnClient(station)) {
             return "Already open: " + station.displayName + ".";
         }
+        // Make sure placement is allowed before we try to put a station down.
+        BaritoneAPI.getSettings().allowPlace.value = true;
+
+        // Try LOCAL first for every station: open a reachable one, else PLACE one
+        // from inventory right next to the player. This is the re-plan/re-make path —
+        // we never walk to a far cached station while we can make one here.
+        String local;
         if (station.kind == StationKind.CRAFTING_TABLE) {
-            String local = AiCrafting.openNearbyOrPlaceCraftingTable(ctx);
-            if (local.startsWith("Opened") || local.startsWith("Already")) {
-                return local;
+            local = AiCrafting.openNearbyOrPlaceCraftingTable(ctx);
+        } else {
+            net.minecraft.world.level.block.Block block = net.minecraft.core.registries.BuiltInRegistries.BLOCK
+                    .get(net.minecraft.resources.Identifier.tryParse(station.blockId))
+                    .map(net.minecraft.core.Holder.Reference::value).orElse(null);
+            net.minecraft.world.item.Item item = block == null ? null : block.asItem();
+            if (block == null || item == null || item == net.minecraft.world.item.Items.AIR) {
+                local = "WARN: No reachable " + station.displayName + " and no item to place one.";
+            } else {
+                local = AiCrafting.openNearbyOrPlaceStation(ctx, block, item, station.displayName,
+                        () -> menuMatchesOnClient(station));
             }
         }
+        if (local.startsWith("Opened") || local.startsWith("Already")) {
+            return local;
+        }
+        // We placed one (or one is nearby) but the GUI didn't open this instant —
+        // do NOT path to a distant cached station. Let the agent retry locally.
+        if (local.startsWith("Placed")) {
+            return local + " Call open_station again to open it.";
+        }
+        // Only when there is genuinely nothing local (none within reach AND no item to
+        // place) do we travel to a known cached station as a last resort.
+        boolean noLocalOption = local.contains("no item to place") || local.contains("no crafting table item");
+
         int seconds = (a.has("max_wait_seconds") && !a.get("max_wait_seconds").isJsonNull())
                 ? Math.min(600, Math.max(1, a.get("max_wait_seconds").getAsInt())) : 90;
+        if (!noLocalOption) {
+            // local attempt failed for another reason (e.g. couldn't open GUI after placing) —
+            // surface it rather than wandering off to a far block.
+            return local;
+        }
 
         Settings settings = BaritoneAPI.getSettings();
         boolean prevRightClick = settings.rightClickContainerOnArrival.value;
@@ -1610,7 +1648,12 @@ public final class BaritoneTools {
     }
 
     private String runRaw(String cmd) {
-        String trimmed = cmd.trim();
+        String trimmed = cmd == null ? "" : cmd.trim();
+        // Never dispatch an empty/blank command — keeps a stray run_command("") from
+        // doing anything and avoids confusing "Unknown or incomplete command" noise.
+        if (trimmed.isEmpty()) {
+            return "ERROR: empty command — nothing to run.";
+        }
         String low = trimmed.toLowerCase(java.util.Locale.US);
         if (low.startsWith("craft ") || low.equals("craft")) {
             return "ERROR: There is no Baritone 'craft' command. Use make_wooden_tool for axe/pick from scratch, "
