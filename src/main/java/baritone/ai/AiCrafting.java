@@ -1880,6 +1880,31 @@ public final class AiCrafting {
      * Deposit one input (and optionally one fuel) into an open furnace / smoker / blast furnace, wait for output, then shift-click result.
      * Vanilla campfires have no container screen. If {@code recipe_id} is non-blank, validates the input stack against that cooking recipe.
      */
+    /** Mining an ore drops a raw item; smelting takes the raw item, not the ore block. Map them. */
+    private static String smeltInputAlias(String id) {
+        if (id == null) {
+            return null;
+        }
+        String s = id.toLowerCase(Locale.ROOT).replace("minecraft:", "").trim();
+        switch (s) {
+            case "iron_ore":
+            case "deepslate_iron_ore":
+            case "raw_iron_block":
+                return "minecraft:raw_iron";
+            case "gold_ore":
+            case "deepslate_gold_ore":
+            case "nether_gold_ore":
+            case "raw_gold_block":
+                return "minecraft:raw_gold";
+            case "copper_ore":
+            case "deepslate_copper_ore":
+            case "raw_copper_block":
+                return "minecraft:raw_copper";
+            default:
+                return id;
+        }
+    }
+
     public static String furnaceSmelt(
             IPlayerContext ctx,
             String inputItemIdRaw,
@@ -1887,13 +1912,16 @@ public final class AiCrafting {
             String recipeIdRawOptional,
             int maxWaitSeconds) {
         int capWait = Math.min(600, Math.max(1, maxWaitSeconds));
+        // Mining an ORE drops a RAW item (iron_ore -> raw_iron), so smelting "iron_ore" would find
+        // nothing in inventory. Map ore ids to the raw item you actually hold. THE fix for "can't use oven".
+        final String inputId0 = smeltInputAlias(inputItemIdRaw);
         String setup = onClient(ctx, () -> {
             LocalPlayer p = ctx.player();
             AbstractContainerMenu raw = p.containerMenu;
             if (!(raw instanceof AbstractFurnaceMenu menu)) {
                 return "ERROR: Open a furnace, smoker, or blast furnace GUI (vanilla campfire has no GUI).";
             }
-            Identifier inputId = Identifier.tryParse(normalizeNamespacedId(inputItemIdRaw));
+            Identifier inputId = Identifier.tryParse(normalizeNamespacedId(inputId0));
             if (inputId == null) {
                 return "ERROR: Bad input_item id.";
             }
