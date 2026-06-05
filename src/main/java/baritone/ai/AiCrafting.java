@@ -2632,7 +2632,7 @@ public final class AiCrafting {
         if (!visiblyLookAt(ctx, plan.hit.getLocation(), 36) || !waitCrosshairOnBlock(ctx, plan.hit.getBlockPos(), 12, 50)) {
             return null;
         }
-        onClient(ctx, () -> {
+        BlockPos actualPlaced = onClient(ctx, () -> {
             Minecraft mc = Minecraft.getInstance();
             LocalPlayer p = ctx.player();
             if (!p.getInventory().getSelectedItem().is(item)) {
@@ -2643,11 +2643,25 @@ public final class AiCrafting {
                     p.getInventory().setSelectedSlot(hotbar);
                 }
             }
-            mc.gameMode.useItemOn(p, InteractionHand.MAIN_HAND, plan.hit);
+            BlockHitResult useHit = realHitOrPlanned(p, plan.hit);
+            mc.gameMode.useItemOn(p, InteractionHand.MAIN_HAND, useHit);
             p.swing(InteractionHand.MAIN_HAND);
-            return null;
+            return useHit.getBlockPos().relative(useHit.getDirection());
         });
-        return waitForBlock(ctx, plan.placed, block, 30, 100) ? plan.placed : null;
+        return waitForBlock(ctx, actualPlaced, block, 30, 100) ? actualPlaced : null;
+    }
+
+    /** Prefer the REAL crosshair block-hit (the server accepts what the player actually looks at)
+     *  over a hand-built hit, as long as it would place into an empty cell. */
+    private static BlockHitResult realHitOrPlanned(LocalPlayer p, BlockHitResult planned) {
+        net.minecraft.world.phys.HitResult hr = Minecraft.getInstance().hitResult;
+        if (hr instanceof BlockHitResult bhr && hr.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
+            BlockPos target = bhr.getBlockPos().relative(bhr.getDirection());
+            if (p.level().getBlockState(target).canBeReplaced()) {
+                return bhr;
+            }
+        }
+        return planned;
     }
 
     /** Visible look at the block on each face and right-click until the station GUI opens. */
@@ -2767,6 +2781,7 @@ public final class AiCrafting {
         if (!waitCrosshairOnBlock(ctx, plan.hit.getBlockPos(), 12, 50)) {
             return "ERROR: Crosshair was not on crafting table placement support block after visible turn.";
         }
+        BlockPos[] placedAt = {plan.placed};
         String click = onClient(ctx, () -> {
             Minecraft mc = Minecraft.getInstance();
             LocalPlayer p = ctx.player();
@@ -2779,7 +2794,9 @@ public final class AiCrafting {
                 ctx.playerController().windowClick(p.inventoryMenu.containerId, slot, hotbar, ClickType.SWAP, p);
                 p.getInventory().setSelectedSlot(hotbar);
             }
-            InteractionResult res = mc.gameMode.useItemOn(p, InteractionHand.MAIN_HAND, plan.hit);
+            BlockHitResult useHit = realHitOrPlanned(p, plan.hit);
+            placedAt[0] = useHit.getBlockPos().relative(useHit.getDirection());
+            InteractionResult res = mc.gameMode.useItemOn(p, InteractionHand.MAIN_HAND, useHit);
             p.swing(InteractionHand.MAIN_HAND);
             return "CLICK: " + res;
         });
@@ -2787,13 +2804,13 @@ public final class AiCrafting {
             lastPlacedCraftingTablePos = null;
             return click;
         }
-        if (!waitForBlock(ctx, plan.placed, Blocks.CRAFTING_TABLE, 30, 100)) {
+        if (!waitForBlock(ctx, placedAt[0], Blocks.CRAFTING_TABLE, 30, 100)) {
             // Never leave the remembered position pointing at a spot with no table —
             // downstream open/craft loops would chase the phantom for minutes.
             lastPlacedCraftingTablePos = null;
-            return "ERROR: Crafting table did not appear at " + plan.placed + " after visible right-click (" + click + ").";
+            return "ERROR: Crafting table did not appear at " + placedAt[0] + " after visible right-click (" + click + ").";
         }
-        lastPlacedCraftingTablePos = plan.placed;
+        lastPlacedCraftingTablePos = placedAt[0];
         return "Placed crafting table (" + click.substring("CLICK: ".length()) + ") at ~" + lastPlacedCraftingTablePos + ".";
     }
 

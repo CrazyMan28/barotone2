@@ -1631,13 +1631,19 @@ public final class BaritoneTools {
         // place) do we travel to a known cached station as a last resort.
         boolean noLocalOption = local.contains("no item to place") || local.contains("no crafting table item");
 
-        int seconds = (a.has("max_wait_seconds") && !a.get("max_wait_seconds").isJsonNull())
-                ? Math.min(600, Math.max(1, a.get("max_wait_seconds").getAsInt())) : 90;
         if (!noLocalOption) {
             // local attempt failed for another reason (e.g. couldn't open GUI after placing) —
             // surface it rather than wandering off to a far block.
             return local;
         }
+        // No station nearby and nothing to place. For a crafting table, don't burn 90s
+        // walking to a far cached one — tell the agent to make the item first.
+        if (station.kind == StationKind.CRAFTING_TABLE) {
+            return "ERROR: No crafting table nearby and none in inventory. Craft one first "
+                    + "(craft_planks_from_logs, then craft_crafting_table), then call open_station again.";
+        }
+        int seconds = (a.has("max_wait_seconds") && !a.get("max_wait_seconds").isJsonNull())
+                ? Math.min(600, Math.max(1, a.get("max_wait_seconds").getAsInt())) : 90;
 
         Settings settings = BaritoneAPI.getSettings();
         boolean prevRightClick = settings.rightClickContainerOnArrival.value;
