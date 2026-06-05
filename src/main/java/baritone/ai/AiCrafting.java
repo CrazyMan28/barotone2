@@ -2508,7 +2508,7 @@ public final class AiCrafting {
         }
         // Homestead: return to a REGISTERED table (any distance up to 96 blocks) and re-use it before
         // ever placing/crafting a new one. This is what stops the agent scattering tables it loses.
-        BlockPos reg = walkToRegisteredStation(ctx, Blocks.CRAFTING_TABLE, "crafting_table", 96, 30_000L);
+        BlockPos reg = walkToRegisteredStation(ctx, Blocks.CRAFTING_TABLE, "crafting_table", 160, 120_000L);
         if (reg != null) {
             String r = openTableAtPositionVisible(ctx, reg);
             if (r.startsWith("Opened") || r.startsWith("Already")) {
@@ -2525,6 +2525,12 @@ public final class AiCrafting {
         }
         boolean hasTable = Boolean.TRUE.equals(onClient(ctx, () -> findItemSlot(ctx.player().containerMenu, Items.CRAFTING_TABLE) >= 0));
         if (!hasTable) {
+            String regCoords = nearestRegisteredStationCoords(ctx, "crafting_table");
+            if (regCoords != null) {
+                return "Your crafting table is at " + regCoords + " (you already built one). "
+                        + "goto_coords " + regCoords + ", then call open_station crafting_table again. "
+                        + "Do NOT craft another table.";
+            }
             return "ERROR: No reachable crafting table and no crafting table item in inventory.";
         }
         String placed = placeCraftingTableWithRetry(ctx);
@@ -2565,7 +2571,7 @@ public final class AiCrafting {
         // 1a) Homestead: return to a REGISTERED station of this type (any distance up to 96 blocks)
         // and re-use it before placing a second one (a 2nd furnace strands the iron in the 1st).
         if (stationType != null && !stationType.isEmpty()) {
-            BlockPos reg = walkToRegisteredStation(ctx, block, stationType, 96, 30_000L);
+            BlockPos reg = walkToRegisteredStation(ctx, block, stationType, 160, 120_000L);
             if (reg != null) {
                 String r = openStationAtPositionVisible(ctx, reg, displayName, menuOpen);
                 if (r.startsWith("Opened") || r.startsWith("Already")) {
@@ -2587,6 +2593,11 @@ public final class AiCrafting {
         boolean hasItem = Boolean.TRUE.equals(onClient(ctx,
                 () -> findItemSlot(ctx.player().inventoryMenu, item) >= 0));
         if (!hasItem) {
+            String reg = stationType == null ? null : nearestRegisteredStationCoords(ctx, stationType);
+            if (reg != null) {
+                return "Your " + displayName + " is at " + reg + " (you already built one). "
+                        + "goto_coords " + reg + ", then call open_station again. Do NOT place another " + displayName + ".";
+            }
             return "WARN: No reachable " + displayName + " within 6 blocks and no item to place one.";
         }
         BlockPos placed = placeStationBlock(ctx, item, block, displayName);
@@ -3025,6 +3036,34 @@ public final class AiCrafting {
             }
         }
         return null;
+    }
+
+    /** Nearest registered station of {@code type} as "x,y,z" (this dimension), or null if none. */
+    private static String nearestRegisteredStationCoords(IPlayerContext ctx, String type) {
+        return onClient(ctx, () -> {
+            LocalPlayer p = ctx.player();
+            if (p == null) {
+                return null;
+            }
+            String dim;
+            try {
+                dim = p.level().dimension().identifier().toString();
+            } catch (RuntimeException e) {
+                dim = "";
+            }
+            List<MissionMemory.StationRecord> recs = MissionMemory.findStations(type, dim);
+            BlockPos feet = p.blockPosition();
+            MissionMemory.StationRecord best = null;
+            double bestDist = Double.MAX_VALUE;
+            for (MissionMemory.StationRecord r : recs) {
+                double d = feet.distSqr(new BlockPos(r.x, r.y, r.z));
+                if (d < bestDist) {
+                    bestDist = d;
+                    best = r;
+                }
+            }
+            return best == null ? null : best.x + "," + best.y + "," + best.z;
+        });
     }
 
     private static void forgetStationAt(IPlayerContext ctx, String type, BlockPos pos) {

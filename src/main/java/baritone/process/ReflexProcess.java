@@ -393,19 +393,28 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         if (weaponSlot >= 0 && player.getInventory().getSelectedSlot() != weaponSlot) {
             player.getInventory().setSelectedSlot(weaponSlot);
         }
-        Rotation rot = RotationUtils.calcRotationFromVec3d(ctx.playerHead(),
-                target.position().add(0, target.getBbHeight() * 0.6D, 0), ctx.playerRotations());
+        // Aim at the CENTER of the target's hitbox from our eyes — works for a mob above, below
+        // (zombie in the hole with us), or beside us.
+        Rotation rot = RotationUtils.calcRotationFromVec3d(player.getEyePosition(1F),
+                target.getBoundingBox().getCenter(), ctx.playerRotations());
+        // SNAP the look directly THIS tick. updateTarget() asks for a *smoothed* turn that hasn't
+        // landed by the time we swing — that's why it was "looking the wrong way" while attacking.
+        // Setting the player's rotation here makes the body face the mob before the hit, every tick.
+        player.setYRot(rot.getYaw());
+        player.setXRot(rot.getPitch());
+        player.yBodyRot = rot.getYaw();
+        player.yHeadRot = rot.getYaw();
         baritone.getLookBehavior().updateTarget(rot, true);
         double dist = player.distanceTo(target);
-        if (dist <= 3.5D) {
-            if (player.getAttackStrengthScale(0F) >= 0.95F) {
+        if (dist <= 3.6D) {
+            if (player.getAttackStrengthScale(0F) >= 0.9F) {
                 ctx.minecraft().gameMode.attack(player, target);
                 player.swing(net.minecraft.world.InteractionHand.MAIN_HAND);
             }
             return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
         }
-        // A ranged skeleton won't come to us — close the gap. Rush a near target directly (works in
-        // tight caves where pathing is slow); path to a farther one with GoalNear.
+        // Not in reach yet — close the gap. Rush a near target directly (works in tight holes/caves
+        // where pathing is slow); path to a farther one with GoalNear. We're already facing it.
         if (dist <= 6D) {
             baritone.getInputOverrideHandler().setInputForceState(Input.MOVE_FORWARD, true);
             baritone.getInputOverrideHandler().setInputForceState(Input.SPRINT, true);
