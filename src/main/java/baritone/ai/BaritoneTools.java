@@ -73,6 +73,11 @@ public final class BaritoneTools {
     private final ICommandManager commands;
     private volatile boolean forbidExplore;
     private volatile String lastProblem = "";
+    /** Last `mine ...` command issued, so the wait loop can relocate + re-issue it when mining
+     *  gets stuck (e.g. an ice/ocean biome with no reachable stone). */
+    private volatile String lastMineCommand;
+    private static final long MINE_STUCK_MS = 30_000L;   // no movement + no item gain this long = stuck
+    private static final int MINE_MAX_RELOCATES = 5;     // give up after this many moves
 
     public BaritoneTools(IBaritone baritone) {
         this.baritone = baritone;
@@ -1028,9 +1033,81 @@ public final class BaritoneTools {
         for (String id : expanded) {
             cmd.append(' ').append(id);
         }
-        executeCommand(cmd.toString());
+        lastMineCommand = cmd.toString();   // remembered so wait_until_idle can relocate + retry if stuck
+        executeCommand(lastMineCommand);
         return "Mining: " + cmd.substring(5).trim()
                 + (expanded.size() > blocks.size() ? " (added deepslate/stone ore pair where applicable)" : "");
+    }
+
+    /** Player feet position read on the client thread (null if not in world). */
+    private BetterBlockPos feetSafe() {
+        return AiCrafting.onClient(ctx, () -> {
+            LocalPlayer p = ctx.player();
+            return p == null ? null : ctx.playerFeet();
+        });
+    }
+
+    /** Total item count across the whole inventory — a cheap "am I still collecting?" progress signal. */
+    private int countAllInventoryItems() {
+        Integer n = AiCrafting.onClient(ctx, () -> {
+            LocalPlayer p = ctx.player();
+            if (p == null) {
+                return 0;
+            }
+            int total = 0;
+            for (int i = 0; i < p.getInventory().getContainerSize(); i++) {
+                total += p.getInventory().getItem(i).getCount();
+            }
+            return total;
+        });
+        return n == null ? 0 : n;
+    }
+
+    /**
+     * Walk to a fresh X,Z a couple dozen blocks away so a stuck mine can find a reachable target.
+     * Direction rotates and distance grows with each relocation so we fan out of a bad spot (e.g. a
+     * frozen-ocean pocket). The stalled mine is cancelled first; the relocate goal is released after.
+     */
+    private void relocateForMining(int n) {
+        BetterBlockPos pos = feetSafe();
+        if (pos == null) {
+            return;
+        }
+        AiCrafting.onClient(ctx, () -> {
+            baritone.getMineProcess().cancel();
+            return null;
+        });
+        int[][] dirs = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}, {1, 1}, {-1, -1}, {1, -1}, {-1, 1}};
+        int[] d = dirs[(n - 1) % dirs.length];
+        int dist = 24 + 8 * n;                       // 32, 40, 48, 56, 64 blocks
+        final int tx = pos.x + d[0] * dist;
+        final int tz = pos.z + d[1] * dist;
+        executeCommand("goto " + tx + " " + tz);     // 2-arg goto = GoalXZ (any Y) -> walks to that column
+        long relDeadline = System.currentTimeMillis() + 30_000L;
+        IPathingBehavior pb = baritone.getPathingBehavior();
+        try {
+            while (System.currentTimeMillis() < relDeadline) {
+                if (MistralAgent.isCancelled()) {
+                    break;
+                }
+                BetterBlockPos cur = feetSafe();
+                if (cur != null && Math.abs(cur.x - tx) + Math.abs(cur.z - tz) <= 6) {
+                    break;                            // arrived near the relocate target
+                }
+                if (!pb.isPathing() && !pb.getInProgress().isPresent()) {
+                    break;                            // relocate path finished or itself couldn't path
+                }
+                Thread.sleep(400);
+            }
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        } finally {
+            AiCrafting.onClient(ctx, () -> {
+                baritone.getCustomGoalProcess().onLostControl();
+                baritone.getPathingBehavior().cancelEverything();
+                return null;
+            });
+        }
     }
 
     /**
@@ -1715,6 +1792,13 @@ public final class BaritoneTools {
         IPathingBehavior pb = baritone.getPathingBehavior();
         long deadline = seconds == 0 ? Long.MAX_VALUE : System.currentTimeMillis() + seconds * 1000L;
         long start = System.currentTimeMillis();
+        // Stuck-mining watchdog: if a mine is active but the player neither moves nor gains items for
+        // MINE_STUCK_MS, it can't reach any target (classic ice/ocean biome: cobblestone is all under
+        // water/ice, so Baritone just blacklists "unreachable" forever). Relocate and retry the mine.
+        int relocations = 0;
+        BetterBlockPos anchor = feetSafe();
+        int anchorItems = countAllInventoryItems();
+        long anchorTime = System.currentTimeMillis();
         try {
             Thread.sleep(300);
             while (System.currentTimeMillis() < deadline) {
@@ -1724,6 +1808,37 @@ public final class BaritoneTools {
                 if (!pb.isPathing() && !pb.getInProgress().isPresent() && pb.getGoal() == null
                         && !baritoneProcessesBusy()) {
                     return "Idle after " + ((System.currentTimeMillis() - start) / 1000) + "s.";
+                }
+                // progress = moved horizontally >5 blocks OR picked anything up (resets the stuck timer).
+                // Horizontal only, so the anti-drown "surfacing for air" bob doesn't count as progress.
+                BetterBlockPos cur = feetSafe();
+                int items = countAllInventoryItems();
+                boolean moved = cur != null && anchor != null
+                        && Math.abs(cur.x - anchor.x) + Math.abs(cur.z - anchor.z) > 5;
+                if (moved || items > anchorItems) {
+                    anchor = cur;
+                    anchorItems = items;
+                    anchorTime = System.currentTimeMillis();
+                }
+                if (lastMineCommand != null && baritone.getMineProcess().isActive()
+                        && System.currentTimeMillis() - anchorTime > MINE_STUCK_MS) {
+                    if (relocations >= MINE_MAX_RELOCATES) {
+                        cancelBaritoneWork();
+                        lastMineCommand = null;
+                        return "Mining stuck: couldn't reach the target block after relocating "
+                                + relocations + "x — likely an ice/ocean biome with no reachable stone. "
+                                + "goto solid land (or a different area) and mine again, or mine straight down to stone.";
+                    }
+                    relocations++;
+                    String resume = lastMineCommand;
+                    relocateForMining(relocations);
+                    if (MistralAgent.isCancelled()) {
+                        return "Wait cancelled (ai stop).";
+                    }
+                    executeCommand(resume);   // start mining again from the new spot
+                    anchor = feetSafe();
+                    anchorItems = countAllInventoryItems();
+                    anchorTime = System.currentTimeMillis();
                 }
                 Thread.sleep(400);
             }
