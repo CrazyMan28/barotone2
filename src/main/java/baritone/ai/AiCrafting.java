@@ -2506,6 +2506,15 @@ public final class AiCrafting {
         if (nearby.startsWith("Opened") || nearby.startsWith("Already")) {
             return nearby;
         }
+        // None in immediate reach: walk to a table we placed earlier (e.g. stepped off it while
+        // mining) and re-use it before placing a second one. Same fix as the furnace re-open path.
+        BlockPos walked = walkToNearbyStation(ctx, Blocks.CRAFTING_TABLE, 32);
+        if (walked != null) {
+            String r = openTableAtPositionVisible(ctx, walked);
+            if (r.startsWith("Opened") || r.startsWith("Already")) {
+                return r;
+            }
+        }
         boolean hasTable = Boolean.TRUE.equals(onClient(ctx, () -> findItemSlot(ctx.player().containerMenu, Items.CRAFTING_TABLE) >= 0));
         if (!hasTable) {
             return "ERROR: No reachable crafting table and no crafting table item in inventory.";
