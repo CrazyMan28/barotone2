@@ -2965,7 +2965,9 @@ public final class AiCrafting {
         p.setXRot(pitch);
     }
 
-    private static boolean visiblyLookAt(IPlayerContext ctx, Vec3 target, int maxTicks) {
+    // package-visible so BaritoneTools (entity interaction) can reuse the
+    // human-like aim-before-click turn instead of snapping the head.
+    static boolean visiblyLookAt(IPlayerContext ctx, Vec3 target, int maxTicks) {
         if (target == null) {
             return false;
         }

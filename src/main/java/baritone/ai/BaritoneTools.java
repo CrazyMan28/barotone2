@@ -202,6 +202,29 @@ public final class BaritoneTools {
         arr.add(fn("right_click",
                 "Right-click with the currently held item, using the current crosshair target if there is one.",
                 params()));
+        arr.add(fn("find_entities",
+                "Scan for nearby entities (villagers, traders, mobs, animals, players) and list each with its "
+                        + "type id, name, position and distance. Use this to locate NPCs before interacting or attacking. "
+                        + "Optionally filter by a type/name substring (e.g. 'villager', 'trader').",
+                params(
+                        param("filter", "string",
+                                "Optional case-insensitive substring matched against type id OR name "
+                                        + "(e.g. 'villager', 'wandering', 'cow'). Omit to list everything nearby.", false),
+                        param("max_radius", "integer", "Search radius in blocks (default 24, max 64).", false)
+                )));
+        arr.add(fn("interact_entity",
+                "Walk to the nearest matching entity and RIGHT-CLICK it (opens villager/trader trades, etc.). "
+                        + "Match by type id and/or name. For attacking instead, the survival reflexes handle hostiles; "
+                        + "use run_command if you need a different action.",
+                params(
+                        param("entity_type", "string",
+                                "Entity type id or substring, e.g. 'minecraft:villager', 'villager', 'wandering_trader' "
+                                        + "(optional if name given).", false),
+                        param("entity_name", "string",
+                                "Display name / name-tag substring to match, case-insensitive (optional if type given).", false),
+                        param("max_wait_seconds", "integer",
+                                "Cap for walking to the entity (default 90, max 300).", false)
+                )));
         arr.add(fn("use_item_on_block",
                 "Equip an optional item, then use the held item on the nearest matching block within a small radius.",
                 params(
@@ -481,6 +504,10 @@ public final class BaritoneTools {
                     return ok(AiCrafting.equipItem(ctx, args.get("item_id").getAsString()));
                 case "right_click":
                     return ok(AiCrafting.rightClick(ctx));
+                case "find_entities":
+                    return ok(findEntities(args));
+                case "interact_entity":
+                    return ok(interactEntity(args));
                 case "use_item_on_block": {
                     if (args.has("item_id") && !args.get("item_id").isJsonNull()
                             && !args.get("item_id").getAsString().isBlank()) {
@@ -712,6 +739,184 @@ public final class BaritoneTools {
         String block = normalizeBlockId(a.get("block").getAsString());
         executeCommand("goto " + block);
         return "Pathing (not mining) toward nearest cached " + block + ".";
+    }
+
+    /** A living entity's registry id (e.g. "minecraft:villager") — "unknown" if it can't be resolved. */
+    private static String entityTypeId(net.minecraft.world.entity.Entity e) {
+        try {
+            net.minecraft.resources.Identifier key =
+                    net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(e.getType());
+            return key != null ? key.toString() : "unknown";
+        } catch (RuntimeException ex) {
+            return "unknown";
+        }
+    }
+
+    private static boolean entityMatches(net.minecraft.world.entity.Entity e, String typeNeedle, String nameNeedle) {
+        boolean ok = true;
+        if (!typeNeedle.isEmpty()) {
+            ok = entityTypeId(e).toLowerCase(Locale.ROOT).contains(typeNeedle);
+        }
+        if (ok && !nameNeedle.isEmpty()) {
+            String name = e.getDisplayName() != null ? e.getDisplayName().getString() : "";
+            ok = name.toLowerCase(Locale.ROOT).contains(nameNeedle);
+        }
+        return ok;
+    }
+
+    /** List nearby living entities (NPCs/mobs/animals/players) with type, name, position, distance. */
+    private String findEntities(JsonObject a) {
+        String filter = (a.has("filter") && !a.get("filter").isJsonNull())
+                ? a.get("filter").getAsString().trim().toLowerCase(Locale.ROOT) : "";
+        int radius = (a.has("max_radius") && !a.get("max_radius").isJsonNull())
+                ? Math.min(64, Math.max(1, a.get("max_radius").getAsInt())) : 24;
+
+        JsonObject out = AiCrafting.onClient(ctx, () -> {
+            LocalPlayer p = ctx.player();
+            if (p == null || ctx.world() == null) {
+                return null;
+            }
+            List<net.minecraft.world.entity.LivingEntity> entities = ctx.world().getEntitiesOfClass(
+                    net.minecraft.world.entity.LivingEntity.class,
+                    new net.minecraft.world.phys.AABB(p.blockPosition()).inflate(radius),
+                    e -> e.isAlive() && e != p && p.distanceTo(e) <= radius);
+            entities.sort(java.util.Comparator.comparingDouble(p::distanceTo));
+
+            JsonArray arr = new JsonArray();
+            for (net.minecraft.world.entity.LivingEntity e : entities) {
+                String type = entityTypeId(e);
+                String name = e.getDisplayName() != null ? e.getDisplayName().getString() : type;
+                if (!filter.isEmpty()
+                        && !type.toLowerCase(Locale.ROOT).contains(filter)
+                        && !name.toLowerCase(Locale.ROOT).contains(filter)) {
+                    continue;
+                }
+                JsonObject ent = new JsonObject();
+                ent.addProperty("type", type);
+                ent.addProperty("name", name);
+                ent.addProperty("position", e.blockPosition().getX() + "," + e.blockPosition().getY()
+                        + "," + e.blockPosition().getZ());
+                ent.addProperty("distance", Math.round(p.distanceTo(e) * 10.0) / 10.0);
+                arr.add(ent);
+                if (arr.size() >= 30) {
+                    break;
+                }
+            }
+            JsonObject o = new JsonObject();
+            o.addProperty("count", arr.size());
+            o.add("entities", arr);
+            return o;
+        });
+
+        if (out == null) {
+            return "ERROR: Not in a world; cannot scan for entities.";
+        }
+        if (out.get("count").getAsInt() == 0) {
+            return "No" + (filter.isEmpty() ? "" : " matching") + " entities within " + radius + " blocks.";
+        }
+        return out.toString();
+    }
+
+    /** Walk to the nearest matching entity and right-click it (villager/trader trades, etc.). */
+    private String interactEntity(JsonObject a) {
+        String type = (a.has("entity_type") && !a.get("entity_type").isJsonNull())
+                ? a.get("entity_type").getAsString().trim().toLowerCase(Locale.ROOT) : "";
+        String name = (a.has("entity_name") && !a.get("entity_name").isJsonNull())
+                ? a.get("entity_name").getAsString().trim().toLowerCase(Locale.ROOT) : "";
+        int maxWait = (a.has("max_wait_seconds") && !a.get("max_wait_seconds").isJsonNull())
+                ? Math.min(300, Math.max(1, a.get("max_wait_seconds").getAsInt())) : 90;
+        if (type.isEmpty() && name.isEmpty()) {
+            return "ERROR: Provide entity_type and/or entity_name.";
+        }
+
+        BaritoneAPI.getSettings().allowInventory.value = true;
+        final String fType = type;
+        final String fName = name;
+
+        // Find the nearest match (kept as a reference; we re-read its live position each tick).
+        net.minecraft.world.entity.LivingEntity target = AiCrafting.onClient(ctx, () -> {
+            LocalPlayer p = ctx.player();
+            if (p == null || ctx.world() == null) {
+                return null;
+            }
+            return ctx.world().getEntitiesOfClass(
+                    net.minecraft.world.entity.LivingEntity.class,
+                    new net.minecraft.world.phys.AABB(p.blockPosition()).inflate(48),
+                    e -> e.isAlive() && e != p && entityMatches(e, fType, fName))
+                    .stream()
+                    .min(java.util.Comparator.comparingDouble(p::distanceTo))
+                    .orElse(null);
+        });
+        if (target == null) {
+            return "ERROR: No entity found within 48 blocks matching "
+                    + (type.isEmpty() ? "" : "type~'" + type + "' ")
+                    + (name.isEmpty() ? "" : "name~'" + name + "'") + ". Try find_entities first.";
+        }
+
+        final net.minecraft.world.entity.LivingEntity tgt = target;
+        String label = AiCrafting.onClient(ctx, () ->
+                (tgt.getDisplayName() != null ? tgt.getDisplayName().getString() : entityTypeId(tgt)));
+
+        // Walk to within reach, re-targeting if the entity wanders.
+        long deadline = System.currentTimeMillis() + maxWait * 1000L;
+        long lastGoal = 0L;
+        try {
+            while (System.currentTimeMillis() < deadline) {
+                if (MistralAgent.isCancelled()) {
+                    return "interact_entity to " + label + " cancelled.";
+                }
+                Double dist = AiCrafting.onClient(ctx, () -> {
+                    LocalPlayer p = ctx.player();
+                    if (p == null || !tgt.isAlive()) {
+                        return -1.0;
+                    }
+                    return (double) p.distanceTo(tgt);
+                });
+                if (dist == null || dist < 0) {
+                    return "interact_entity: " + label + " is gone (died or unloaded) before reaching it.";
+                }
+                if (dist <= 3.2) {
+                    break;
+                }
+                // (re)issue the path roughly once a second toward the entity's current block.
+                if (System.currentTimeMillis() - lastGoal > 1000L) {
+                    lastGoal = System.currentTimeMillis();
+                    AiCrafting.onClient(ctx, () -> {
+                        baritone.getCustomGoalProcess().setGoalAndPath(
+                                new baritone.api.pathing.goals.GoalNear(tgt.blockPosition(), 2));
+                        return null;
+                    });
+                }
+                Thread.sleep(300);
+            }
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            return "interact_entity to " + label + " interrupted.";
+        }
+        AiCrafting.onClient(ctx, () -> {
+            baritone.getCustomGoalProcess().onLostControl();
+            return null;
+        });
+
+        // Aim at the entity's body, then right-click it (the trade-opening interaction).
+        String result = AiCrafting.onClient(ctx, () -> {
+            LocalPlayer p = ctx.player();
+            if (p == null || !tgt.isAlive()) {
+                return "ERROR: Entity gone before interaction.";
+            }
+            if (p.distanceTo(tgt) > 4.0) {
+                return "ERROR: Could not get within reach of " + label + " (still "
+                        + Math.round(p.distanceTo(tgt)) + " blocks away).";
+            }
+            net.minecraft.world.phys.Vec3 aim = tgt.position().add(0, tgt.getBbHeight() * 0.6, 0);
+            AiCrafting.visiblyLookAt(ctx, aim, 24);
+            net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+            net.minecraft.world.InteractionResult res =
+                    mc.gameMode.interact(p, tgt, net.minecraft.world.InteractionHand.MAIN_HAND);
+            p.swing(net.minecraft.world.InteractionHand.MAIN_HAND);
+            return "Right-clicked " + label + " (" + res + ").";
+        });
+        return result;
     }
 
     /**
