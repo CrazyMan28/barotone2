@@ -30,6 +30,7 @@ import net.minecraft.ChatFormatting;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -41,6 +42,9 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class MistralAgent implements Helper {
 
     public static final AtomicReference<MistralAgent> ACTIVE = new AtomicReference<>();
+
+    /** Extra full-window waits when the provider stays rate-limited after the client's own retries. */
+    private static final int MAX_RATE_LIMIT_WAITS = 6;
 
     private static final ThreadLocal<MistralAgent> RUNNING = new ThreadLocal<>();
 
@@ -249,6 +253,7 @@ public final class MistralAgent implements Helper {
                 ChatFormatting.AQUA);
 
         int round = 0;
+        int rateLimitWaits = 0;
         try {
             while (true) {
                 round++;
@@ -277,7 +282,29 @@ public final class MistralAgent implements Helper {
                 GoalTracker.setStatus("Thinking...");
                 try {
                     am = client.chat(model, history, toolDefs, temp, maxTok);
+                    rateLimitWaits = 0;
                 } catch (Exception e) {
+                    // Rate limiting outlives even the client's retry budget when two consumers
+                    // (launcher orchestrator + this agent) share one key. Don't kill a mission
+                    // that is standing safely in-world — wait the window out and try again.
+                    String msg = e.getMessage() == null ? "" : e.getMessage();
+                    boolean rateLimited = msg.contains("429") || msg.toLowerCase(Locale.ROOT).contains("rate limit");
+                    if (rateLimited && !cancelled && rateLimitWaits < MAX_RATE_LIMIT_WAITS) {
+                        rateLimitWaits++;
+                        logDirect("[AI] rate limited — waiting 30s (" + rateLimitWaits + "/" + MAX_RATE_LIMIT_WAITS + ")…",
+                                ChatFormatting.YELLOW);
+                        GoalTracker.setStatus("Rate limited — waiting 30s (" + rateLimitWaits + "/" + MAX_RATE_LIMIT_WAITS + ")");
+                        AgentTelemetry.emit("status", Map.of("status", "rate_limited", "wait", rateLimitWaits));
+                        try {
+                            Thread.sleep(30_000L);
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                            GoalTracker.fail("Cancelled while rate limited");
+                            return;
+                        }
+                        round--; // this round never reached the model; don't burn the iteration budget
+                        continue;
+                    }
                     logDirect("[AI] API error: " + e.getMessage(), ChatFormatting.RED);
                     GoalTracker.fail("API error: " + e.getMessage());
                     return;

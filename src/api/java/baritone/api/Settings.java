@@ -1304,14 +1304,15 @@ public final class Settings {
     /**
      * Maximum number of automatic retries for a single AI chat request on transient failures
      * (network errors, HTTP 429 rate limits, and 5xx). {@code 0} disables retries.
+     * Default sized to outlast a one-minute free-tier rate window (3s,6s,12s,24s,30s,30s ≈ 105s).
      */
-    public final Setting<Integer> mistralMaxRetries = new Setting<>(3);
+    public final Setting<Integer> mistralMaxRetries = new Setting<>(6);
 
     /**
      * Base backoff in milliseconds between AI chat retries. The delay grows exponentially per attempt
-     * (base, 2x, 4x, ...) and a 429 {@code Retry-After} header, when present, takes precedence.
+     * (base, 2x, 4x, ...) capped at 30s, and a 429 {@code Retry-After} header, when present, takes precedence.
      */
-    public final Setting<Integer> mistralRetryBackoffMillis = new Setting<>(1500);
+    public final Setting<Integer> mistralRetryBackoffMillis = new Setting<>(3000);
 
     /**
      * Per-request timeout, in seconds, for AI chat completions. Replaces the old multi-hour timeout so a
