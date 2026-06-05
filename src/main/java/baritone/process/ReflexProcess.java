@@ -139,9 +139,10 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         c.drownDone = !player.isUnderWater() || air >= 250;
 
         double engageRadius = Math.max(2D, s.reflexCreeperRadius.value);
-        boolean creeperWithin = s.reflexFleeCreepers.value && !nearbyCreepers(player, engageRadius).isEmpty();
-        c.creeperNear = creeperWithin;
-        c.fleeDone = nearbyCreepers(player, engageRadius + 4D).isEmpty();
+        // Flee from creepers AND ranged skeletons (meleeing a skeleton just eats arrows).
+        boolean fleeWithin = s.reflexFleeCreepers.value && !nearbyFleeMobs(player, engageRadius).isEmpty();
+        c.creeperNear = fleeWithin;
+        c.fleeDone = nearbyFleeMobs(player, engageRadius + 4D).isEmpty();
 
         boolean recentlyHurt = lastHurtAt != Long.MIN_VALUE && now - lastHurtAt <= FIGHT_DISENGAGE_TICKS;
         LivingEntity threat = s.reflexFightBack.value && recentlyHurt ? nearestHostile(player, 4.5D) : null;
@@ -179,16 +180,24 @@ public final class ReflexProcess extends BaritoneProcessHelper {
                 .orElse(false);
     }
 
-    private List<Creeper> nearbyCreepers(LocalPlayer player, double radius) {
-        return ctx.world().getEntitiesOfClass(Creeper.class,
+    /** Creepers (explode) and skeletons (Skeleton/Stray/Bogged — shoot arrows). Running beats
+     *  meleeing both — closing in on a skeleton just eats arrows. */
+    private static boolean isFleeMob(net.minecraft.world.entity.Entity e) {
+        return e instanceof Creeper
+                || e instanceof net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
+    }
+
+    private List<LivingEntity> nearbyFleeMobs(LocalPlayer player, double radius) {
+        return ctx.world().getEntitiesOfClass(LivingEntity.class,
                 new AABB(player.blockPosition()).inflate(radius),
-                e -> e.isAlive() && player.distanceTo(e) <= radius);
+                e -> e.isAlive() && isFleeMob(e) && player.distanceTo(e) <= radius);
     }
 
     private LivingEntity nearestHostile(LocalPlayer player, double radius) {
+        // Don't melee flee-mobs (creepers/skeletons) — those are handled by the flee reflex.
         List<Monster> monsters = ctx.world().getEntitiesOfClass(Monster.class,
                 new AABB(player.blockPosition()).inflate(radius),
-                e -> e.isAlive() && !(e instanceof Creeper) && player.distanceTo(e) <= radius);
+                e -> e.isAlive() && !isFleeMob(e) && player.distanceTo(e) <= radius);
         Monster best = null;
         double bestDist = Double.MAX_VALUE;
         for (Monster m : monsters) {
@@ -257,20 +266,20 @@ public final class ReflexProcess extends BaritoneProcessHelper {
     }
 
     private PathingCommand tickFlee(LocalPlayer player) {
-        List<Creeper> creepers = nearbyCreepers(player, Math.max(2D, Baritone.settings().reflexCreeperRadius.value) + 4D);
-        if (creepers.isEmpty()) {
+        List<LivingEntity> mobs = nearbyFleeMobs(player, Math.max(2D, Baritone.settings().reflexCreeperRadius.value) + 4D);
+        if (mobs.isEmpty()) {
             baritone.getInputOverrideHandler().clearAllKeys();
             return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
         }
-        // PANIC: a creeper inside blast range explodes faster than a path can be computed. Sprint
-        // directly away NOW; the smarter GoalRunAway pathing takes over once out of the kill zone.
-        Creeper nearest = creepers.get(0);
+        // PANIC: a creeper inside blast range (or a skeleton point-blank) is faster than a path can
+        // be computed. Sprint directly away NOW; the smarter GoalRunAway pathing takes over after.
+        LivingEntity nearest = mobs.get(0);
         double nearestDist = Double.MAX_VALUE;
-        for (Creeper c : creepers) {
-            double d = player.distanceTo(c);
+        for (LivingEntity m : mobs) {
+            double d = player.distanceTo(m);
             if (d < nearestDist) {
                 nearestDist = d;
-                nearest = c;
+                nearest = m;
             }
         }
         if (nearestDist <= 4.5D) {
@@ -286,7 +295,7 @@ public final class ReflexProcess extends BaritoneProcessHelper {
             return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
         }
         baritone.getInputOverrideHandler().clearAllKeys();
-        BlockPos[] from = creepers.stream().map(LivingEntity::blockPosition).toArray(BlockPos[]::new);
+        BlockPos[] from = mobs.stream().map(LivingEntity::blockPosition).toArray(BlockPos[]::new);
         return new PathingCommand(new GoalRunAway(16, from), PathingCommandType.FORCE_REVALIDATE_GOAL_AND_PATH);
     }
 
@@ -366,7 +375,7 @@ public final class ReflexProcess extends BaritoneProcessHelper {
             case DROWN:
                 return "surfacing for air";
             case FLEE:
-                return "fleeing creeper";
+                return "fleeing danger";
             case FIGHT:
                 return "fighting back";
             case EAT:
