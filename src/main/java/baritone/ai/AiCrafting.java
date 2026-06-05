@@ -2651,25 +2651,11 @@ public final class AiCrafting {
                     p.getInventory().setSelectedSlot(hotbar);
                 }
             }
-            BlockHitResult useHit = realHitOrPlanned(p, plan.hit);
-            mc.gameMode.useItemOn(p, InteractionHand.MAIN_HAND, useHit);
+            mc.gameMode.useItemOn(p, InteractionHand.MAIN_HAND, plan.hit);
             p.swing(InteractionHand.MAIN_HAND);
-            return useHit.getBlockPos().relative(useHit.getDirection());
+            return plan.placed;
         });
         return waitForBlock(ctx, actualPlaced, block, 30, 100) ? actualPlaced : null;
-    }
-
-    /** Prefer the REAL crosshair block-hit (the server accepts what the player actually looks at)
-     *  over a hand-built hit, as long as it would place into an empty cell. */
-    private static BlockHitResult realHitOrPlanned(LocalPlayer p, BlockHitResult planned) {
-        net.minecraft.world.phys.HitResult hr = Minecraft.getInstance().hitResult;
-        if (hr instanceof BlockHitResult bhr && hr.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
-            BlockPos target = bhr.getBlockPos().relative(bhr.getDirection());
-            if (p.level().getBlockState(target).canBeReplaced()) {
-                return bhr;
-            }
-        }
-        return planned;
     }
 
     /** Visible look at the block on each face and right-click until the station GUI opens. */
@@ -2801,9 +2787,8 @@ public final class AiCrafting {
                 ctx.playerController().windowClick(p.inventoryMenu.containerId, slot, hotbar, ClickType.SWAP, p);
                 p.getInventory().setSelectedSlot(hotbar);
             }
-            BlockHitResult useHit = realHitOrPlanned(p, plan.hit);
-            placedAt[0] = useHit.getBlockPos().relative(useHit.getDirection());
-            InteractionResult res = mc.gameMode.useItemOn(p, InteractionHand.MAIN_HAND, useHit);
+            placedAt[0] = plan.placed;
+            InteractionResult res = mc.gameMode.useItemOn(p, InteractionHand.MAIN_HAND, plan.hit);
             p.swing(InteractionHand.MAIN_HAND);
             return "CLICK: " + res;
         });
@@ -3465,14 +3450,9 @@ public final class AiCrafting {
         return bestHit;
     }
 
-    // Faces to try placing AGAINST, preference order: floor, then the 4 walls, then ceiling.
-    // Real placement works against any solid face — so a pit/tunnel (walls all around) still
-    // gives a valid spot even when there's no "air cell with a floor below".
-    private static final Direction[] PLACE_FACES = {
-            Direction.DOWN, Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.UP
-    };
-
-    /** A valid place-against hit for a station at {@code cell}, or null if unsuitable. */
+    /** A valid place-on-FLOOR hit at {@code cell} (place the station on top of the sturdy block
+     *  below it), or null if unsuitable. Floor placement is what a look-down reliably hits — far
+     *  more robust than wall/ceiling placement. walkToPlaceableSpot guarantees such a cell exists. */
     private static BlockHitResult placementHitAt(LocalPlayer p, Level level, BlockPos cell, boolean airOnly) {
         BlockState st = level.getBlockState(cell);
         if (airOnly ? !st.isAir() : !st.canBeReplaced()) {
@@ -3483,25 +3463,18 @@ public final class AiCrafting {
         if (cell.equals(feet) || cell.equals(feet.above())) {
             return null;
         }
+        // a sturdy floor must be directly below (place on its top face)
+        BlockPos below = cell.below();
+        if (!level.getBlockState(below).isFaceSturdy(level, below, Direction.UP)) {
+            return null;
+        }
         // an entity (mob/player) occupying the cell blocks placement
         net.minecraft.world.phys.AABB box = new net.minecraft.world.phys.AABB(cell);
         if (!level.getEntities(p, box, e -> e instanceof net.minecraft.world.entity.LivingEntity).isEmpty()) {
             return null;
         }
-        // place against ANY solid neighbouring face (floor preferred, then walls, then ceiling)
-        for (Direction toNeighbor : PLACE_FACES) {
-            BlockPos neighbor = cell.relative(toNeighbor);
-            Direction neighborFace = toNeighbor.getOpposite(); // face of the neighbor pointing at cell
-            if (!level.getBlockState(neighbor).isFaceSturdy(level, neighbor, neighborFace)) {
-                continue;
-            }
-            Vec3 hitVec = Vec3.atCenterOf(neighbor).add(
-                    neighborFace.getStepX() * 0.5,
-                    neighborFace.getStepY() * 0.5,
-                    neighborFace.getStepZ() * 0.5);
-            return new BlockHitResult(hitVec, neighborFace, neighbor, false);
-        }
-        return null;
+        Vec3 hitVec = Vec3.atBottomCenterOf(cell).relative(Direction.UP, 0.05);
+        return new BlockHitResult(hitVec, Direction.UP, below, false);
     }
 
     // -------- internals --------
