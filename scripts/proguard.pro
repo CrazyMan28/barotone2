@@ -36,6 +36,7 @@
 -keep class baritone.ai.MissionMemory$State { *; }
 -keep class baritone.ai.MissionMemory$MemoryRecord { *; }
 -keep class baritone.ai.MissionMemory$Checkpoint { *; }
+-keep class baritone.ai.MissionMemory$StationRecord { *; }
 # Agent telemetry events are gson-serialized to stdout for the Kihi Launcher; keep field names (ts/session/kind/data) so they survive obfuscation
 -keep class baritone.ai.AgentTelemetry { *; }
 -keep class baritone.ai.AgentTelemetry$* { *; }

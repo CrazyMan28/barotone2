@@ -133,6 +133,100 @@ public final class MissionMemory {
         }
     }
 
+    /** Record a station the agent placed (or refresh its validatedAt if already known). */
+    public static void rememberStation(String type, String dimension, int x, int y, int z) {
+        String t = defaulted(type, "", 40);
+        if (t.isEmpty()) {
+            return;
+        }
+        String dim = clean(dimension, 80);
+        long now = System.currentTimeMillis();
+        synchronized (LOCK) {
+            ensureLoaded();
+            for (StationRecord st : state.stations) {
+                if (st.type.equals(t) && st.dimension.equals(dim) && st.x == x && st.y == y && st.z == z) {
+                    st.validatedAt = now;
+                    saveLocked();
+                    return;
+                }
+            }
+            StationRecord rec = new StationRecord();
+            rec.type = t;
+            rec.dimension = dim;
+            rec.x = x;
+            rec.y = y;
+            rec.z = z;
+            rec.createdAt = now;
+            rec.validatedAt = now;
+            state.stations.add(rec);
+            while (state.stations.size() > 60) {
+                state.stations.remove(0);
+            }
+            saveLocked();
+        }
+    }
+
+    /** Copies of all registered stations of {@code type} in {@code dimension} (caller sorts by distance). */
+    public static List<StationRecord> findStations(String type, String dimension) {
+        String t = defaulted(type, "", 40);
+        String dim = clean(dimension, 80);
+        List<StationRecord> out = new ArrayList<>();
+        synchronized (LOCK) {
+            ensureLoaded();
+            for (StationRecord st : state.stations) {
+                if (st.type.equals(t) && st.dimension.equals(dim)) {
+                    out.add(st.copy());
+                }
+            }
+        }
+        return out;
+    }
+
+    public static void validateStation(String type, String dimension, int x, int y, int z) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            for (StationRecord st : state.stations) {
+                if (st.type.equals(type) && st.dimension.equals(dimension) && st.x == x && st.y == y && st.z == z) {
+                    st.validatedAt = System.currentTimeMillis();
+                    saveLocked();
+                    return;
+                }
+            }
+        }
+    }
+
+    public static boolean forgetStation(String type, String dimension, int x, int y, int z) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            boolean removed = state.stations.removeIf(st ->
+                    st.type.equals(type) && st.dimension.equals(dimension) && st.x == x && st.y == y && st.z == z);
+            if (removed) {
+                saveLocked();
+            }
+            return removed;
+        }
+    }
+
+    /** Short "type@x,y,z" list (max 6) for get_state so the agent sees its homestead. */
+    public static String stationsForPrompt() {
+        StringBuilder sb = new StringBuilder();
+        synchronized (LOCK) {
+            ensureLoaded();
+            int n = 0;
+            for (StationRecord st : state.stations) {
+                if (n >= 6) {
+                    break;
+                }
+                if (sb.length() > 0) {
+                    sb.append("; ");
+                }
+                sb.append(st.type).append('@').append(st.x).append(',').append(st.y).append(',').append(st.z);
+                n++;
+            }
+        }
+        return sb.toString();
+    }
+
     public static void clearAll() {
         synchronized (LOCK) {
             ensureLoaded();
@@ -682,11 +776,36 @@ public final class MissionMemory {
         }
     }
 
+    /** A station the agent built (crafting_table, furnace, ...) or its base_anchor — so it returns to
+     *  and re-uses them instead of placing/crafting new ones. Deduped by (type,dimension,x,y,z). */
+    public static final class StationRecord {
+        public String type = "";
+        public String dimension = "";
+        public int x;
+        public int y;
+        public int z;
+        public long createdAt;
+        public long validatedAt;
+
+        private StationRecord copy() {
+            StationRecord c = new StationRecord();
+            c.type = type;
+            c.dimension = dimension;
+            c.x = x;
+            c.y = y;
+            c.z = z;
+            c.createdAt = createdAt;
+            c.validatedAt = validatedAt;
+            return c;
+        }
+    }
+
     private static final class State {
         int version = 1;
         int nextCheckpointId;
         List<MemoryRecord> memories = new ArrayList<>();
         List<Checkpoint> checkpoints = new ArrayList<>();
+        List<StationRecord> stations = new ArrayList<>();
         List<String> goalHistory = new ArrayList<>();
         String inFlightGoal = "";
         boolean inFlightPlanMode;
@@ -698,6 +817,14 @@ public final class MissionMemory {
             if (checkpoints == null) {
                 checkpoints = new ArrayList<>();
             }
+            if (stations == null) {
+                stations = new ArrayList<>();
+            }
+            for (StationRecord st : stations) {
+                st.type = defaulted(st.type, "", 40);
+                st.dimension = clean(st.dimension, 80);
+            }
+            stations.removeIf(st -> st.type.isEmpty());
             if (goalHistory == null) {
                 goalHistory = new ArrayList<>();
             }

@@ -563,17 +563,28 @@ public final class BaritoneTools {
                             ? args.get("max_logs").getAsInt() : 8;
                     return ok(AiCrafting.craftPlanksFromLogs(ctx, Math.max(1, Math.min(64, maxLogs))));
                 }
-                case "craft_crafting_table":
+                case "craft_crafting_table": {
+                    boolean haveTable = Boolean.TRUE.equals(AiCrafting.onClient(ctx,
+                            () -> playerInventoryHas(ctx.player(), Items.CRAFTING_TABLE)));
+                    if (haveTable) {
+                        return ok("Already have a crafting table in inventory; no craft needed. "
+                                + "Use open_station to place/open it.");
+                    }
                     return ok(AiCrafting.craftCraftingTable(ctx));
+                }
                 case "craft_sticks": {
                     int sets = (args.has("sets") && !args.get("sets").isJsonNull())
                             ? args.get("sets").getAsInt() : 1;
                     return ok(AiCrafting.craftSticks(ctx, Math.max(1, Math.min(32, sets))));
                 }
-                case "craft_wooden_axe_at_table":
-                    return ok(AiCrafting.craftWoodenAxeAtTable(ctx));
-                case "craft_wooden_pickaxe_at_table":
-                    return ok(AiCrafting.craftWoodenPickaxeAtTable(ctx));
+                case "craft_wooden_axe_at_table": {
+                    String skip = alreadyHaveWoodToolSkip("minecraft:wooden_axe");
+                    return ok(skip != null ? skip : AiCrafting.craftWoodenAxeAtTable(ctx));
+                }
+                case "craft_wooden_pickaxe_at_table": {
+                    String skip = alreadyHaveWoodToolSkip("minecraft:wooden_pickaxe");
+                    return ok(skip != null ? skip : AiCrafting.craftWoodenPickaxeAtTable(ctx));
+                }
                 case "craft_shaped_at_table": {
                     JsonArray g = args.getAsJsonArray("grid");
                     if (g == null || g.size() != 9) {
@@ -585,8 +596,11 @@ public final class BaritoneTools {
                     }
                     return ok(AiCrafting.craftShapedAtTable(ctx, nine));
                 }
-                case "craft_recipe_at_table":
-                    return ok(AiCrafting.craftRecipeAtTable(ctx, args.get("recipe_id").getAsString()));
+                case "craft_recipe_at_table": {
+                    String rid = args.get("recipe_id").getAsString();
+                    String skip = alreadyHaveWoodToolSkip(rid);
+                    return ok(skip != null ? skip : AiCrafting.craftRecipeAtTable(ctx, rid));
+                }
                 case "list_craftable_table_recipes": {
                     int max = (args.has("max_entries") && !args.get("max_entries").isJsonNull())
                             ? args.get("max_entries").getAsInt() : 50;
@@ -605,7 +619,9 @@ public final class BaritoneTools {
                 case "craft_item": {
                     int qty = (args.has("quantity") && !args.get("quantity").isJsonNull())
                             ? args.get("quantity").getAsInt() : 1;
-                    return ok(AiCrafting.craftItemByOutput(ctx, args.get("output_item_id").getAsString(), qty));
+                    String outId = args.get("output_item_id").getAsString();
+                    String skip = alreadyHaveWoodToolSkip(outId);
+                    return ok(skip != null ? skip : AiCrafting.craftItemByOutput(ctx, outId, qty));
                 }
                 case "craft_recipe_in_inventory":
                     return ok(AiCrafting.craftRecipeInInventory(ctx, args.get("recipe_id").getAsString()));
@@ -1035,10 +1051,20 @@ public final class BaritoneTools {
             err.append(" Use real registry ids like minecraft:oak_log or minecraft:diamond_ore.");
             return err.toString();
         }
+        int q = (a.has("quantity") && !a.get("quantity").isJsonNull()) ? a.get("quantity").getAsInt() : 0;
+        // Idempotency guard: don't re-mine what we already have. For blocks whose drop is the block
+        // itself (logs, cobblestone, dirt...) the inventory count matches the requested ids; ores drop
+        // a different item (raw_iron != iron_ore) so they simply won't match and we mine as normal.
+        if (q > 0) {
+            int have = inventoryCountOf(new java.util.HashSet<>(expanded));
+            if (have >= q) {
+                return "Already have " + have + " of " + String.join("/", expanded) + " (>= " + q
+                        + " requested). Did NOT mine — you already have enough; move to the next step.";
+            }
+        }
         StringBuilder cmd = new StringBuilder("mine");
-        if (a.has("quantity") && !a.get("quantity").isJsonNull()) {
-            int q = a.get("quantity").getAsInt();
-            if (q > 0) cmd.append(' ').append(q);
+        if (q > 0) {
+            cmd.append(' ').append(q);
         }
         for (String id : expanded) {
             cmd.append(' ').append(id);
@@ -1322,6 +1348,51 @@ public final class BaritoneTools {
             }
         }
         return false;
+    }
+
+    /**
+     * Idempotency guard: if {@code id} names a WOODEN pickaxe/axe and the player already holds a
+     * pickaxe/axe of ANY tier, return a skip message; else null. Stops the agent re-crafting a wooden
+     * tool it already replaced (the "made two wooden pickaxes" regression). Only wooden tools are
+     * guarded, so crafting a stone/iron tool — including the iron-axe GOAL — is never blocked.
+     */
+    private String alreadyHaveWoodToolSkip(String id) {
+        if (id == null) {
+            return null;
+        }
+        String low = id.toLowerCase(Locale.ROOT);
+        boolean woodPick = low.contains("wooden_pickaxe");
+        boolean woodAxe = low.contains("wooden_axe");
+        if (!woodPick && !woodAxe) {
+            return null;
+        }
+        String have = existingToolDescription(woodPick);
+        return have == null ? null
+                : "Skipped: you already have " + have + " — no need to craft a wooden "
+                        + (woodPick ? "pickaxe" : "axe") + ". Move on to the next step.";
+    }
+
+    /** Total inventory count of items whose registry id is in {@code ids} (client thread). */
+    private int inventoryCountOf(java.util.Set<String> ids) {
+        Integer n = AiCrafting.onClient(ctx, () -> {
+            LocalPlayer p = ctx.player();
+            if (p == null) {
+                return 0;
+            }
+            int total = 0;
+            for (int i = 0; i < p.getInventory().getContainerSize(); i++) {
+                ItemStack st = p.getInventory().getItem(i);
+                if (st.isEmpty()) {
+                    continue;
+                }
+                String rid = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(st.getItem()).toString();
+                if (ids.contains(rid)) {
+                    total += st.getCount();
+                }
+            }
+            return total;
+        });
+        return n == null ? 0 : n;
     }
 
     /** Mine up to {@code count} logs and STOP — no crafting. Rescue path for a
@@ -2034,6 +2105,13 @@ public final class BaritoneTools {
             s.addProperty("mission_memory_summary", MissionMemory.summaryForPrompt());
         } catch (RuntimeException ignored) {
             s.addProperty("mission_memory_summary", "unavailable");
+        }
+        try {
+            // Homestead: the stations the agent built — open_station returns to these instead of
+            // placing/crafting new ones. The agent should reuse them, not re-build.
+            s.addProperty("known_stations", MissionMemory.stationsForPrompt());
+        } catch (RuntimeException ignored) {
+            s.addProperty("known_stations", "");
         }
         try {
             s.addProperty("reflexes_enabled", BaritoneAPI.getSettings().reflexesEnabled.value);

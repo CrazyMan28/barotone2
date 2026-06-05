@@ -174,4 +174,54 @@ public class MissionMemoryTest {
         assertTrue(Files.exists(memoryFile));
         assertFalse(Files.exists(runtimeFile));
     }
+
+    // --- Homestead station registry ---
+
+    @Test
+    public void rememberStationDedupesByTuple() {
+        MissionMemory.rememberStation("crafting_table", "minecraft:overworld", 10, 64, -20);
+        MissionMemory.rememberStation("crafting_table", "minecraft:overworld", 10, 64, -20); // same tuple
+        List<MissionMemory.StationRecord> found =
+                MissionMemory.findStations("crafting_table", "minecraft:overworld");
+        assertEquals("same (type,dim,x,y,z) must not duplicate", 1, found.size());
+        assertEquals(10, found.get(0).x);
+        assertEquals(64, found.get(0).y);
+        assertEquals(-20, found.get(0).z);
+    }
+
+    @Test
+    public void findStationsFiltersByTypeAndDimension() {
+        MissionMemory.rememberStation("crafting_table", "minecraft:overworld", 1, 64, 1);
+        MissionMemory.rememberStation("furnace", "minecraft:overworld", 2, 64, 2);
+        MissionMemory.rememberStation("crafting_table", "minecraft:the_nether", 3, 64, 3);
+        assertEquals(1, MissionMemory.findStations("crafting_table", "minecraft:overworld").size());
+        assertEquals(1, MissionMemory.findStations("furnace", "minecraft:overworld").size());
+        // a Nether table must NOT be returned for an Overworld query
+        assertEquals(1, MissionMemory.findStations("crafting_table", "minecraft:the_nether").size());
+        assertEquals(0, MissionMemory.findStations("furnace", "minecraft:the_nether").size());
+    }
+
+    @Test
+    public void forgetStationRemoves() {
+        MissionMemory.rememberStation("furnace", "minecraft:overworld", 5, 70, 5);
+        assertTrue(MissionMemory.forgetStation("furnace", "minecraft:overworld", 5, 70, 5));
+        assertEquals(0, MissionMemory.findStations("furnace", "minecraft:overworld").size());
+        assertFalse(MissionMemory.forgetStation("furnace", "minecraft:overworld", 5, 70, 5));
+    }
+
+    @Test
+    public void stationsSurviveReload() {
+        MissionMemory.rememberStation("crafting_table", "minecraft:overworld", 7, 63, 8);
+        MissionMemory.rememberStation("furnace", "minecraft:overworld", 9, 63, 8);
+        assertTrue(Files.exists(memoryFile));
+
+        MissionMemory.resetForTests(); // drops in-memory state; next access reloads from disk
+        List<MissionMemory.StationRecord> tables =
+                MissionMemory.findStations("crafting_table", "minecraft:overworld");
+        List<MissionMemory.StationRecord> furnaces =
+                MissionMemory.findStations("furnace", "minecraft:overworld");
+        assertEquals("stations must survive save/load (gson field-name check)", 1, tables.size());
+        assertEquals(1, furnaces.size());
+        assertEquals(7, tables.get(0).x);
+    }
 }

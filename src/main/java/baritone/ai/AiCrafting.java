@@ -2506,8 +2506,16 @@ public final class AiCrafting {
         if (nearby.startsWith("Opened") || nearby.startsWith("Already")) {
             return nearby;
         }
-        // None in immediate reach: walk to a table we placed earlier (e.g. stepped off it while
-        // mining) and re-use it before placing a second one. Same fix as the furnace re-open path.
+        // Homestead: return to a REGISTERED table (any distance up to 96 blocks) and re-use it before
+        // ever placing/crafting a new one. This is what stops the agent scattering tables it loses.
+        BlockPos reg = walkToRegisteredStation(ctx, Blocks.CRAFTING_TABLE, "crafting_table", 96, 30_000L);
+        if (reg != null) {
+            String r = openTableAtPositionVisible(ctx, reg);
+            if (r.startsWith("Opened") || r.startsWith("Already")) {
+                return r;
+            }
+        }
+        // None registered/reachable: walk to any table we can see within 32 blocks and re-use it.
         BlockPos walked = walkToNearbyStation(ctx, Blocks.CRAFTING_TABLE, 32);
         if (walked != null) {
             String r = openTableAtPositionVisible(ctx, walked);
@@ -2544,12 +2552,25 @@ public final class AiCrafting {
         if (stationMenuOpen(menuOpen)) {
             return "Already open: " + displayName + ".";
         }
+        String stationType = onClient(ctx,
+                () -> net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(block).getPath());
         // 1) open a reachable existing one
         BlockPos near = onClient(ctx, () -> findReachableStation(ctx.player(), 6, block));
         if (near != null) {
             String r = openStationAtPositionVisible(ctx, near, displayName, menuOpen);
             if (r.startsWith("Opened") || r.startsWith("Already")) {
                 return r;
+            }
+        }
+        // 1a) Homestead: return to a REGISTERED station of this type (any distance up to 96 blocks)
+        // and re-use it before placing a second one (a 2nd furnace strands the iron in the 1st).
+        if (stationType != null && !stationType.isEmpty()) {
+            BlockPos reg = walkToRegisteredStation(ctx, block, stationType, 96, 30_000L);
+            if (reg != null) {
+                String r = openStationAtPositionVisible(ctx, reg, displayName, menuOpen);
+                if (r.startsWith("Opened") || r.startsWith("Already")) {
+                    return r;
+                }
             }
         }
         // 1b) None in immediate reach: walk to the nearest one we can see nearby (e.g. a furnace we
@@ -2578,6 +2599,9 @@ public final class AiCrafting {
         }
         if (placed == null) {
             return "ERROR: Could not place " + displayName + " — no clear spot nearby (try moving to open ground).";
+        }
+        if (stationType != null && !stationType.isEmpty()) {
+            registerStation(ctx, stationType, placed); // homestead: remember it so we return here next time
         }
         sleepAi(350);
         String opened = openStationAtPositionVisible(ctx, placed, displayName, menuOpen);
@@ -2899,7 +2923,121 @@ public final class AiCrafting {
             return "ERROR: Crafting table did not appear at " + placedAt[0] + " after visible right-click (" + click + ").";
         }
         lastPlacedCraftingTablePos = placedAt[0];
+        registerStation(ctx, "crafting_table", placedAt[0]);
         return "Placed crafting table (" + click.substring("CLICK: ".length()) + ") at ~" + lastPlacedCraftingTablePos + ".";
+    }
+
+    /** Record a just-placed station in MissionMemory so the agent returns to it (homestead registry). */
+    private static void registerStation(IPlayerContext ctx, String type, BlockPos pos) {
+        if (pos == null) {
+            return;
+        }
+        onClient(ctx, () -> {
+            String dim;
+            try {
+                dim = ctx.player().level().dimension().identifier().toString();
+            } catch (RuntimeException e) {
+                dim = "";
+            }
+            MissionMemory.rememberStation(type, dim, pos.getX(), pos.getY(), pos.getZ());
+            return null;
+        });
+    }
+
+    /**
+     * Walk to a REGISTERED station of {@code type} (from the MissionMemory homestead registry) within
+     * {@code maxBlocks}; returns its pos once in reach, or null. Validates the one it reaches and
+     * forgets a registry entry whose block has been removed (checked only on arrival, so we never
+     * forget a station that's merely in an unloaded chunk).
+     */
+    private static BlockPos walkToRegisteredStation(IPlayerContext ctx,
+            net.minecraft.world.level.block.Block block, String type, int maxBlocks, long timeoutMs) {
+        IBaritone b = BaritoneAPI.getProvider().getPrimaryBaritone();
+        if (b == null) {
+            return null;
+        }
+        List<BlockPos> candidates = onClient(ctx, () -> {
+            LocalPlayer p = ctx.player();
+            if (p == null) {
+                return new java.util.ArrayList<BlockPos>();
+            }
+            String dim;
+            try {
+                dim = p.level().dimension().identifier().toString();
+            } catch (RuntimeException e) {
+                dim = "";
+            }
+            List<MissionMemory.StationRecord> recs = MissionMemory.findStations(type, dim);
+            BlockPos feet = p.blockPosition();
+            recs.sort((r1, r2) -> Double.compare(
+                    feet.distSqr(new BlockPos(r1.x, r1.y, r1.z)),
+                    feet.distSqr(new BlockPos(r2.x, r2.y, r2.z))));
+            List<BlockPos> out = new java.util.ArrayList<>();
+            for (MissionMemory.StationRecord r : recs) {
+                BlockPos bp = new BlockPos(r.x, r.y, r.z);
+                if (Math.sqrt(feet.distSqr(bp)) <= maxBlocks) {
+                    out.add(bp);
+                }
+            }
+            return out;
+        });
+        int tried = 0;
+        for (BlockPos target : candidates) {
+            if (tried >= 3 || MistralAgent.isCancelled()) {
+                break;
+            }
+            tried++;
+            try {
+                onClient(ctx, () -> {
+                    b.getCustomGoalProcess().setGoalAndPath(new baritone.api.pathing.goals.GoalGetToBlock(target));
+                    return null;
+                });
+                long deadline = System.currentTimeMillis() + timeoutMs;
+                boolean reached = false;
+                while (System.currentTimeMillis() < deadline) {
+                    if (MistralAgent.isCancelled()) {
+                        break;
+                    }
+                    if (Boolean.TRUE.equals(onClient(ctx, () -> withinReach(ctx.player(), target)))) {
+                        reached = true;
+                        break;
+                    }
+                    if (!b.getPathingBehavior().isPathing() && !b.getPathingBehavior().getInProgress().isPresent()) {
+                        break;
+                    }
+                    sleepAi(300);
+                }
+                if (reached) {
+                    boolean stillThere = Boolean.TRUE.equals(onClient(ctx,
+                            () -> ctx.player().level().getBlockState(target).is(block)));
+                    if (stillThere) {
+                        registerStation(ctx, type, target); // refresh validatedAt
+                        return target;
+                    }
+                    forgetStationAt(ctx, type, target); // arrived but it's gone — drop it
+                }
+            } finally {
+                onClient(ctx, () -> {
+                    b.getCustomGoalProcess().onLostControl();
+                    b.getPathingBehavior().cancelEverything();
+                    return null;
+                });
+            }
+        }
+        return null;
+    }
+
+    private static void forgetStationAt(IPlayerContext ctx, String type, BlockPos pos) {
+        onClient(ctx, () -> {
+            String dim;
+            try {
+                dim = ctx.player().level().dimension().identifier().toString();
+            } catch (RuntimeException e) {
+                dim = "";
+            }
+            MissionMemory.forgetStation(type, dim, pos.getX(), pos.getY(), pos.getZ());
+            return null;
+        });
     }
 
     /**
