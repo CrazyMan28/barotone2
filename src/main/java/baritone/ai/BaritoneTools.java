@@ -1847,6 +1847,32 @@ public final class BaritoneTools {
             return "ERROR: No crafting table nearby and none in inventory. Craft one first "
                     + "(craft_planks_from_logs, then craft_crafting_table), then call open_station again.";
         }
+        // Craftable station (furnace/blast_furnace/smoker/...) with no item to place: CRAFT it from
+        // its materials (furnace = 8 cobblestone) and place+open it, instead of wandering to a far one.
+        {
+            String craft = AiCrafting.craftRecipeAtTable(ctx, station.blockId);
+            if (craft.startsWith("Crafted") || craft.contains("crafted=") || craft.contains("result moved to inventory")) {
+                net.minecraft.world.level.block.Block sblock = net.minecraft.core.registries.BuiltInRegistries.BLOCK
+                        .get(net.minecraft.resources.Identifier.tryParse(station.blockId))
+                        .map(net.minecraft.core.Holder.Reference::value).orElse(null);
+                net.minecraft.world.item.Item sitem = sblock == null ? null : sblock.asItem();
+                if (sblock != null && sitem != null && sitem != net.minecraft.world.item.Items.AIR) {
+                    String retry = AiCrafting.openNearbyOrPlaceStation(ctx, sblock, sitem, station.displayName,
+                            () -> menuMatchesOnClient(station));
+                    if (retry.startsWith("Opened") || retry.startsWith("Already")) {
+                        return retry;
+                    }
+                    if (retry.startsWith("Placed")) {
+                        return retry + " Call open_station again to open it.";
+                    }
+                }
+            } else {
+                // Couldn't craft it — usually missing the material. Tell the agent what to get.
+                return "No " + station.displayName + " nearby/in inventory and couldn't craft one ("
+                        + craft + "). A furnace needs 8 cobblestone (mine minecraft:stone). Get the material, "
+                        + "then call open_station again.";
+            }
+        }
         int seconds = (a.has("max_wait_seconds") && !a.get("max_wait_seconds").isJsonNull())
                 ? Math.min(600, Math.max(1, a.get("max_wait_seconds").getAsInt())) : 90;
 
