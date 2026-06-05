@@ -2602,11 +2602,19 @@ public final class AiCrafting {
         return bestPos;
     }
 
+    /** Snap-aim settings so placement reliably lands on its target (stealth/smoothLook makes it miss). */
+    private static void snappyAimForPlacement() {
+        BaritoneAPI.getSettings().smoothLook.value = false;
+        BaritoneAPI.getSettings().strictVisibleBlockInteractions.value = false;
+        BaritoneAPI.getSettings().freeLook.value = true;
+    }
+
     /** Place {@code item} against a support block adjacent to the player; returns the placed pos or null. */
     private static BlockPos placeStationBlock(IPlayerContext ctx,
             net.minecraft.world.item.Item item,
             net.minecraft.world.level.block.Block block,
             String displayName) {
+        snappyAimForPlacement();
         TablePlacementPlan plan = onClient(ctx, () -> {
             LocalPlayer p = ctx.player();
             p.closeContainer();
@@ -2629,9 +2637,9 @@ public final class AiCrafting {
         if (plan.error != null) {
             return null;
         }
-        if (!visiblyLookAt(ctx, plan.hit.getLocation(), 36) || !waitCrosshairOnBlock(ctx, plan.hit.getBlockPos(), 12, 50)) {
-            return null;
-        }
+        // Aim best-effort; don't bail on a slightly-off crosshair — waitForBlock verifies.
+        visiblyLookAt(ctx, plan.hit.getLocation(), 36);
+        waitCrosshairOnBlock(ctx, plan.hit.getBlockPos(), 12, 50);
         BlockPos actualPlaced = onClient(ctx, () -> {
             Minecraft mc = Minecraft.getInstance();
             LocalPlayer p = ctx.player();
@@ -2751,6 +2759,7 @@ public final class AiCrafting {
     }
 
     private static String placeCraftingTableBlock(IPlayerContext ctx) {
+        snappyAimForPlacement(); // stealth/smooth-look would make aiming miss the support block
         TablePlacementPlan plan = onClient(ctx, () -> {
             LocalPlayer p = ctx.player();
             p.closeContainer();
@@ -2775,12 +2784,10 @@ public final class AiCrafting {
         if (plan.error != null) {
             return plan.error;
         }
-        if (!visiblyLookAt(ctx, plan.hit.getLocation(), 36)) {
-            return "ERROR: Could not visibly aim at crafting table placement support block.";
-        }
-        if (!waitCrosshairOnBlock(ctx, plan.hit.getBlockPos(), 12, 50)) {
-            return "ERROR: Crosshair was not on crafting table placement support block after visible turn.";
-        }
+        // Aim best-effort, but DON'T abort if the crosshair raytrace is slightly off — a
+        // hand-built hit still places, and waitForBlock below is the real success check.
+        visiblyLookAt(ctx, plan.hit.getLocation(), 36);
+        waitCrosshairOnBlock(ctx, plan.hit.getBlockPos(), 12, 50);
         BlockPos[] placedAt = {plan.placed};
         String click = onClient(ctx, () -> {
             Minecraft mc = Minecraft.getInstance();
