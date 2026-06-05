@@ -119,8 +119,9 @@ public final class BaritoneTools {
                                 "Block id, e.g. 'minecraft:diamond_ore' or just 'diamond_ore'.", true)
                 )));
         arr.add(fn("mine",
-                "Mine and break blocks (digs ores, logs, etc.). If quantity is 0 or omitted, mining NEVER STOPS by count "
-                        + "— do NOT use that for 'get a few logs then craft'; use mine_logs_then_make_wood_tool instead. "
+                "Mine and break blocks (digs ores, logs, etc.) and STOP at quantity. THIS is the tool for 'mine N logs' "
+                        + "or 'get N <block>': e.g. mine(['minecraft:log'], 67) gathers 67 logs and stops — it does NOT craft anything. "
+                        + "If quantity is 0 or omitted, mining never stops by count (use a number when the goal gives one). "
                         + "For diamond (and other overworld ores), pass the stone ore id: deepslate variants are added automatically.",
                 params(
                         param("blocks", "array",
@@ -240,17 +241,15 @@ public final class BaritoneTools {
                         param("command", "string",
                                 "The raw command, e.g. 'goto 100 64 -200' or 'mine diamond_ore'.", true)
                 )));
-        arr.add(fn("mine_logs_then_make_wood_tool",
-                "PREFERRED for 'make a wooden axe/pick from trees': mines ONLY until you have total_logs (default 6) "
-                        + "log items in inventory (Baritone stops automatically), then runs full craft (planks, sticks, "
-                        + "table, place, open GUI, tool). Do NOT call mine separately for this — it will mine forever.",
+        arr.add(fn("make_wooden_tool",
+                "MAKE a wooden pickaxe or axe FROM SCRATCH, only when you have NONE. Gathers a few logs if needed, then "
+                        + "crafts planks, sticks, table, places it and crafts the tool — one call. "
+                        + "This is NOT for gathering logs: to get N logs use mine(['minecraft:log'], N). "
+                        + "If you already hold any pickaxe/axe (any tier), do NOT call this.",
                 params(
                         param("tool", "string",
                                 "REQUIRED: exactly minecraft:wooden_pickaxe OR minecraft:wooden_axe (aliases: pickaxe, pick, axe).",
-                                true),
-                        param("total_logs", "integer",
-                                "Target number of log ITEMS in inventory before crafting (default 6, min 4, max 32).",
-                                false)
+                                true)
                 )));
         arr.add(fn("make_wood_tool_from_logs",
                 "ONE-SHOT early-game crafting: from logs in inventory, crafts planks, sticks, crafting table, "
@@ -473,7 +472,8 @@ public final class BaritoneTools {
                     return ok(gotoBlock(args));
                 case "mine":
                     return ok(mine(args));
-                case "mine_logs_then_make_wood_tool":
+                case "make_wooden_tool":
+                case "mine_logs_then_make_wood_tool": // legacy alias
                     return ok(mineLogsThenMakeWoodTool(args));
                 case "follow_player":
                     return ok(followPlayer(args));
@@ -1027,6 +1027,28 @@ public final class BaritoneTools {
         } catch (IllegalArgumentException e) {
             return "ERROR: " + e.getMessage();
         }
+
+        // Safety net: never craft a wooden tool the player doesn't need. If they
+        // already hold a pickaxe/axe of ANY tier, skip the whole mine+craft chain
+        // and tell the agent — so "mine some logs" (the agent over-eagerly picking
+        // this tool) can't force a pointless wooden pickaxe onto someone holding
+        // netherite. The agent decides what to do next from this result.
+        boolean wantPick = AiCrafting.RECIPE_WOODEN_PICKAXE.equals(recipeId);
+        String existing = existingToolDescription(wantPick);
+        if (existing != null) {
+            return "Skipped wood-tool craft: you already have " + existing + ". "
+                    + "No wooden " + (wantPick ? "pickaxe" : "axe") + " needed. "
+                    + "If you only wanted logs, call mine(['minecraft:log'], <count>) instead.";
+        }
+
+        // A wooden tool needs only a handful of logs. If the agent asked for many
+        // (e.g. "mine 67 logs" mis-routed here), that's a GATHER request, not a
+        // make-one-tool request: mine the logs and do NOT craft anything.
+        if (a.has("total_logs") && !a.get("total_logs").isJsonNull()
+                && a.get("total_logs").getAsInt() > 10) {
+            return mineLogsOnly(a.get("total_logs").getAsInt());
+        }
+
         int target = 6;
         if (a.has("total_logs") && !a.get("total_logs").isJsonNull()) {
             target = Math.min(32, Math.max(4, a.get("total_logs").getAsInt()));
@@ -1164,6 +1186,31 @@ public final class BaritoneTools {
                 "Unrecognized tool value '" + raw + "': use wooden_pickaxe / pickaxe / pick, or wooden_axe / axe.");
     }
 
+    /**
+     * If the player already holds a pickaxe (or axe) of any tier, return a short
+     * human description of the best one; otherwise null. Used to skip redundant
+     * wooden-tool crafting (e.g. when the player has a netherite pickaxe).
+     */
+    private String existingToolDescription(boolean pickaxe) {
+        Item[] tiers = pickaxe
+                ? new Item[]{Items.NETHERITE_PICKAXE, Items.DIAMOND_PICKAXE, Items.IRON_PICKAXE,
+                        Items.GOLDEN_PICKAXE, Items.STONE_PICKAXE, Items.WOODEN_PICKAXE}
+                : new Item[]{Items.NETHERITE_AXE, Items.DIAMOND_AXE, Items.IRON_AXE,
+                        Items.GOLDEN_AXE, Items.STONE_AXE, Items.WOODEN_AXE};
+        return AiCrafting.onClient(ctx, () -> {
+            LocalPlayer p = ctx.player();
+            if (p == null) {
+                return null;
+            }
+            for (Item tier : tiers) {
+                if (playerInventoryHas(p, tier)) {
+                    return net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(tier).toString();
+                }
+            }
+            return null;
+        });
+    }
+
     private static boolean playerInventoryHas(LocalPlayer p, Item item) {
         for (int i = 0; i < p.getInventory().getContainerSize(); i++) {
             ItemStack st = p.getInventory().getItem(i);
@@ -1172,6 +1219,47 @@ public final class BaritoneTools {
             }
         }
         return false;
+    }
+
+    /** Mine up to {@code count} logs and STOP — no crafting. Rescue path for a
+     *  gather request the agent mis-routed to the wood-tool tool. */
+    private String mineLogsOnly(int count) {
+        int target = Math.min(256, Math.max(1, count));
+        BaritoneAPI.getSettings().allowInventory.value = true;
+        cancelBaritoneWork();
+        int start = countLogsInInventory();
+        if (start >= target) {
+            return "Already have " + start + " logs (>= " + target + " requested); nothing to mine. Did NOT craft a tool.";
+        }
+        AiCrafting.onClient(ctx, () -> {
+            baritone.getMineProcess().mineByName(target, MINE_LOG_BLOCK_NAMES);
+            return null;
+        });
+        long deadline = System.currentTimeMillis() + 300_000L;
+        while (System.currentTimeMillis() < deadline) {
+            if (MistralAgent.isCancelled()) {
+                cancelBaritoneWork();
+                return "Cancelled mining at " + countLogsInInventory() + " logs.";
+            }
+            if (!baritone.getMineProcess().isActive() || countLogsInInventory() >= target) {
+                break;
+            }
+            try {
+                Thread.sleep(350);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                return "Interrupted mining at " + countLogsInInventory() + " logs.";
+            }
+        }
+        if (baritone.getMineProcess().isActive()) {
+            AiCrafting.onClient(ctx, () -> {
+                baritone.getMineProcess().cancel();
+                return null;
+            });
+        }
+        int after = countLogsInInventory();
+        return "Mined logs: now have " + after + " of " + target + " requested. Did NOT craft a tool "
+                + "(you asked for logs, not a wooden tool). If you actually want a wooden axe/pick, call make_wood_tool_from_logs.";
     }
 
     private int countLogsInInventory() {
@@ -1525,7 +1613,7 @@ public final class BaritoneTools {
         String trimmed = cmd.trim();
         String low = trimmed.toLowerCase(java.util.Locale.US);
         if (low.startsWith("craft ") || low.equals("craft")) {
-            return "ERROR: There is no Baritone 'craft' command. Use mine_logs_then_make_wood_tool for axe/pick from trees, "
+            return "ERROR: There is no Baritone 'craft' command. Use make_wooden_tool for axe/pick from scratch, "
                     + "make_wood_tool_from_logs if you already have logs, or craft_* tools.";
         }
         boolean ok = executeCommand(trimmed);
