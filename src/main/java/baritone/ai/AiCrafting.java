@@ -2463,7 +2463,15 @@ public final class AiCrafting {
         sleepAi(200);
         log.append(craftCraftingTable(ctx)).append(" ");
         sleepAi(200);
-        log.append(placeCraftingTableBlock(ctx)).append(" ");
+        String placed = placeCraftingTableBlock(ctx);
+        log.append(placed).append(" ");
+        if (placed.startsWith("ERROR:")) {
+            // Without a real table there is nothing to open or craft at — burning
+            // minutes head-swiveling at a phantom position froze whole missions.
+            // Fail FAST with advice so the model can move somewhere open and retry.
+            return log + "ERROR: Crafting table could not be placed here. "
+                    + "Move a few blocks to open, flat ground (e.g. goto_coords) and call this tool again.";
+        }
         sleepAi(450);
         boolean tableOk = Boolean.TRUE.equals(onClient(ctx, () -> {
             BlockPos pos = lastPlacedCraftingTablePos;
@@ -2611,9 +2619,13 @@ public final class AiCrafting {
             return "CLICK: " + res;
         });
         if (click.startsWith("ERROR:")) {
+            lastPlacedCraftingTablePos = null;
             return click;
         }
         if (!waitForBlock(ctx, plan.placed, Blocks.CRAFTING_TABLE, 30, 100)) {
+            // Never leave the remembered position pointing at a spot with no table —
+            // downstream open/craft loops would chase the phantom for minutes.
+            lastPlacedCraftingTablePos = null;
             return "ERROR: Crafting table did not appear at " + plan.placed + " after visible right-click (" + click + ").";
         }
         lastPlacedCraftingTablePos = plan.placed;
@@ -2625,13 +2637,22 @@ public final class AiCrafting {
      * tries multiple hit faces because a single ray can miss on laggy servers.
      */
     private static String openPlacedCraftingTable(IPlayerContext ctx) {
-        for (int attempt = 0; attempt < 36; attempt++) {
+        for (int attempt = 0; attempt < 12; attempt++) {
             if (MistralAgent.isCancelled()) {
                 return "Cancelled while opening table.";
             }
             BlockPos pos = lastPlacedCraftingTablePos;
             if (pos == null) {
                 return "ERROR: No remembered crafting table position.";
+            }
+            // Cheap sanity check BEFORE the slow visible look-and-click dance:
+            // if no table actually exists there, every face is doomed — bail now
+            // instead of head-swiveling at a phantom spot for minutes.
+            boolean tableThere = Boolean.TRUE.equals(onClient(ctx, () ->
+                    ctx.player().level().getBlockState(pos).is(Blocks.CRAFTING_TABLE)));
+            if (!tableThere) {
+                lastPlacedCraftingTablePos = null;
+                return "ERROR: No crafting table exists at remembered position " + pos + ".";
             }
             String r = openTableAtPositionVisible(ctx, pos);
             if (r.startsWith("Opened") || r.startsWith("Already") || r.startsWith("ERROR:")) {
@@ -3110,8 +3131,8 @@ public final class AiCrafting {
         BlockHitResult bestHit = null;
         double best = Double.MAX_VALUE;
         for (int y = -1; y <= 1; y++) {
-            for (int x = -2; x <= 2; x++) {
-                for (int z = -2; z <= 2; z++) {
+            for (int x = -3; x <= 3; x++) {
+                for (int z = -3; z <= 3; z++) {
                     BlockPos air = feet.offset(x, y, z);
                     if (!level.getBlockState(air).canBeReplaced()) {
                         continue;
