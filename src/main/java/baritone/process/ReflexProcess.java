@@ -25,6 +25,7 @@ import baritone.ai.ReflexPlanner;
 import baritone.ai.ReflexPlanner.Conditions;
 import baritone.ai.ReflexPlanner.Reflex;
 import baritone.api.Settings;
+import baritone.api.pathing.goals.GoalNear;
 import baritone.api.pathing.goals.GoalRunAway;
 import baritone.api.process.PathingCommand;
 import baritone.api.process.PathingCommandType;
@@ -42,7 +43,9 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.food.FoodProperties;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.AABB;
 
 import java.util.List;
@@ -68,6 +71,16 @@ public final class ReflexProcess extends BaritoneProcessHelper {
     private static final int MAX_FLEE_TICKS = 200;          // ~10s
     private static final int FLEE_COOLDOWN_TICKS = 120;     // ~6s before flee may re-engage
     private static final int FLEE_EPISODE_GAP_TICKS = 100;  // gap that counts as a fresh flee episode
+    /** Below this health (HP, 20 = full) we'd rather flee a skeleton than trade hits with it. */
+    private static final float COMBAT_MIN_HEALTH = 8.0F;    // 4 hearts
+    /** Melee weapons best→worst. Having one in the hotbar (plus health) makes us willing to fight a
+     *  skeleton instead of fleeing into a dead end; matched by Items constants (ProGuard-safe). */
+    private static final Item[] MELEE_WEAPONS = {
+            Items.NETHERITE_SWORD, Items.DIAMOND_SWORD, Items.IRON_SWORD, Items.STONE_SWORD,
+            Items.GOLDEN_SWORD, Items.WOODEN_SWORD,
+            Items.NETHERITE_AXE, Items.DIAMOND_AXE, Items.IRON_AXE, Items.STONE_AXE,
+            Items.GOLDEN_AXE, Items.WOODEN_AXE
+    };
 
     private Reflex mode = Reflex.NONE;
     private int modeTicks;
@@ -147,24 +160,53 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         c.drownDone = !player.isUnderWater() || air >= 250;
 
         double engageRadius = Math.max(2D, s.reflexCreeperRadius.value);
-        // Flee from creepers AND ranged skeletons (meleeing a skeleton just eats arrows).
-        boolean mobsNear = s.reflexFleeCreepers.value && !nearbyFleeMobs(player, engageRadius).isEmpty();
-        // Watchdog: if we've been fleeing too long without shaking the mob (creeper chasing / blocked
-        // path), give up for a cooldown so the mission resumes instead of oscillating "fleeing" forever.
-        boolean inCooldown = fleeWatchdog.suppressed(now, mobsNear);
-        c.creeperNear = mobsNear && !inCooldown;
-        c.fleeDone = inCooldown || nearbyFleeMobs(player, engageRadius + 4D).isEmpty();
+        // Split nearby flee-mobs: creepers must NEVER be meleed (they explode); skeletons CAN be
+        // fought if we're geared for it. Fleeing a skeleton into a dead-end cave just eats arrows.
+        LivingEntity nearestSkeleton = null;
+        double skDist = Double.MAX_VALUE;
+        boolean creeperPresent = false;
+        for (LivingEntity e : nearbyFleeMobs(player, engageRadius)) {
+            if (e instanceof Creeper) {
+                creeperPresent = true;
+            } else {
+                double d = player.distanceTo(e);
+                if (d < skDist) {
+                    skDist = d;
+                    nearestSkeleton = e;
+                }
+            }
+        }
+        // "Geared up" = a melee weapon ready in the hotbar AND enough health to trade hits.
+        boolean combatReady = s.reflexFightBack.value
+                && player.getHealth() >= COMBAT_MIN_HEALTH
+                && hotbarWeaponSlot(player) >= 0;
+        // Fight a skeleton when geared (and no creeper around to flee from first); otherwise flee it.
+        boolean fightSkeleton = nearestSkeleton != null && combatReady && !creeperPresent;
+
+        boolean fleeNeeded = s.reflexFleeCreepers.value
+                && (creeperPresent || (nearestSkeleton != null && !fightSkeleton));
+        // Watchdog: if we can't shake a mob we're fleeing (chased / blocked path), give up for a
+        // cooldown so the mission resumes instead of oscillating "fleeing" forever.
+        boolean inCooldown = fleeWatchdog.suppressed(now, fleeNeeded);
+        c.creeperNear = fleeNeeded && !inCooldown;
+        c.fleeDone = inCooldown || !fleeRequiredWithin(player, engageRadius + 4D, combatReady);
 
         boolean recentlyHurt = lastHurtAt != Long.MIN_VALUE && now - lastHurtAt <= FIGHT_DISENGAGE_TICKS;
-        LivingEntity threat = s.reflexFightBack.value && recentlyHurt ? nearestHostile(player, 4.5D) : null;
+        LivingEntity threat = null;
+        if (fightSkeleton) {
+            threat = nearestSkeleton;                       // stand and fight a skeleton we can take
+        } else if (s.reflexFightBack.value && recentlyHurt) {
+            threat = nearestHostile(player, 4.5D);          // fight back at melee mobs (zombies) when hit
+        }
         c.hostileThreat = threat != null;
         if (threat != null) {
             fightTarget = threat;
         }
-        c.fightDone = !recentlyHurt
-                || fightTarget == null
+        boolean targetIsSkeleton = fightTarget instanceof net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
+        c.fightDone = fightTarget == null
                 || !fightTarget.isAlive()
-                || fightTarget.distanceTo(player) > 6.5D;
+                || fightTarget.distanceTo(player) > 8.0D
+                || (!targetIsSkeleton && !recentlyHurt);    // melee-mob fight ends when we stop being hit
 
         boolean screenOpen = ctx.minecraft().screen != null;
         int foodSlot = findSafeFoodSlot(player);
@@ -191,8 +233,9 @@ public final class ReflexProcess extends BaritoneProcessHelper {
                 .orElse(false);
     }
 
-    /** Creepers (explode) and skeletons (Skeleton/Stray/Bogged — shoot arrows). Running beats
-     *  meleeing both — closing in on a skeleton just eats arrows. */
+    /** Mobs handled by the flee/fight reflex rather than ignored: creepers (explode — always flee)
+     *  and skeletons (Skeleton/Stray/Bogged — flee when unarmed, but fight when geared up; see
+     *  {@code sample()}). Unarmed, running beats meleeing — closing on a skeleton just eats arrows. */
     private static boolean isFleeMob(net.minecraft.world.entity.Entity e) {
         return e instanceof Creeper
                 || e instanceof net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
@@ -219,6 +262,35 @@ public final class ReflexProcess extends BaritoneProcessHelper {
             }
         }
         return best;
+    }
+
+    /** Hotbar slot (0-8) holding the best melee weapon by {@link #MELEE_WEAPONS} order, or -1 if none. */
+    private int hotbarWeaponSlot(LocalPlayer player) {
+        int bestSlot = -1;
+        int bestRank = Integer.MAX_VALUE;
+        for (int slot = 0; slot < 9; slot++) {
+            Item item = player.getInventory().getItem(slot).getItem();
+            for (int rank = 0; rank < MELEE_WEAPONS.length; rank++) {
+                if (MELEE_WEAPONS[rank] == item) {
+                    if (rank < bestRank) {
+                        bestRank = rank;
+                        bestSlot = slot;
+                    }
+                    break;
+                }
+            }
+        }
+        return bestSlot;
+    }
+
+    /** True if a mob we must FLEE is within radius: any creeper, or — when not combat-ready — any skeleton. */
+    private boolean fleeRequiredWithin(LocalPlayer player, double radius, boolean combatReady) {
+        for (LivingEntity e : nearbyFleeMobs(player, radius)) {
+            if (e instanceof Creeper || !combatReady) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private int findSafeFoodSlot(LocalPlayer player) {
@@ -316,14 +388,34 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         if (target == null || !target.isAlive()) {
             return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
         }
+        // Hold the best weapon we've got before swinging.
+        int weaponSlot = hotbarWeaponSlot(player);
+        if (weaponSlot >= 0 && player.getInventory().getSelectedSlot() != weaponSlot) {
+            player.getInventory().setSelectedSlot(weaponSlot);
+        }
         Rotation rot = RotationUtils.calcRotationFromVec3d(ctx.playerHead(),
                 target.position().add(0, target.getBbHeight() * 0.6D, 0), ctx.playerRotations());
         baritone.getLookBehavior().updateTarget(rot, true);
-        if (player.distanceTo(target) <= 3.5D && player.getAttackStrengthScale(0F) >= 0.95F) {
-            ctx.minecraft().gameMode.attack(player, target);
-            player.swing(net.minecraft.world.InteractionHand.MAIN_HAND);
+        double dist = player.distanceTo(target);
+        if (dist <= 3.5D) {
+            if (player.getAttackStrengthScale(0F) >= 0.95F) {
+                ctx.minecraft().gameMode.attack(player, target);
+                player.swing(net.minecraft.world.InteractionHand.MAIN_HAND);
+            }
+            return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
         }
-        return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
+        // A ranged skeleton won't come to us — close the gap. Rush a near target directly (works in
+        // tight caves where pathing is slow); path to a farther one with GoalNear.
+        if (dist <= 6D) {
+            baritone.getInputOverrideHandler().setInputForceState(Input.MOVE_FORWARD, true);
+            baritone.getInputOverrideHandler().setInputForceState(Input.SPRINT, true);
+            if (player.horizontalCollision) {
+                baritone.getInputOverrideHandler().setInputForceState(Input.JUMP, true);
+            }
+            return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
+        }
+        return new PathingCommand(new GoalNear(target.blockPosition(), 2),
+                PathingCommandType.FORCE_REVALIDATE_GOAL_AND_PATH);
     }
 
     private PathingCommand tickEat(LocalPlayer player) {
