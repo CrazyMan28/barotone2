@@ -107,6 +107,18 @@ public final class MistralAgent implements Helper {
             + "Use update_goal_status and complete_goal_step as work progresses.\n"
             + "- For separate follow-up work, call mission_enqueue instead of mixing unrelated goals into the current mission. "
             + "Use mission_status to inspect queued missions.\n"
+            + "- SURVIVAL PROGRESSION — think and prioritize like a real player. From a fresh start the tech ladder is: "
+            + "logs -> wooden pickaxe -> mine cobblestone -> stone pickaxe/axe/sword -> coal+torches -> iron -> better gear. "
+            + "Do not skip rungs (you cannot mine iron without a stone pickaxe, nor diamonds without an iron pickaxe). "
+            + "get_state now reports time_of_day, ticks_until_night, light_level, mob_spawn_risk, best_pickaxe, best_axe, "
+            + "edible_food_count — READ THESE and act on them.\n"
+            + "- BEFORE NIGHT (time_of_day=dusk or ticks_until_night small): make sure you have food (edible_food_count>0; "
+            + "else kill animals / harvest crops) and safety — either dig a quick 1x1 shelter and wall yourself in, place "
+            + "torches so light_level>7, or keep working only if well-lit. Hostiles spawn when mob_spawn_risk is true. "
+            + "The survival reflexes will fight/flee for you, but don't pick fights at night with wooden gear.\n"
+            + "- REMEMBER LOCATIONS as you explore: the agent auto-saves your 'base' (start) and valuable ores it sees, but "
+            + "you should ALSO memory_remember anything important (key='base'/'village'/'iron_spot', include_position=true). "
+            + "memory_recall (or the mission_memory_summary in get_state) to return to known spots instead of re-searching.\n"
             + "- Use memory_recall for saved bases, preferences, resource spots, and previous checkpoints. "
             + "Use memory_remember for durable facts and memory_checkpoint after important progress.\n"
             + "- After long-running actions (mine, goto_*, farm, explore), call wait_until_idle (timeout_seconds=0 "
@@ -194,6 +206,7 @@ public final class MistralAgent implements Helper {
         tools.setForbidExplore(goalForbidsExplore(userGoal));
         GoalTracker.setStatus(planMode ? "Planning" : "Starting");
         MissionMemory.recordCheckpointQuietly(userGoal, "agent_started", provider + ":" + model, "running");
+        tools.rememberBaseIfUnknown();
 
         // Fast path: the fine-tuned baritone-brain model answers a tiny schema-free prompt with one
         // tool call (~1s). On escalate / parse failure / tool error we fall through to the full

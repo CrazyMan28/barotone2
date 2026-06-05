@@ -445,8 +445,10 @@ public final class BaritoneTools {
                                 false)
                 )));
         arr.add(fn("get_state",
-                "Return a snapshot: position, dimension, health, hunger, hotbar, inventory_totals, ender_chest_totals, "
-                        + "has_wooden_pickaxe, has_wooden_axe, pathing flag, goal, mine/farm/explore active, legit_mine setting.",
+                "Return a snapshot: position, dimension, health, food + edible_food_count, hotbar, inventory_totals, "
+                        + "ender_chest_totals, has_wooden_pickaxe/axe, best_pickaxe/best_axe (tier), time_of_day, "
+                        + "ticks_until_night, is_night, light_level, mob_spawn_risk, pathing/goal, mine/farm/explore active, "
+                        + "mission_memory_summary (known locations), recent_reflexes. Use time/light/tools/food to plan survival.",
                 params()));
         arr.add(fn("say",
                 "Print a short status message to the player's chat (visible only to them).",
@@ -1735,6 +1737,42 @@ public final class BaritoneTools {
         s.addProperty("food", p.getFoodData().getFoodLevel());
         s.addProperty("xp_level", p.experienceLevel);
 
+        // ── situational awareness (for survival progression decisions) ──
+        try {
+            long dayCycle = p.level().getDayTime() % 24000L;
+            String tod;
+            long untilNight;
+            if (dayCycle < 12000) { tod = dayCycle < 1000 ? "dawn" : "day"; untilNight = 12000 - dayCycle; }
+            else if (dayCycle < 13000) { tod = "dusk"; untilNight = 13000 - dayCycle; }
+            else if (dayCycle < 23000) { tod = "night"; untilNight = 0; }
+            else { tod = "dawn"; untilNight = 24000 - dayCycle + 12000; }
+            s.addProperty("time_of_day", tod);
+            s.addProperty("ticks_until_night", untilNight);
+            s.addProperty("is_night", dayCycle >= 13000 && dayCycle < 23000);
+        } catch (RuntimeException ignored) {}
+        try {
+            int light = p.level().getMaxLocalRawBrightness(p.blockPosition());
+            s.addProperty("light_level", light);
+            s.addProperty("mob_spawn_risk", light <= 7); // hostiles spawn at light <= 7
+        } catch (RuntimeException ignored) {}
+        try {
+            s.addProperty("best_pickaxe", bestToolTier(p, true));
+            s.addProperty("best_axe", bestToolTier(p, false));
+        } catch (RuntimeException ignored) {}
+        try {
+            s.addProperty("food_saturation", Math.round(p.getFoodData().getSaturationLevel() * 10f) / 10f);
+            int edible = 0;
+            for (int i = 0; i < p.getInventory().getContainerSize(); i++) {
+                ItemStack st = p.getInventory().getItem(i);
+                if (st == null || st.isEmpty()) continue;
+                if (st.get(net.minecraft.core.component.DataComponents.FOOD) != null
+                        && ReflexPlanner.isSafeFood(st.getItem().toString())) {
+                    edible += st.getCount();
+                }
+            }
+            s.addProperty("edible_food_count", edible);
+        } catch (RuntimeException ignored) {}
+
         // hotbar summary
         JsonArray hotbar = new JsonArray();
         try {
@@ -1805,7 +1843,73 @@ public final class BaritoneTools {
             }
         } catch (RuntimeException ignored) {
         }
+        // Autonomously remember valuable ores/structures the agent can currently see,
+        // so it builds a map of where things are WITHOUT being told to.
+        try {
+            autoRememberNearbyResources(p);
+        } catch (RuntimeException ignored) {
+        }
         return s.toString();
+    }
+
+    /** Best pickaxe/axe tier the player is carrying, e.g. "minecraft:iron_pickaxe" or "none". */
+    private String bestToolTier(LocalPlayer p, boolean pickaxe) {
+        Item[] tiers = pickaxe
+                ? new Item[]{Items.NETHERITE_PICKAXE, Items.DIAMOND_PICKAXE, Items.IRON_PICKAXE,
+                        Items.GOLDEN_PICKAXE, Items.STONE_PICKAXE, Items.WOODEN_PICKAXE}
+                : new Item[]{Items.NETHERITE_AXE, Items.DIAMOND_AXE, Items.IRON_AXE,
+                        Items.GOLDEN_AXE, Items.STONE_AXE, Items.WOODEN_AXE};
+        for (Item tier : tiers) {
+            if (playerInventoryHas(p, tier)) {
+                net.minecraft.resources.Identifier id = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(tier);
+                return id != null ? id.toString() : "unknown";
+            }
+        }
+        return "none";
+    }
+
+    /** High-value blocks the agent auto-records the location of when it sees them. */
+    private static final String[] NOTABLE_BLOCKS = {
+            "diamond_ore", "deepslate_diamond_ore", "ancient_debris",
+            "emerald_ore", "deepslate_emerald_ore", "gold_ore", "deepslate_gold_ore",
+            "nether_gold_ore", "raw_iron_block"
+    };
+
+    /** Scan a small radius for valuable blocks and persist any new finds to mission memory. */
+    private void autoRememberNearbyResources(LocalPlayer p) {
+        net.minecraft.world.level.Level level = p.level();
+        net.minecraft.core.BlockPos feet = p.blockPosition();
+        String dim;
+        try {
+            dim = level.dimension().identifier().toString();
+        } catch (RuntimeException e) {
+            dim = "";
+        }
+        int radius = 6;
+        int recorded = 0;
+        for (int y = -radius; y <= radius && recorded < 4; y++) {
+            for (int x = -radius; x <= radius && recorded < 4; x++) {
+                for (int z = -radius; z <= radius && recorded < 4; z++) {
+                    net.minecraft.core.BlockPos pos = feet.offset(x, y, z);
+                    String id = net.minecraft.core.registries.BuiltInRegistries.BLOCK
+                            .getKey(level.getBlockState(pos).getBlock()).toString();
+                    String path = id.contains(":") ? id.substring(id.indexOf(':') + 1) : id;
+                    boolean notable = false;
+                    for (String n : NOTABLE_BLOCKS) {
+                        if (path.equals(n)) { notable = true; break; }
+                    }
+                    if (!notable) continue;
+                    // one memory per exact position (re-seeing overwrites, never duplicates)
+                    String key = "ore_" + path + "_" + pos.getX() + "_" + pos.getY() + "_" + pos.getZ();
+                    try {
+                        MissionMemory.rememberLocation(key, "saw " + path + " here",
+                                "resource", dim, pos.getX(), pos.getY(), pos.getZ(), "auto");
+                        recorded++;
+                    } catch (RuntimeException ignored) {
+                    }
+                }
+            }
+        }
     }
 
     /** True while mine/farm/explore still want control (pathing can pause between segments). */
@@ -1852,6 +1956,23 @@ public final class BaritoneTools {
         boolean includeCheckpoints = a.has("include_checkpoints") && !a.get("include_checkpoints").isJsonNull()
                 && a.get("include_checkpoints").getAsBoolean();
         return MissionMemory.recall(query, category, includeCheckpoints);
+    }
+
+    /** Stamp the current position as "base" once, the first time the agent runs in this world. */
+    public void rememberBaseIfUnknown() {
+        try {
+            for (MissionMemory.MemoryRecord m : MissionMemory.snapshot().memories) {
+                if ("base".equals(m.key) && m.hasPosition) {
+                    return; // already know where home is
+                }
+            }
+            MissionMemory.Location loc = currentMemoryLocation();
+            if (loc != null) {
+                MissionMemory.rememberLocation("base", "Starting position for this mission session",
+                        "location", loc.dimension, loc.x, loc.y, loc.z, "auto");
+            }
+        } catch (RuntimeException ignored) {
+        }
     }
 
     private MissionMemory.Location currentMemoryLocation() {
