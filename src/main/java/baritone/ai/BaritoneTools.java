@@ -532,6 +532,14 @@ public final class BaritoneTools {
                 case "make_wood_tool_from_logs": {
                     try {
                         String rid = parseWoodToolRecipeId(args);
+                        // Forgiving: the model often calls this with no logs in hand. If we don't
+                        // have enough, gather wood first (the mine+craft path) instead of erroring,
+                        // so the wooden-tool bootstrap can't dead-loop on "No logs in inventory".
+                        if (countLogsInInventory() < 3) {
+                            JsonObject mineArgs = new JsonObject();
+                            mineArgs.addProperty("tool", rid);
+                            return ok(mineLogsThenMakeWoodTool(mineArgs));
+                        }
                         return ok(AiCrafting.makeWoodToolFromLogs(ctx, rid));
                     } catch (IllegalArgumentException e) {
                         return err(e.getMessage());
