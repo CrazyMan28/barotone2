@@ -63,6 +63,11 @@ public final class ReflexProcess extends BaritoneProcessHelper {
     private static final int EAT_RELEASE_FOOD_LEVEL = 18;
     private static final int FIGHT_DISENGAGE_TICKS = 100;
     private static final int EAT_TIMEOUT_TICKS = 400;
+    /** Stop fleeing after this long if we still can't shake the mob (a creeper following us, or a
+     *  terrain trap), so the mission resumes instead of oscillating "fleeing" forever. */
+    private static final int MAX_FLEE_TICKS = 200;          // ~10s
+    private static final int FLEE_COOLDOWN_TICKS = 120;     // ~6s before flee may re-engage
+    private static final int FLEE_EPISODE_GAP_TICKS = 100;  // gap that counts as a fresh flee episode
 
     private Reflex mode = Reflex.NONE;
     private int modeTicks;
@@ -71,6 +76,10 @@ public final class ReflexProcess extends BaritoneProcessHelper {
     private long lastWorkingAt = Long.MIN_VALUE;
     private LivingEntity fightTarget;
     private boolean loggedNoFood;
+    // Flee watchdog: tracks one continuous-or-oscillating flee episode so it can be force-ended.
+    private long lastFleeTick = Long.MIN_VALUE;
+    private long fleeEpisodeStart = Long.MIN_VALUE;
+    private long fleeCooldownUntil = Long.MIN_VALUE;
 
     public ReflexProcess(Baritone baritone) {
         super(baritone);
@@ -140,9 +149,26 @@ public final class ReflexProcess extends BaritoneProcessHelper {
 
         double engageRadius = Math.max(2D, s.reflexCreeperRadius.value);
         // Flee from creepers AND ranged skeletons (meleeing a skeleton just eats arrows).
-        boolean fleeWithin = s.reflexFleeCreepers.value && !nearbyFleeMobs(player, engageRadius).isEmpty();
-        c.creeperNear = fleeWithin;
-        c.fleeDone = nearbyFleeMobs(player, engageRadius + 4D).isEmpty();
+        boolean mobsNear = s.reflexFleeCreepers.value && !nearbyFleeMobs(player, engageRadius).isEmpty();
+        // Track a flee "episode": oscillating in and out of range still counts as one episode
+        // (a gap longer than FLEE_EPISODE_GAP_TICKS starts a fresh one).
+        if (mobsNear) {
+            if (lastFleeTick == Long.MIN_VALUE || now - lastFleeTick > FLEE_EPISODE_GAP_TICKS) {
+                fleeEpisodeStart = now;
+            }
+            lastFleeTick = now;
+        }
+        boolean inCooldown = now < fleeCooldownUntil;
+        // Watchdog: stuck fleeing too long (creeper chasing / blocked path) -> stop trying for a
+        // cooldown so the mission can resume instead of looping. The agent has already put distance
+        // in; resuming beats freezing, and it can re-flee after the cooldown if still threatened.
+        if (mobsNear && !inCooldown && fleeEpisodeStart != Long.MIN_VALUE
+                && now - fleeEpisodeStart > MAX_FLEE_TICKS) {
+            fleeCooldownUntil = now + FLEE_COOLDOWN_TICKS;
+            inCooldown = true;
+        }
+        c.creeperNear = mobsNear && !inCooldown;
+        c.fleeDone = inCooldown || nearbyFleeMobs(player, engageRadius + 4D).isEmpty();
 
         boolean recentlyHurt = lastHurtAt != Long.MIN_VALUE && now - lastHurtAt <= FIGHT_DISENGAGE_TICKS;
         LivingEntity threat = s.reflexFightBack.value && recentlyHurt ? nearestHostile(player, 4.5D) : null;
