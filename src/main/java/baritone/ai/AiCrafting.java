@@ -2551,7 +2551,10 @@ public final class AiCrafting {
         }
         BlockPos placed = placeStationBlock(ctx, item, block, displayName);
         for (int attempt = 0; attempt < 3 && placed == null && !MistralAgent.isCancelled(); attempt++) {
-            nudgePlayer(ctx); // blocked spot (flower/mob/edge) — move and try again
+            // walk to a known-good open spot before retrying (don't just look-down-and-hope)
+            if (!walkToPlaceableSpot(ctx)) {
+                nudgePlayer(ctx);
+            }
             placed = placeStationBlock(ctx, item, block, displayName);
         }
         if (placed == null) {
@@ -3291,14 +3294,102 @@ public final class AiCrafting {
         sleepAi(250);
     }
 
-    /** Place a crafting table; if the spot is blocked (flower raytrace, mob, edge), move and retry. */
+    /** Place a crafting table; if the spot is blocked, WALK to a known-good open spot and place there. */
     private static String placeCraftingTableWithRetry(IPlayerContext ctx) {
         String r = placeCraftingTableBlock(ctx);
         for (int attempt = 0; attempt < 3 && r.startsWith("ERROR:") && !MistralAgent.isCancelled(); attempt++) {
-            nudgePlayer(ctx);
+            // Don't just look-down-and-hope: actively find a flat open cell with room and a place to
+            // stand next to it, pathfind there, THEN place. Falls back to a nudge if no spot is found.
+            if (!walkToPlaceableSpot(ctx)) {
+                nudgePlayer(ctx);
+            }
             r = placeCraftingTableBlock(ctx);
         }
         return r;
+    }
+
+    /** Find an open, floored cell (with a standing spot beside it) within reach, path to it. */
+    private static boolean walkToPlaceableSpot(IPlayerContext ctx) {
+        IBaritone b = BaritoneAPI.getProvider().getPrimaryBaritone();
+        if (b == null) {
+            return false;
+        }
+        BlockPos[] spot = onClient(ctx, () -> findPlaceableStand(ctx.player(), 12));
+        if (spot == null) {
+            return false; // nowhere obviously placeable nearby
+        }
+        BlockPos stand = spot[1];
+        boolean alreadyThere = Boolean.TRUE.equals(onClient(ctx,
+                () -> ctx.player().blockPosition().closerThan(stand, 1.5)));
+        if (!alreadyThere) {
+            onClient(ctx, () -> {
+                b.getCustomGoalProcess().setGoalAndPath(new baritone.api.pathing.goals.GoalBlock(stand));
+                return null;
+            });
+            long deadline = System.currentTimeMillis() + 25_000L;
+            while (System.currentTimeMillis() < deadline) {
+                if (MistralAgent.isCancelled()) {
+                    break;
+                }
+                if (Boolean.TRUE.equals(onClient(ctx, () -> ctx.player().blockPosition().closerThan(stand, 1.6)))) {
+                    break;
+                }
+                if (!b.getPathingBehavior().isPathing() && !b.getPathingBehavior().getInProgress().isPresent()) {
+                    break; // path completed or couldn't progress
+                }
+                sleepAi(300);
+            }
+            onClient(ctx, () -> {
+                b.getCustomGoalProcess().onLostControl();
+                return null;
+            });
+        }
+        return true;
+    }
+
+    /** {placeCell, standCell}: an air cell with a sturdy floor + headroom, beside a standable cell. */
+    private static BlockPos[] findPlaceableStand(LocalPlayer p, int radius) {
+        Level level = p.level();
+        BlockPos origin = p.blockPosition();
+        BlockPos bestPlace = null;
+        BlockPos bestStand = null;
+        double bestDist = Double.MAX_VALUE;
+        for (int y = -3; y <= 2; y++) {
+            for (int x = -radius; x <= radius; x++) {
+                for (int z = -radius; z <= radius; z++) {
+                    BlockPos c = origin.offset(x, y, z);
+                    if (!isOpenFlooredCell(level, c)) {
+                        continue;
+                    }
+                    for (Direction d : new Direction[]{Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST}) {
+                        BlockPos s = c.relative(d);
+                        if (!isStandable(level, s)) {
+                            continue;
+                        }
+                        double dist = origin.distSqr(s);
+                        if (dist < bestDist) {
+                            bestDist = dist;
+                            bestPlace = c;
+                            bestStand = s;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        return bestPlace == null ? null : new BlockPos[]{bestPlace, bestStand};
+    }
+
+    private static boolean isOpenFlooredCell(Level level, BlockPos c) {
+        return level.getBlockState(c).isAir()
+                && level.getBlockState(c.above()).isAir()
+                && level.getBlockState(c.below()).isFaceSturdy(level, c.below(), Direction.UP);
+    }
+
+    private static boolean isStandable(Level level, BlockPos s) {
+        return level.getBlockState(s).isAir()
+                && level.getBlockState(s.above()).isAir()
+                && level.getBlockState(s.below()).isFaceSturdy(level, s.below(), Direction.UP);
     }
 
     private static BlockHitResult findTablePlacementHit(LocalPlayer p) {
