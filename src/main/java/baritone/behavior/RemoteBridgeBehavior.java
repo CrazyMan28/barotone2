@@ -18,6 +18,7 @@
 package baritone.behavior;
 
 import baritone.Baritone;
+import baritone.ai.LiveVideoCapture;
 import baritone.ai.ScreenshotHelper;
 import baritone.api.event.events.TickEvent;
 import net.minecraft.ChatFormatting;
@@ -71,10 +72,31 @@ public final class RemoteBridgeBehavior extends Behavior implements baritone.api
                     ScreenshotHelper.capture("remote");
                     continue;
                 }
+                // "live on [fps] [scale]" / "live off" drive the live-video capture — not Baritone
+                // commands; capturing the already-rendered framebuffer doesn't disturb the agent.
+                if (command.toLowerCase(java.util.Locale.ROOT).startsWith("live ")) {
+                    String[] parts = command.trim().split("\\s+");
+                    if (parts.length >= 2 && parts[1].equalsIgnoreCase("on")) {
+                        int fps = parts.length >= 3 ? parseIntOr(parts[2], 8) : 8;
+                        int scale = parts.length >= 4 ? parseIntOr(parts[3], 2) : 2;
+                        LiveVideoCapture.start(fps, scale);
+                    } else if (parts.length >= 2 && parts[1].equalsIgnoreCase("off")) {
+                        LiveVideoCapture.stop("remote");
+                    }
+                    continue;
+                }
                 baritone.getCommandManager().execute(command);
             }
         } catch (IOException | RuntimeException e) {
             logDirect("[remote] bridge error: " + e.getMessage(), ChatFormatting.RED);
+        }
+    }
+
+    private static int parseIntOr(String s, int fallback) {
+        try {
+            return Integer.parseInt(s.trim());
+        } catch (NumberFormatException e) {
+            return fallback;
         }
     }
 }
