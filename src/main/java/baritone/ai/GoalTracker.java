@@ -154,6 +154,9 @@ public final class GoalTracker {
         data.put("summary", clean(summary));
         data.put("success", true);
         AgentTelemetry.emit("mission_done", data);
+        // Auto check-in: emit the event FIRST (above), then snap the window so the launcher sees
+        // mission_done and the fresh PNG as the newest screenshot. Fire-and-forget, never throws.
+        ScreenshotHelper.capture("mission_done");
     }
 
     public static void fail(String summary) {
@@ -166,6 +169,7 @@ public final class GoalTracker {
                     .withStatus(prefixStatus("Stopped", summary));
         }
         AgentTelemetry.emit("mission_fail", "summary", clean(summary));
+        ScreenshotHelper.capture("mission_fail");
     }
 
     public static void hide() {

@@ -18,6 +18,7 @@
 package baritone.behavior;
 
 import baritone.Baritone;
+import baritone.ai.ScreenshotHelper;
 import baritone.api.event.events.TickEvent;
 import net.minecraft.ChatFormatting;
 
@@ -64,6 +65,12 @@ public final class RemoteBridgeBehavior extends Behavior implements baritone.api
                     continue;
                 }
                 logDirect("[remote] " + command, ChatFormatting.LIGHT_PURPLE);
+                // "screenshot" is an on-demand check-in, not a Baritone command — snap the window and
+                // move on (doesn't disturb whatever Baritone is doing).
+                if (command.equalsIgnoreCase("screenshot")) {
+                    ScreenshotHelper.capture("remote");
+                    continue;
+                }
                 baritone.getCommandManager().execute(command);
             }
         } catch (IOException | RuntimeException e) {
