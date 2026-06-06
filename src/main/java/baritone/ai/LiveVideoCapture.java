@@ -232,8 +232,9 @@ public final class LiveVideoCapture {
         if (w <= 0 || h <= 0 || abgr == null) {
             return;
         }
-        int outW = Math.max(1, w / scale);
-        int outH = Math.max(1, h / scale);
+        // even dimensions: libx264 + yuv420p (4:2:0) reject odd width/height
+        int outW = Math.max(2, (w / scale) & ~1);
+        int outH = Math.max(2, (h / scale) & ~1);
         BufferedImage img = new BufferedImage(outW, outH, BufferedImage.TYPE_INT_RGB);
         for (int y = 0; y < outH; y++) {
             int sy = y * scale;
