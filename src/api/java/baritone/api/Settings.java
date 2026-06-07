@@ -1373,6 +1373,58 @@ public final class Settings {
     public final Setting<Boolean> mistralAllowSelfConfig = new Setting<>(true);
 
     /**
+     * Routes {@code #ai <goal>} through the hierarchical planner: a dedicated think-first LLM call
+     * decomposes the goal into ordered sub-goals with machine-checkable success criteria (the tech
+     * ladder is enforced, not just suggested), each sub-goal runs as a fresh focused sub-agent, and
+     * completion is verified against the real inventory before advancing. Set false for the old
+     * single-conversation behavior.
+     */
+    public final Setting<Boolean> aiHierarchicalPlanner = new Setting<>(true);
+
+    /**
+     * Max tokens for the planner's decompose/replan calls. Larger than the mission default so the
+     * model has room to think in the required {@code reasoning} field before listing sub-goals.
+     */
+    public final Setting<Integer> aiPlannerMaxTokens = new Setting<>(2048);
+
+    /**
+     * Tool-call budget per planner sub-goal (each sub-goal is a fresh sub-agent conversation).
+     * Smaller than a whole-mission budget on purpose: a sub-goal that needs more than this is a
+     * sign the plan step is too big and should be decomposed further. {@code 0} means unlimited.
+     */
+    public final Setting<Integer> aiPlannerSubGoalMaxIterations = new Setting<>(40);
+
+    /**
+     * How many times the planner sends a sub-agent back with "you claimed done but X is missing"
+     * before the sub-goal counts as failed and triggers a replan.
+     */
+    public final Setting<Integer> aiPlannerVerifyBounces = new Setting<>(2);
+
+    /**
+     * Replans (full LLM re-decompositions of the remaining work) allowed per mission before the
+     * planner gives up and fails the mission.
+     */
+    public final Setting<Integer> aiPlannerMaxReplans = new Setting<>(5);
+
+    /**
+     * Deaths tolerated on a single sub-goal. Up to this many, the planner recovers the dropped
+     * items (when reachable before despawn) and retries; strictly MORE forces a replan with a
+     * re-gear directive instead of repeating the fatal approach.
+     */
+    public final Setting<Integer> aiPlannerMaxDeathsPerSubGoal = new Setting<>(5);
+
+    /**
+     * Travel-speed estimate (blocks/second) for the death-recovery feasibility check: dropped items
+     * are recovered only when distance/speed plus a safety margin fits inside the despawn window.
+     */
+    public final Setting<Double> aiPlannerWalkSpeedBlocksPerSec = new Setting<>(4.3);
+
+    /**
+     * Item despawn window (seconds) used by the death-recovery feasibility check. Vanilla is 300.
+     */
+    public final Setting<Double> aiPlannerDespawnSeconds = new Setting<>(300.0);
+
+    /**
      * Distance to scan every tick for updates. Expanding this beyond player reach distance (i.e. setting it to 6 or above)
      * is only necessary in very large schematics where rescanning the whole thing is costly.
      */

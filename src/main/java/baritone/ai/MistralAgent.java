@@ -155,11 +155,19 @@ public final class MistralAgent implements Helper {
             + "- You may run for many turns; keep calling tools until done. Never answer with ONLY plain text: "
             + "always use tools until finished.";
 
+    /** How a {@link #runGoalWithOutcome} run ended — the hierarchical planner branches on this. */
+    public enum Outcome { DONE, FAILED, CANCELLED }
+
     private final BaritoneTools tools;
     private JsonArray history = new JsonArray();
     private final boolean planMode;
+    /** True when this agent executes ONE sub-goal for the hierarchical planner: the planner owns
+     *  the GoalTracker mission lifecycle (start/finish/fail) and the plan display, so this agent
+     *  must not touch either — a sub-goal finishing is NOT the mission finishing. */
+    private final boolean subAgentMode;
     private volatile boolean cancelled = false;
     private volatile Thread worker;
+    private volatile String lastOutcomeDetail = "";
 
     public MistralAgent(IBaritone baritone) {
         this(baritone, false);
@@ -168,12 +176,31 @@ public final class MistralAgent implements Helper {
     public MistralAgent(IBaritone baritone, boolean planMode) {
         this.tools = new BaritoneTools(baritone);
         this.planMode = planMode;
+        this.subAgentMode = false;
         history.add(message("system", SYSTEM_PROMPT));
         if (planMode) {
             history.add(message("system",
                     "PLAN MODE IS ON. Call get_state, then before any movement/mining/crafting/opening action call set_goal_plan with 3-8 steps. "
                             + "Then update_goal_status and complete_goal_step as you work. After planning, execute the plan unless impossible."));
         }
+    }
+
+    /** Focused sub-agent for the hierarchical planner: fresh conversation seeded with the
+     *  sub-goal preamble, plan-display tools locked (the planner owns the checkbox list). */
+    public MistralAgent(IBaritone baritone, String subAgentPreamble) {
+        this.tools = new BaritoneTools(baritone);
+        this.planMode = false;
+        this.subAgentMode = true;
+        this.tools.setPlanDisplayLocked(true);
+        history.add(message("system", SYSTEM_PROMPT));
+        if (subAgentPreamble != null && !subAgentPreamble.isEmpty()) {
+            history.add(message("system", subAgentPreamble));
+        }
+    }
+
+    /** Why the last run ended the way it did (for the planner's replan prompt). */
+    public String lastOutcomeDetail() {
+        return lastOutcomeDetail;
     }
 
     /** True while this agent's worker thread should stop waiting and exit. */
@@ -191,7 +218,16 @@ public final class MistralAgent implements Helper {
     }
 
     public void runGoal(String userGoal) {
-        if (!GoalTracker.snapshot().active) {
+        runGoalWithOutcome(userGoal, 0);
+    }
+
+    /**
+     * Like {@link #runGoal} but reports how the run ended and accepts an iteration cap override
+     * (used by the hierarchical planner to give each sub-goal a small budget without mutating the
+     * shared {@link Settings#mistralMaxIterations} setting; {@code <= 0} keeps the setting).
+     */
+    public Outcome runGoalWithOutcome(String userGoal, int iterationCap) {
+        if (!subAgentMode && !GoalTracker.snapshot().active) {
             GoalTracker.start(userGoal, planMode);
         }
         GoalTracker.setStatus("Checking provider");
@@ -208,16 +244,14 @@ public final class MistralAgent implements Helper {
             if (model.isEmpty()) {
                 logDirect("Ollama model is not set. Run: " + settings.prefix.value
                         + "ollama list, then " + settings.prefix.value + "ollama use <number-or-name>", ChatFormatting.RED);
-                GoalTracker.fail("Ollama model is not set");
-                return;
+                return failOutcome("Ollama model is not set");
             }
         } else {
             apiKey = settings.mistralApiKey.value;
             if (apiKey == null || apiKey.isEmpty()) {
                 logDirect("Mistral API key is not set. Run: " + settings.prefix.value
                         + "mistral key <YOUR_KEY>, or use " + settings.prefix.value + "ollama use <model>", ChatFormatting.RED);
-                GoalTracker.fail("Mistral API key is not set");
-                return;
+                return failOutcome("Mistral API key is not set");
             }
             endpoint = settings.mistralEndpoint.value;
             model = settings.mistralModel.value;
@@ -232,12 +266,13 @@ public final class MistralAgent implements Helper {
         // Fast path: the fine-tuned baritone-brain model answers a tiny schema-free prompt with one
         // tool call (~1s). On escalate / parse failure / tool error we fall through to the full
         // prompt below - preferring Mistral for the big path when an API key is available.
-        if (!planMode && "ollama".equals(provider) && BrainProtocol.isBrainModel(model)
+        // Sub-agents skip it: the brain's tiny prompt cannot carry the sub-goal preamble/criteria.
+        if (!planMode && !subAgentMode && "ollama".equals(provider) && BrainProtocol.isBrainModel(model)
                 && settings.aiBrainShortPrompt.value) {
             try {
                 if (runBrainFastPath(settings, endpoint, model, userGoal)) {
                     RUNNING.remove();
-                    return;
+                    return Outcome.DONE;
                 }
             } catch (Exception e) {
                 logDirect("[AI] brain fast path failed (" + e.getMessage() + "); using full prompt.",
@@ -272,7 +307,7 @@ public final class MistralAgent implements Helper {
                 settings.mistralRequestTimeoutSeconds.value);
         JsonArray toolDefs = BaritoneTools.toolSchemas();
 
-        int maxIter = settings.mistralMaxIterations.value;
+        int maxIter = iterationCap > 0 ? iterationCap : settings.mistralMaxIterations.value;
         boolean unlimited = maxIter <= 0;
         boolean verbose = settings.mistralVerbose.value;
         double temp = settings.mistralTemperature.value;
@@ -302,20 +337,17 @@ public final class MistralAgent implements Helper {
                 if (!unlimited && round > maxIter) {
                     logDirect("[AI] reached max iterations (" + maxIter + "). Use set mistralMaxIterations 0 for unlimited.",
                             ChatFormatting.YELLOW);
-                    GoalTracker.fail("Reached max iterations");
-                    return;
+                    return failOutcome("Reached max iterations");
                 }
                 // Feature 5: wall-clock watchdog so an unlimited-rounds mission cannot run forever.
                 if (missionDeadline > 0L && System.currentTimeMillis() > missionDeadline) {
                     logDirect("[AI] reached time budget (" + maxMissionSeconds + "s). Use set mistralMaxMissionSeconds 0 to disable.",
                             ChatFormatting.YELLOW);
-                    GoalTracker.fail("Reached time budget");
-                    return;
+                    return failOutcome("Reached time budget");
                 }
                 if (cancelled) {
                     logDirect("[AI] cancelled.", ChatFormatting.YELLOW);
-                    GoalTracker.fail("Cancelled");
-                    return;
+                    return cancelOutcome("Cancelled");
                 }
 
                 OpenAiChatClient.AssistantMessage am;
@@ -339,15 +371,13 @@ public final class MistralAgent implements Helper {
                             Thread.sleep(30_000L);
                         } catch (InterruptedException ie) {
                             Thread.currentThread().interrupt();
-                            GoalTracker.fail("Cancelled while rate limited");
-                            return;
+                            return cancelOutcome("Cancelled while rate limited");
                         }
                         round--; // this round never reached the model; don't burn the iteration budget
                         continue;
                     }
                     logDirect("[AI] API error: " + e.getMessage(), ChatFormatting.RED);
-                    GoalTracker.fail("API error: " + e.getMessage());
-                    return;
+                    return failOutcome("API error: " + e.getMessage());
                 }
                 if (verbose && am.content != null && !am.content.isEmpty()) {
                     logDirect("[AI:thought] " + truncate(am.content, 400), ChatFormatting.GRAY);
@@ -356,8 +386,7 @@ public final class MistralAgent implements Helper {
                 if (am.toolCalls == null || am.toolCalls.size() == 0) {
                     history.add(am.raw);
                     if (cancelled) {
-                        GoalTracker.fail("Cancelled");
-                        return;
+                        return cancelOutcome("Cancelled");
                     }
                     GoalTracker.setStatus("Thinking... waiting for tool call");
                     history.add(message("user",
@@ -391,8 +420,7 @@ public final class MistralAgent implements Helper {
                 for (ParsedToolCall tc : toolCalls) {
                     if (cancelled) {
                         logDirect("[AI] cancelled.", ChatFormatting.YELLOW);
-                        GoalTracker.fail("Cancelled");
-                        return;
+                        return cancelOutcome("Cancelled");
                     }
                     if (tc.error != null) {
                         String content = "ERROR: " + tc.error
@@ -435,7 +463,13 @@ public final class MistralAgent implements Helper {
 
                     if (result.done) {
                         logDirect("[AI] done: " + result.content, ChatFormatting.GREEN);
-                        GoalTracker.finish(result.content);
+                        if (subAgentMode) {
+                            // the planner owns the mission lifecycle; a sub-goal finishing is not the mission finishing
+                            GoalTracker.setStatus("Step reported done");
+                        } else {
+                            GoalTracker.finish(result.content);
+                        }
+                        lastOutcomeDetail = result.content == null ? "" : result.content;
                         MissionMemory.recordCheckpointQuietly(userGoal, "agent_done", result.content, "done");
                         doneCalled = true;
                         // Bug #2: done is terminal; do not run the rest of this batch's tool calls.
@@ -443,7 +477,7 @@ public final class MistralAgent implements Helper {
                     }
                 }
                 if (doneCalled) {
-                    return;
+                    return Outcome.DONE;
                 }
             }
         } finally {
@@ -457,6 +491,28 @@ public final class MistralAgent implements Helper {
                 MissionMemory.recordCheckpointQuietly(userGoal, "report", report, "report");
             }
         }
+    }
+
+    /** Mark a failed run: only a top-level mission may fail the GoalTracker (and emit mission_fail). */
+    private Outcome failOutcome(String reason) {
+        lastOutcomeDetail = reason;
+        if (subAgentMode) {
+            GoalTracker.setStatus(reason);
+        } else {
+            GoalTracker.fail(reason);
+        }
+        return Outcome.FAILED;
+    }
+
+    /** Mark a cancelled run; same lifecycle gating as {@link #failOutcome}. */
+    private Outcome cancelOutcome(String reason) {
+        lastOutcomeDetail = reason;
+        if (subAgentMode) {
+            GoalTracker.setStatus(reason);
+        } else {
+            GoalTracker.fail(reason);
+        }
+        return Outcome.CANCELLED;
     }
 
     /**
@@ -623,7 +679,7 @@ public final class MistralAgent implements Helper {
         }
     }
 
-    static ParsedToolCall parseToolCall(JsonElement tcEl) {
+    public static ParsedToolCall parseToolCall(JsonElement tcEl) {
         if (tcEl == null || !tcEl.isJsonObject()) {
             return ParsedToolCall.unanswerable("tool call entry is not a JSON object");
         }
@@ -687,12 +743,12 @@ public final class MistralAgent implements Helper {
         }
     }
 
-    static final class ParsedToolCall {
-        final boolean canRespondAsTool;
-        final String callId;
-        final String functionName;
-        final JsonObject arguments;
-        final String error;
+    public static final class ParsedToolCall {
+        public final boolean canRespondAsTool;
+        public final String callId;
+        public final String functionName;
+        public final JsonObject arguments;
+        public final String error;
 
         private ParsedToolCall(boolean canRespondAsTool,
                                String callId,

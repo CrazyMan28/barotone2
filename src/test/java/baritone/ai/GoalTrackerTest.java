@@ -61,6 +61,21 @@ public class GoalTrackerTest {
     }
 
     @Test
+    public void setPlanKeepsTwelveHierarchicalPlannerSteps() {
+        // the hierarchical planner emits up to 12 sub-goals; the old cap of 10 truncated them
+        GoalTracker.start("get full diamond armor", true);
+        java.util.List<String> steps = new java.util.ArrayList<>();
+        for (int i = 1; i <= 12; i++) {
+            steps.add("step " + i);
+        }
+        GoalTracker.setPlan(steps);
+
+        GoalTracker.Snapshot snapshot = GoalTracker.snapshot();
+        assertEquals(12, snapshot.steps.size());
+        assertEquals("step 12", snapshot.steps.get(11).text);
+    }
+
+    @Test
     public void failPreservesGoalAndShowsStoppedStatus() {
         GoalTracker.start("get logs", true);
         GoalTracker.fail("Mistral API key is not set");

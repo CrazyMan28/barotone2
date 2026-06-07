@@ -21,6 +21,7 @@ import baritone.Baritone;
 import baritone.ai.AgentTelemetry;
 import baritone.ai.GoalTracker;
 import baritone.ai.MistralAgent;
+import baritone.ai.planner.DeathWatch;
 import baritone.ai.ReflexLog;
 import baritone.ai.reflex.BehaviorId;
 import baritone.ai.reflex.BlockPosSpec;
@@ -101,6 +102,18 @@ public final class ReflexProcess extends BaritoneProcessHelper {
     @Override
     public boolean isActive() {
         LocalPlayer player = ctx.player();
+        // Feed the planner's death detector every tick — BEFORE the reflexesEnabled gate, so
+        // death recovery works even with reflexes off. isActive() runs every tick regardless.
+        if (player != null && ctx.world() != null) {
+            String dim;
+            try {
+                dim = player.level().dimension().identifier().toString();
+            } catch (RuntimeException e) {
+                dim = "unknown";
+            }
+            DeathWatch.onClientTick(player.isDeadOrDying(),
+                    player.getX(), player.getY(), player.getZ(), dim, ctx.world().getGameTime());
+        }
         if (player == null || ctx.world() == null || !Baritone.settings().reflexesEnabled.value) {
             if (engine.active() != BehaviorId.NONE) {
                 ReflexLog.record("[reflex] " + engine.active().describe + " stopped (reflexes disabled)");

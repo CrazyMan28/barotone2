@@ -22,6 +22,7 @@ import baritone.ai.GoalTracker;
 import baritone.ai.MissionMemory;
 import baritone.ai.MissionQueue;
 import baritone.ai.MistralAgent;
+import baritone.ai.planner.PlannerAgent;
 import baritone.api.BaritoneAPI;
 import baritone.api.IBaritone;
 import baritone.api.Settings;
@@ -112,12 +113,18 @@ public class AiCommand extends Command {
         }
         if (first.equals("stop") || first.equals("cancel")) {
             args.getString();
+            PlannerAgent activePlanner = PlannerAgent.ACTIVE.get();
             MistralAgent active = MistralAgent.ACTIVE.get();
-            if (active == null) {
+            if (activePlanner == null && active == null) {
                 logDirect("No AI agent is currently running.", ChatFormatting.YELLOW);
                 return;
             }
-            active.cancel();
+            if (activePlanner != null) {
+                activePlanner.cancel(); // also cancels its running sub-agent
+            }
+            if (active != null) {
+                active.cancel();
+            }
             GoalTracker.fail("Cancellation requested");
             logDirect("Cancellation requested. The agent will stop between rounds.", ChatFormatting.YELLOW);
             return;
@@ -184,7 +191,7 @@ public class AiCommand extends Command {
             return;
         }
 
-        if (MistralAgent.ACTIVE.get() != null || MissionQueue.isPaused()) {
+        if (agentBusy() || MissionQueue.isPaused()) {
             enqueueMission(cleanGoal, planMode, label, logger);
             return;
         }
@@ -192,8 +199,14 @@ public class AiCommand extends Command {
         startMission(baritone, MissionQueue.create(cleanGoal, planMode, label), false, logger);
     }
 
+    /** A mission is running when either a plain agent OR the hierarchical planner is active
+     *  (the planner has windows — verify/replan — where no sub-agent is registered). */
+    private static boolean agentBusy() {
+        return MistralAgent.ACTIVE.get() != null || PlannerAgent.ACTIVE.get() != null;
+    }
+
     public static void tryStartNextMission(IBaritone baritone, Helper logger) {
-        if (baritone == null || logger == null || MistralAgent.ACTIVE.get() != null || MissionQueue.isPaused()) {
+        if (baritone == null || logger == null || agentBusy() || MissionQueue.isPaused()) {
             return;
         }
         if (!MissionQueue.hasPending()) {
@@ -207,9 +220,15 @@ public class AiCommand extends Command {
 
     public static void pauseMissionQueue(IBaritone baritone, Helper logger) {
         MissionQueue.Mission pausedActive = MissionQueue.pauseAndRequeueActive();
+        PlannerAgent activePlanner = PlannerAgent.ACTIVE.get();
         MistralAgent active = MistralAgent.ACTIVE.get();
-        if (pausedActive != null && active != null) {
-            active.cancel();
+        if (pausedActive != null && (active != null || activePlanner != null)) {
+            if (activePlanner != null) {
+                activePlanner.cancel();
+            }
+            if (active != null) {
+                active.cancel();
+            }
             GoalTracker.setStatus("Paused; mission #" + pausedActive.id + " will resume later");
             logger.logDirect("Mission queue paused. Current mission #" + pausedActive.id
                     + " will be requeued when it stops.", ChatFormatting.YELLOW);
@@ -282,6 +301,50 @@ public class AiCommand extends Command {
                 }
                 return;
             }
+        }
+
+        // Hierarchical planner path: decompose → sub-agents → verify → replan. The planner
+        // registers itself in PlannerAgent.ACTIVE and flips MistralAgent.ACTIVE around each
+        // sub-agent run, so stop/busy checks above see both.
+        if (settings.aiHierarchicalPlanner.value) {
+            PlannerAgent planner = new PlannerAgent(baritone);
+            if (!PlannerAgent.ACTIVE.compareAndSet(null, planner)) {
+                GoalTracker.fail("Another AI agent just started");
+                logger.logDirect("Another AI agent just started; aborting this one.", ChatFormatting.YELLOW);
+                MissionQueue.enqueueFront(mission);
+                return;
+            }
+            MissionQueue.Mission planned = activeAlreadyMarked ? mission : MissionQueue.markActive(mission);
+            MissionMemory.recordInFlightMission(planned.goal, planned.planMode);
+            Thread pt = new Thread(() -> {
+                try {
+                    planner.runMission(planned.goal);
+                } catch (Throwable th) {
+                    logger.logDirect("AI planner crashed: " + th.getClass().getSimpleName()
+                            + ": " + th.getMessage(), ChatFormatting.RED);
+                    GoalTracker.fail("Planner crashed: " + th.getClass().getSimpleName());
+                } finally {
+                    PlannerAgent.ACTIVE.compareAndSet(planner, null);
+                    GoalTracker.Snapshot snapshot = GoalTracker.snapshot();
+                    boolean requeuedForPause = MissionQueue.finishActive(planned.id, snapshot.status);
+                    if (requeuedForPause) {
+                        MissionMemory.recordCheckpointQuietly(planned.goal, "mission_paused",
+                                "Requeued for resume", "paused");
+                    } else if (!snapshot.status.startsWith("Done")) {
+                        MissionMemory.recordCheckpointQuietly(planned.goal, "mission_finished",
+                                snapshot.status, "stopped");
+                    }
+                    if (!requeuedForPause) {
+                        MissionMemory.clearInFlightMission();
+                    }
+                    tryStartNextMission(baritone, QUEUE_LOGGER);
+                }
+            }, "baritone-ai-planner");
+            pt.setDaemon(true);
+            pt.start();
+            logger.logDirect("[AI] started planned mission #" + planned.id + " " + mission.label + ": "
+                    + planned.goal, ChatFormatting.AQUA);
+            return;
         }
 
         MistralAgent agent = new MistralAgent(baritone, mission.planMode);

@@ -29,6 +29,8 @@ import java.util.Map;
 public final class GoalTracker {
 
     private static final int HISTORY_LIMIT = 5;
+    /** Plan-step display cap — sized for the hierarchical planner's up-to-12 sub-goals. */
+    static final int MAX_PLAN_STEPS = 16;
     private static final Object LOCK = new Object();
     private static Snapshot current = Snapshot.empty();
     private static String lastGoal = "";
@@ -102,7 +104,7 @@ public final class GoalTracker {
                 return;
             }
             List<Step> steps = new ArrayList<>();
-            int max = Math.min(10, rawSteps == null ? 0 : rawSteps.size());
+            int max = Math.min(MAX_PLAN_STEPS, rawSteps == null ? 0 : rawSteps.size());
             for (int i = 0; i < max; i++) {
                 String step = clean(rawSteps.get(i));
                 if (!step.isEmpty()) {

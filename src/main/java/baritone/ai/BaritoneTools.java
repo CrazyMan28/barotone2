@@ -17,6 +17,9 @@
 
 package baritone.ai;
 
+import baritone.ai.planner.PlannerStore;
+import baritone.ai.planner.StateSnapshot;
+import baritone.ai.planner.ToolTiers;
 import baritone.ai.reflex.Detectors;
 import baritone.process.ReflexProcess;
 import baritone.api.BaritoneAPI;
@@ -74,6 +77,7 @@ public final class BaritoneTools {
     private final IPlayerContext ctx;
     private final ICommandManager commands;
     private volatile boolean forbidExplore;
+    private volatile boolean planDisplayLocked;
     private volatile String lastProblem = "";
     /** Last `mine ...` command issued, so the wait loop can relocate + re-issue it when mining
      *  gets stuck (e.g. an ice/ocean biome with no reachable stone). */
@@ -90,6 +94,12 @@ public final class BaritoneTools {
 
     public void setForbidExplore(boolean forbidExplore) {
         this.forbidExplore = forbidExplore;
+    }
+
+    /** When true (hierarchical-planner sub-agents), the plan-display tools become no-ops:
+     *  the planner owns the HUD/launcher checkbox list and a sub-agent must not clobber it. */
+    public void setPlanDisplayLocked(boolean locked) {
+        this.planDisplayLocked = locked;
     }
 
     public void observeResult(String toolName, String content) {
@@ -686,6 +696,9 @@ public final class BaritoneTools {
                     return ok(AiCrafting.brewingBrewAndCollect(ctx, args.get("ingredient_item_id").getAsString(), wait, collect));
                 }
                 case "set_goal_plan": {
+                    if (planDisplayLocked) {
+                        return ok("(plan display is managed by the planner — keep working on your step)");
+                    }
                     JsonArray stepsJson = args.getAsJsonArray("steps");
                     List<String> steps = new ArrayList<>();
                     if (stepsJson != null) {
@@ -701,9 +714,15 @@ public final class BaritoneTools {
                     return ok(msg.toString());
                 }
                 case "update_goal_status":
+                    if (planDisplayLocked) {
+                        return ok("(plan display is managed by the planner — keep working on your step)");
+                    }
                     GoalTracker.setStatus(args.get("status").getAsString());
                     return ok("Goal status updated.");
                 case "complete_goal_step": {
+                    if (planDisplayLocked) {
+                        return ok("(plan display is managed by the planner — keep working on your step)");
+                    }
                     int step = args.get("step_index").getAsInt();
                     String status = (args.has("status") && !args.get("status").isJsonNull())
                             ? args.get("status").getAsString() : "";
@@ -2025,6 +2044,89 @@ public final class BaritoneTools {
         return AiCrafting.onClient(ctx, this::getStateOnClient);
     }
 
+    /**
+     * Typed state extraction for the hierarchical planner's criteria verification — the same
+     * facts as get_state but filled directly on the client thread, no JSON round-trip. The
+     * planner trusts THIS, not the sub-agent's "done" claim.
+     */
+    public StateSnapshot snapshotForPlanner() {
+        return AiCrafting.onClient(ctx, () -> {
+            StateSnapshot snap = new StateSnapshot();
+            LocalPlayer p = ctx.player();
+            if (p == null) {
+                return snap;
+            }
+            snap.x = ctx.playerFeet().x;
+            snap.y = ctx.playerFeet().y;
+            snap.z = ctx.playerFeet().z;
+            try {
+                snap.food = p.getFoodData().getFoodLevel();
+            } catch (RuntimeException ignored) {}
+            try {
+                snap.bestPickaxe = bestToolTier(p, true);
+                snap.bestAxe = bestToolTier(p, false);
+            } catch (RuntimeException ignored) {}
+            try {
+                for (int i = 0; i < p.getInventory().getContainerSize(); i++) {
+                    ItemStack stack = p.getInventory().getItem(i);
+                    if (stack == null || stack.isEmpty()) {
+                        continue;
+                    }
+                    snap.inventoryTotals.merge(
+                            ToolTiers.strip(itemRegistryId(stack)),
+                            stack.getCount(), Integer::sum);
+                }
+            } catch (RuntimeException ignored) {}
+            try {
+                putSnapshotArmor(snap, p, net.minecraft.world.entity.EquipmentSlot.HEAD, "head");
+                putSnapshotArmor(snap, p, net.minecraft.world.entity.EquipmentSlot.CHEST, "chest");
+                putSnapshotArmor(snap, p, net.minecraft.world.entity.EquipmentSlot.LEGS, "legs");
+                putSnapshotArmor(snap, p, net.minecraft.world.entity.EquipmentSlot.FEET, "feet");
+            } catch (RuntimeException ignored) {}
+            try {
+                // same source as get_state's known_stations ("crafting_table@10,64,20; furnace@…")
+                String stations = MissionMemory.stationsForPrompt();
+                if (stations != null && !stations.isEmpty()) {
+                    for (String entry : stations.split(";")) {
+                        int at = entry.indexOf('@');
+                        if (at > 0) {
+                            snap.stationTypes.add(ToolTiers.strip(entry.substring(0, at).trim()));
+                        }
+                    }
+                }
+            } catch (RuntimeException ignored) {}
+            return snap;
+        });
+    }
+
+    private static void putSnapshotArmor(StateSnapshot snap, LocalPlayer p,
+                                         net.minecraft.world.entity.EquipmentSlot slot, String key) {
+        ItemStack stack = p.getItemBySlot(slot);
+        if (stack != null && !stack.isEmpty()) {
+            snap.armorEquipped.put(key, itemRegistryId(stack));
+        }
+    }
+
+    private static void putWornArmor(JsonObject out, LocalPlayer p,
+                                     net.minecraft.world.entity.EquipmentSlot slot, String key) {
+        ItemStack stack = p.getItemBySlot(slot);
+        if (stack != null && !stack.isEmpty()) {
+            out.addProperty(key, itemRegistryId(stack));
+        }
+    }
+
+    /** Full registry id ("minecraft:iron_pickaxe") for an item stack. */
+    private static String itemRegistryId(ItemStack stack) {
+        try {
+            net.minecraft.resources.Identifier id =
+                    net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem());
+            if (id != null) {
+                return id.toString();
+            }
+        } catch (RuntimeException ignored) {}
+        return stack.getItem().toString();
+    }
+
     /** Placement-awareness snapshot: what I'm aimed at, my feet/head/floor, headroom, and whether
      *  there's a usable spot to place a station nearby — so the agent checks BEFORE trying to place. */
     private String lookAround() {
@@ -2120,6 +2222,16 @@ public final class BaritoneTools {
         try {
             s.addProperty("best_pickaxe", bestToolTier(p, true));
             s.addProperty("best_axe", bestToolTier(p, false));
+        } catch (RuntimeException ignored) {}
+        try {
+            // worn armor — the planner verifies armor_equipped criteria against this,
+            // and the decompose prompt needs to see what is already worn
+            JsonObject armor = new JsonObject();
+            putWornArmor(armor, p, net.minecraft.world.entity.EquipmentSlot.HEAD, "head");
+            putWornArmor(armor, p, net.minecraft.world.entity.EquipmentSlot.CHEST, "chest");
+            putWornArmor(armor, p, net.minecraft.world.entity.EquipmentSlot.LEGS, "legs");
+            putWornArmor(armor, p, net.minecraft.world.entity.EquipmentSlot.FEET, "feet");
+            s.add("armor_equipped", armor);
         } catch (RuntimeException ignored) {}
         try {
             s.addProperty("food_saturation", Math.round(p.getFoodData().getSaturationLevel() * 10f) / 10f);
@@ -2365,6 +2477,8 @@ public final class BaritoneTools {
         Path file = worldMemoryFile();
         if (file != null) {
             MissionMemory.useStorageFile(file);
+            // the planner's active-plan.json lives beside the per-world mission memory
+            PlannerStore.useStorageFile(file.resolveSibling("active-plan.json"));
         }
     }
 

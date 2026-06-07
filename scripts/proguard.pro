@@ -40,6 +40,10 @@
 # Agent telemetry events are gson-serialized to stdout for the Kihi Launcher; keep field names (ts/session/kind/data) so they survive obfuscation
 -keep class baritone.ai.AgentTelemetry { *; }
 -keep class baritone.ai.AgentTelemetry$* { *; }
+# Hierarchical-planner plan documents are gson round-tripped (LLM submit_plan args + active-plan.json); keep field names
+-keep class baritone.ai.planner.PlanDocument { *; }
+-keep class baritone.ai.planner.SubGoal { *; }
+-keep class baritone.ai.planner.SuccessCriterion { *; }
 -keepname class baritone.api.utils.BlockOptionalMeta # this name is exposed to the user, so we need to keep it in all builds
 
 # Keep any class or member annotated with @KeepName so we dont have to put everything in the script
