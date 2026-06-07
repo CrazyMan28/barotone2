@@ -199,6 +199,42 @@ public class CriteriaEvaluatorTest {
     }
 
     @Test
+    public void genericLogMatchesAnySpecies() {
+        // the bot mines whatever trees are nearby — a criterion can't name the species,
+        // so "log" must count oak/spruce/birch/etc. all together
+        StateSnapshot s = snap();
+        s.inventoryTotals.put("spruce_log", 2);
+        s.inventoryTotals.put("birch_log", 2);
+        assertTrue(CriteriaEvaluator.evaluate(one(c("has_item", "log", 3)), s).met);
+        assertTrue(CriteriaEvaluator.evaluate(one(c("has_item", "minecraft:logs", 4)), s).met);
+        assertFalse(CriteriaEvaluator.evaluate(one(c("has_item", "log", 5)), s).met);
+    }
+
+    @Test
+    public void genericLogAlsoCountsStemsAndWood() {
+        StateSnapshot s = snap();
+        s.inventoryTotals.put("crimson_stem", 2);
+        s.inventoryTotals.put("oak_wood", 1);
+        assertTrue(CriteriaEvaluator.evaluate(one(c("has_item", "log", 3)), s).met);
+    }
+
+    @Test
+    public void genericPlanksMatchAnySpecies() {
+        StateSnapshot s = snap();
+        s.inventoryTotals.put("oak_planks", 8);
+        assertTrue(CriteriaEvaluator.evaluate(one(c("has_item", "planks", 8)), s).met);
+        assertFalse(CriteriaEvaluator.evaluate(one(c("has_item", "planks", 12)), s).met);
+    }
+
+    @Test
+    public void specificSpeciesStillExactWhenAsked() {
+        // asking for oak_log specifically is NOT satisfied by spruce
+        StateSnapshot s = snap();
+        s.inventoryTotals.put("spruce_log", 5);
+        assertFalse(CriteriaEvaluator.evaluate(one(c("has_item", "oak_log", 3)), s).met);
+    }
+
+    @Test
     public void hasItemDefaultsCountToOne() {
         StateSnapshot s = snap();
         s.inventoryTotals.put("furnace", 1);

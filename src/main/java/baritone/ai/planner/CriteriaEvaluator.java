@@ -138,8 +138,24 @@ public final class CriteriaEvaluator {
             }
             return have;
         }
-        // tolerate either key shape ("cobblestone" / "minecraft:cobblestone") in the map
+        // Generic material groups: the bot mines whatever species is nearby, so a "log" or
+        // "planks" criterion must count every species (oak_log, spruce_log, crimson_stem, ...).
         String want = ToolTiers.strip(id);
+        String[] suffixes = genericGroupSuffixes(want);
+        if (suffixes != null) {
+            int have = 0;
+            for (Map.Entry<String, Integer> e : s.inventoryTotals.entrySet()) {
+                String k = ToolTiers.strip(e.getKey());
+                for (String suf : suffixes) {
+                    if (k.endsWith(suf)) {
+                        have += e.getValue();
+                        break;
+                    }
+                }
+            }
+            return have;
+        }
+        // tolerate either key shape ("cobblestone" / "minecraft:cobblestone") in the map
         int have = 0;
         for (Map.Entry<String, Integer> e : s.inventoryTotals.entrySet()) {
             if (want.equals(ToolTiers.strip(e.getKey()))) {
@@ -147,6 +163,21 @@ public final class CriteriaEvaluator {
             }
         }
         return have;
+    }
+
+    /** Item-id suffixes a generic group id ("log", "planks") matches, or null if not a group. */
+    private static String[] genericGroupSuffixes(String want) {
+        switch (want) {
+            case "log":
+            case "logs":
+            case "wood": // colloquial "wood" == logs for crafting
+                return new String[]{"_log", "_stem", "_wood", "_hyphae"};
+            case "plank":
+            case "planks":
+                return new String[]{"_planks"};
+            default:
+                return null;
+        }
     }
 
     /** Does the held best tool ("minecraft:iron_pickaxe" / "none") meet a material ask ("stone")? */

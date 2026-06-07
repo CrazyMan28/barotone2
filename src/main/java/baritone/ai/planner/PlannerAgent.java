@@ -204,8 +204,15 @@ public final class PlannerAgent implements Helper {
                         && g.verifyBounces < Math.max(0, settings.aiPlannerVerifyBounces.value)) {
                     g.verifyBounces++;
                     PlannerStore.save(plan);
-                    bounceNote = "IMPORTANT: a previous attempt claimed done() but verification FAILED. "
-                            + "Still missing: " + unmet + ". Finish the job for real this time.";
+                    // Tell the (fresh) sub-agent EXACTLY what's still missing, what it currently
+                    // holds, and the usual trap: it consumed the target by crafting (e.g. turned
+                    // its logs into planks) and must gather/craft more to actually satisfy the check.
+                    bounceNote = "VERIFICATION FAILED — you called done() but the goal is NOT met yet.\n"
+                            + "STILL MISSING (the game checked your real inventory): " + unmet + "\n"
+                            + "YOU CURRENTLY HOLD: " + relevantInventory(snap, check.unmet) + "\n"
+                            + "Likely cause: you crafted the required item away (logs->planks, ore->ingots) "
+                            + "or never made the target. Get/make EXACTLY what is listed above, verify with "
+                            + "get_state, and only THEN call done(). Do not claim done until the counts match.";
                     logDirect("[AI:planner] step " + stepNo + " not verified (" + unmet + ") — bouncing back ("
                             + g.verifyBounces + "/" + settings.aiPlannerVerifyBounces.value + ")", ChatFormatting.YELLOW);
                     continue;
@@ -458,6 +465,37 @@ public final class PlannerAgent implements Helper {
                 GoalTracker.completeStep(i + 1, "verified");
             }
         }
+    }
+
+    /** A short, human inventory summary so a bounced sub-agent sees what it actually has vs. needs. */
+    static String relevantInventory(StateSnapshot snap, List<String> unmet) {
+        if (snap == null) {
+            return "(unknown)";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("food=").append(snap.food);
+        if (!"none".equals(snap.bestPickaxe)) {
+            sb.append(", best_pickaxe=").append(ToolTiers.strip(snap.bestPickaxe));
+        }
+        // surface the headline items (logs/planks/tools) so "have 0 logs, have 24 planks" is obvious
+        java.util.List<String> keys = new java.util.ArrayList<>(snap.inventoryTotals.keySet());
+        java.util.Collections.sort(keys);
+        int shown = 0;
+        for (String k : keys) {
+            int n = snap.inventoryTotals.get(k);
+            if (n <= 0) {
+                continue;
+            }
+            sb.append(", ").append(k).append('=').append(n);
+            if (++shown >= 14) {
+                sb.append(", …");
+                break;
+            }
+        }
+        if (shown == 0) {
+            sb.append(", inventory empty");
+        }
+        return sb.toString();
     }
 
     private static List<String> completedTitles(PlanDocument plan) {

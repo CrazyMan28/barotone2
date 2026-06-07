@@ -100,6 +100,17 @@ public class PlannerPromptsTest {
     }
 
     @Test
+    public void promptTeachesGenericSpeciesIdsForRawMaterials() {
+        // seen in the wild: a "gather logs" step required has_item spruce_log>=3, but the bot
+        // mines whatever trees are nearby, so a species-specific log criterion never verifies
+        String p = PlannerPrompts.decompositionSystemPrompt();
+        assertTrue("must tell the planner to use the generic 'log' id, not a species",
+                p.contains("\"log\"") || p.contains("'log'"));
+        assertTrue("must warn against naming a species", p.toLowerCase().contains("species"));
+        assertTrue("must mention generic planks too", p.toLowerCase().contains("planks"));
+    }
+
+    @Test
     public void decompositionUserPromptEmbedsGoalStateAndMemory() {
         String p = PlannerPrompts.decompositionUserPrompt("get full diamond armor",
                 "base=10,64,20", "{\"food\":20}");

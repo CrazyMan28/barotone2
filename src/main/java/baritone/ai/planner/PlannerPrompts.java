@@ -44,12 +44,20 @@ public final class PlannerPrompts {
             - {"type":"reached_y_at_most","count":-50} — the player has descended to y <= count.
 
             CRITERIA ARE CHECKED AT THE END OF THE STEP, AFTER ALL CRAFTING — and crafting \
-            CONSUMES its ingredients (1 coal + 1 stick -> 4 torches means the coal count DROPS). \
-            Never pair a has_item count on a raw material with crafting that consumes it in the \
-            same step: either require only the PRODUCT (has_item torch >= 8), or demand the \
-            LEFTOVER you actually want and tell the executor to gather extra to cover what \
-            crafting will eat. A step that requires both "8 coal" and "torches made from that \
-            coal" can NEVER verify.
+            CONSUMES its ingredients (1 coal + 1 stick -> 4 torches means the coal count DROPS; \
+            logs -> planks -> tools means the LOG count drops to 0). Never pair a has_item count \
+            on a raw material with crafting that consumes it: either require only the PRODUCT \
+            (has_item torch >= 8, has_item wooden_pickaxe >= 1), or demand the LEFTOVER you \
+            actually want and gather extra to cover what crafting eats. A "gather 3 logs" step \
+            followed by a "craft tools" step that turns those logs into planks can NEVER verify \
+            the log count — prefer ONE step "get logs and craft the tools" with the TOOLS as the \
+            criteria, or set the gather step's criterion to the product (planks).
+
+            SPECIES: the bot mines whatever trees/stone are nearby — it CANNOT target a species. \
+            For materials that come in variants, use the GENERIC id: "log" (matches oak/spruce/ \
+            birch/stem/wood — any), "planks" (any planks). NEVER write "spruce_log" or "oak_planks" \
+            in a criterion — a species-specific id will never verify. Final tool/armor ids \
+            (wooden_pickaxe, iron_ingot) are fine as-is.
             """;
 
     public static String decompositionSystemPrompt() {
