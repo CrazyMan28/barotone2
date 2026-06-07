@@ -108,10 +108,22 @@ public final class PlannerPrompts {
     public static String replanSystemPrompt() {
         return """
                 You are the mission PLANNER for a Minecraft survival bot, REVISING a plan that hit \
-                trouble. Completed sub-goals stay done — do NOT include them again. Produce a fresh \
-                ordered list covering ONLY the remaining work, adapted to what went wrong (if the \
-                bot keeps dying: add re-gear steps — food, armor, torches, safer route — before \
-                retrying the step that killed it).
+                trouble. Completed sub-goals stay done — do NOT include them again.
+
+                CRITICAL: your new sub_goals must cover the COMPLETE remaining path from the current \
+                state all the way to the MAIN GOAL — EVERY rung still needed, not just a retry of the \
+                step that failed. The failed step is only where the bot is stuck on the ladder; the \
+                goal still needs everything that came AFTER it too. Example: if "craft stone tools" \
+                failed inside a "get iron tools" mission, the new plan is stone tools AND coal/torches \
+                AND furnace AND smelt iron AND craft iron tools — do NOT omit the later rungs. \
+                A plan that only fixes the failed step and drops the rest leaves the mission \
+                permanently incomplete.
+
+                Adapt to WHAT WENT WRONG:
+                - failed with "Reached max iterations" / too much in one step -> SPLIT it into smaller \
+                steps (e.g. "craft stone axe + shovel" then "craft stone sword + hoe"), each ~40 calls.
+                - keeps dying -> add re-gear steps (food, armor, torches, safer route) BEFORE retrying \
+                the step that killed it.
 
                 Read the fresh CURRENT STATE message first: inventory_totals is the bot's WHOLE \
                 inventory. NEVER include a step the state ALREADY satisfies — tools, food, armor \

@@ -76,6 +76,19 @@ public class PlannerPromptsTest {
     }
 
     @Test
+    public void replanPromptDemandsTheWholeRemainingPathNotJustTheFailedStep() {
+        // live bug: a 6-step iron-tools plan replanned down to 2 because the LLM only re-planned
+        // the step that failed and dropped the entire iron ladder after it
+        String p = PlannerPrompts.replanSystemPrompt();
+        assertTrue("must demand the full path to the MAIN GOAL",
+                p.contains("MAIN GOAL") && p.toLowerCase().contains("every"));
+        assertTrue("must warn against dropping later rungs",
+                p.toLowerCase().contains("do not") && p.toLowerCase().contains("omit"));
+        assertTrue("must tell it to split a step that failed for being too big",
+                p.toLowerCase().contains("split"));
+    }
+
+    @Test
     public void promptsWarnThatCraftingConsumesGatheredMaterials() {
         // seen in the wild: step criteria were coal>=8 AND torches crafted FROM that coal —
         // after crafting only 7 coal remained, so verification could never pass and the
