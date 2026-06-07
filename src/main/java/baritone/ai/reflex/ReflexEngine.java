@@ -17,10 +17,14 @@
 
 package baritone.ai.reflex;
 
+import baritone.ai.reflex.behavior.AntiFallBehavior;
 import baritone.ai.reflex.behavior.CombatBehavior;
 import baritone.ai.reflex.behavior.EatBehavior;
 import baritone.ai.reflex.behavior.EscapeLavaBehavior;
+import baritone.ai.reflex.behavior.ExtinguishFireBehavior;
 import baritone.ai.reflex.behavior.FleeBehavior;
+import baritone.ai.reflex.behavior.RetreatAndHealBehavior;
+import baritone.ai.reflex.behavior.SuffocationBehavior;
 import baritone.ai.reflex.behavior.SurfaceBehavior;
 
 import java.util.EnumMap;
@@ -57,8 +61,12 @@ public final class ReflexEngine {
     public ReflexEngine() {
         register(new EscapeLavaBehavior());
         register(new SurfaceBehavior());
+        register(new SuffocationBehavior());
+        register(new ExtinguishFireBehavior());
+        register(new AntiFallBehavior());
         register(new FleeBehavior());
         register(new CombatBehavior());
+        register(new RetreatAndHealBehavior());
         register(new EatBehavior());
     }
 

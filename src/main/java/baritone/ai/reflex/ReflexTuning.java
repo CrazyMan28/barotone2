@@ -45,7 +45,10 @@ public final class ReflexTuning {
     public double strikeDistance = 3.6D;
     public double rushDistance = 6.0D;
     public float combatRetreatHp = 6.0F;     // disengage to heal below this
+    public float combatLossDelta = 4.0F;     // hp lost within the loss window that means "losing"
+    public int combatLossWindowTicks = 60;
     public int swarmCount = 3;               // this many hostiles = a swarm, don't brawl
+    public double swarmRadius = 6.0D;
 
     // ---- flee + escalation (ports the FleeWatchdog values)
     public int maxFleeTicks = 200;           // ~10s unresolved -> escalate
@@ -56,8 +59,11 @@ public final class ReflexTuning {
     public int pillarHeight = 3;
 
     // ---- health modulation / retreat
-    public double lowHpFleeBias = 0.8D;      // severity *= 1 + bias*(1-hpFrac) for mob threats
+    public double lowHpFleeBias = 0.8D;      // severity *= 1 + bias*(1-hpFrac) for mob-flee threats
     public float retreatTargetHp = 14.0F;    // heal up to this before resuming
+    public double retreatSafeDistance = 10.0D; // break contact until hostiles are at least this far
+    public int retreatTimeoutTicks = 600;    // give up healing after ~30s
+    public float poisonTreatHp = 12.0F;      // treat poison/wither below this hp
 
     // ---- new threats
     public int drownEngageAir = 90;

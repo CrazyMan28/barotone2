@@ -217,6 +217,9 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         if (s.inLava) {
             s.lavaEscape = findLavaEscape(player);
         }
+        if (s.onFire && !s.inLava && !s.underWater) {
+            s.nearestWater = findWaterNear(player);
+        }
         // mobs
         double scan = Math.max(Math.max(2D, tuning.creeperRadius) + 4D, 8.5D);
         for (Monster e : ctx.world().getEntitiesOfClass(Monster.class,
@@ -317,6 +320,25 @@ public final class ReflexProcess extends BaritoneProcessHelper {
 
     private boolean isLavaAt(BlockPos pos) {
         return ctx.world().getBlockState(pos).getFluidState().is(FluidTags.LAVA);
+    }
+
+    /** Nearest water cell in a flat ring scan (feet level ± 1) — for dousing fire. */
+    private BlockPosSpec findWaterNear(LocalPlayer player) {
+        BlockPos feet = player.blockPosition();
+        for (int radius = 1; radius <= (int) tuning.fireWaterRadius; radius++) {
+            for (int dir = 0; dir < 8; dir++) {
+                double angle = dir * Math.PI / 4D;
+                BlockPos candidate = feet.offset(
+                        (int) Math.round(Math.cos(angle) * radius), 0,
+                        (int) Math.round(Math.sin(angle) * radius));
+                for (BlockPos p : new BlockPos[]{candidate, candidate.below(), candidate.above()}) {
+                    if (ctx.world().getBlockState(p).getFluidState().is(FluidTags.WATER)) {
+                        return new BlockPosSpec(p.getX(), p.getY(), p.getZ());
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     private boolean isWorking() {

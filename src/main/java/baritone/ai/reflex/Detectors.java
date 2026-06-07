@@ -29,9 +29,16 @@ import java.util.function.Predicate;
 public final class Detectors {
 
     public static final int SEV_LAVA = 100;
+    public static final int SEV_VOID = 100;
+    public static final int SEV_SUFFOCATION = 96;
     public static final int SEV_DROWN = 95;
+    public static final int SEV_FALL = 90;
+    public static final int SEV_SWARM = 85;
     public static final int SEV_FLEE_MOB = 80;
+    /** A hissing creeper gets this on top of {@link #SEV_FLEE_MOB}. */
+    public static final int SEV_IGNITED_BONUS = 15;
     public static final int SEV_MELEE = 60;
+    public static final int SEV_POISON = 50;
     public static final int SEV_HUNGER = 30;
 
     /** Foods the auto-eat reflex refuses (poison, effects, or too valuable to waste on hunger). */
@@ -130,7 +137,8 @@ public final class Detectors {
         MobInfo skeleton = nearest(s, radius, m -> m.skeleton);
         boolean fightSkeleton = skeleton != null && skeletonToFight(s, t) != null;
         if (creeper != null) {
-            return new Threat(ThreatType.CREEPER, SEV_FLEE_MOB, creeper);
+            int sev = SEV_FLEE_MOB + (creeper.ignited ? SEV_IGNITED_BONUS : 0);
+            return new Threat(ThreatType.CREEPER, sev, creeper);
         }
         if (skeleton != null && !fightSkeleton) {
             return new Threat(ThreatType.RANGED, SEV_FLEE_MOB, skeleton);
@@ -156,5 +164,57 @@ public final class Detectors {
     public static Threat hunger(WorldSnapshot s, ReflexTuning t) {
         return t.autoEat && s.food <= t.eatAtHunger && !s.screenOpen && s.bestFoodSlot >= 0
                 ? new Threat(ThreatType.HUNGER, SEV_HUNGER) : null;
+    }
+
+    /** On fire (and not in lava/water, which own their cases). Scarier the lower our hp. */
+    public static Threat fire(WorldSnapshot s, ReflexTuning t) {
+        if (!s.onFire || s.inLava || s.underWater) {
+            return null;
+        }
+        double hpFrac = s.maxHp <= 0 ? 1D : s.hp / (double) s.maxHp;
+        int sev = 70 + (int) Math.round(20D * (1D - hpFrac));
+        return new Threat(ThreatType.FIRE, sev);
+    }
+
+    /** A real fall with a water bucket ready — the only fall the reflex can actually break. */
+    public static Threat fall(WorldSnapshot s, ReflexTuning t) {
+        if (s.onGround || s.waterBucketSlot < 0) {
+            return null;
+        }
+        if (s.fallDistance <= t.mlgFallTrigger || s.velY >= -0.4D) {
+            return null;
+        }
+        return new Threat(ThreatType.FALL, SEV_FALL);
+    }
+
+    /** Falling with no ground at all in the scan below. */
+    public static Threat voidDrop(WorldSnapshot s, ReflexTuning t) {
+        return !s.onGround && s.voidBelow ? new Threat(ThreatType.VOID, SEV_VOID) : null;
+    }
+
+    /** Sand/gravel collapsed onto the head — kills in seconds, dig out NOW. */
+    public static Threat suffocation(WorldSnapshot s, ReflexTuning t) {
+        return s.headBlockedByGravity ? new Threat(ThreatType.SUFFOCATION, SEV_SUFFOCATION) : null;
+    }
+
+    /** Enough hostiles in brawling range that fighting is suicide — run instead. */
+    public static Threat swarm(WorldSnapshot s, ReflexTuning t) {
+        int count = 0;
+        MobInfo nearestMob = null;
+        for (MobInfo m : s.mobs) {
+            if (m.distance <= t.swarmRadius && (m.hostile || m.creeper || m.skeleton)) {
+                count++;
+                if (nearestMob == null || m.distance < nearestMob.distance) {
+                    nearestMob = m;
+                }
+            }
+        }
+        return count >= t.swarmCount ? new Threat(ThreatType.SWARM, SEV_SWARM, nearestMob) : null;
+    }
+
+    /** Poisoned/withering at low hp with food to heal back — retreat and treat. */
+    public static Threat poison(WorldSnapshot s, ReflexTuning t) {
+        return s.poisoned && s.hp <= t.poisonTreatHp && s.bestFoodSlot >= 0
+                ? new Threat(ThreatType.POISON, SEV_POISON) : null;
     }
 }

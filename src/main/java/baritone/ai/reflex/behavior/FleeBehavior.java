@@ -26,6 +26,7 @@ import baritone.ai.reflex.ReflexBehavior;
 import baritone.ai.reflex.ReflexMath;
 import baritone.ai.reflex.ReflexTuning;
 import baritone.ai.reflex.ResponsePlan;
+import baritone.ai.reflex.ThreatType;
 import baritone.ai.reflex.WorldSnapshot;
 import baritone.api.utils.input.Input;
 
@@ -54,10 +55,13 @@ public final class FleeBehavior implements ReflexBehavior {
     @Override
     public List<ReflexAction> tick(WorldSnapshot s, ReflexTuning t, ResponsePlan plan) {
         double radius = Math.max(2D, t.creeperRadius) + 4D;
+        // engaged by a SWARM: every hostile is a pursuer, not just the creeper/skeleton set
+        boolean fleeAll = plan != null && plan.cause != null && plan.cause.type == ThreatType.SWARM;
         List<MobInfo> mobs = new ArrayList<>();
         MobInfo nearest = null;
         for (MobInfo m : s.mobs) {
-            if ((m.creeper || m.skeleton) && m.distance <= radius) {
+            boolean relevant = fleeAll ? (m.hostile || m.creeper || m.skeleton) : (m.creeper || m.skeleton);
+            if (relevant && m.distance <= radius) {
                 mobs.add(m);
                 if (nearest == null || m.distance < nearest.distance) {
                     nearest = m;
