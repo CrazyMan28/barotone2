@@ -1259,6 +1259,39 @@ public final class Settings {
     public final Setting<Boolean> reflexAntiLava = new Setting<>(true);
 
     /**
+     * Health (out of 20) below which a fight is disengaged into retreat-and-heal: break contact,
+     * eat, and wait for regen before resuming the mission.
+     */
+    public final Setting<Double> reflexCombatRetreatHealth = new Setting<>(6.0);
+
+    /**
+     * Health (out of 20) the retreat-and-heal reflex recovers to before releasing the mission.
+     */
+    public final Setting<Double> reflexRetreatTargetHealth = new Setting<>(14.0);
+
+    /**
+     * This many hostiles in brawling range is a swarm: the reflex flees instead of fighting,
+     * no matter how good the weapon is.
+     */
+    public final Setting<Integer> reflexSwarmCount = new Setting<>(3);
+
+    /**
+     * How many blocks the flee reflex pillars up when a creeper chase can't be shaken by running.
+     */
+    public final Setting<Integer> reflexPillarHeight = new Setting<>(3);
+
+    /**
+     * Accumulated fall distance (blocks) that arms the water-bucket MLG reflex (only ever fires
+     * with a water bucket in the hotbar).
+     */
+    public final Setting<Double> reflexMlgFallTrigger = new Setting<>(4.0);
+
+    /**
+     * How far (blocks) the extinguish-fire reflex scans for water to run into while burning.
+     */
+    public final Setting<Double> reflexFireWaterRadius = new Setting<>(8.0);
+
+    /**
      * When true, lines written to {@code <gameDir>/baritone/remote_commands.txt} are executed as
      * Baritone chat commands once per second and the file is truncated. Used for unattended
      * training-data farming sessions driven from outside the game. Local filesystem only; no

@@ -79,6 +79,12 @@ public final class ReflexProcess extends BaritoneProcessHelper {
             Items.GOLDEN_AXE, Items.WOODEN_AXE
     };
 
+    /**
+     * Live status for get_state / "#reflex status": "idle" or e.g.
+     * "fleeing danger (creeper sev 80)". Written on the game thread, read from the agent thread.
+     */
+    public static volatile String ACTIVE_STATUS = "idle";
+
     private final ReflexEngine engine = new ReflexEngine();
     private final ReflexTuning tuning = new ReflexTuning();
     private final ReflexExecutor executor;
@@ -102,6 +108,7 @@ public final class ReflexProcess extends BaritoneProcessHelper {
                 executor.cleanup();
             }
             lastOutput = null;
+            ACTIVE_STATUS = "idle";
             return false;
         }
         long now = ctx.world().getGameTime();
@@ -115,6 +122,14 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         refreshTuning();
         ReflexEngine.Output out = engine.tick(snapshot(player, now), tuning);
         lastOutput = out;
+        if (out.plan.behavior == BehaviorId.NONE) {
+            ACTIVE_STATUS = "idle";
+        } else if (out.plan.cause != null) {
+            ACTIVE_STATUS = out.plan.behavior.describe + " (" +
+                    out.plan.cause.type.name().toLowerCase(Locale.ROOT) + " sev " + out.plan.cause.severity + ")";
+        } else {
+            ACTIVE_STATUS = out.plan.behavior.describe;
+        }
         if (out.released) {
             executor.cleanup();
             ReflexLog.record("[reflex] " + out.previous.describe + " ended after " + (out.previousTicks / 20) + "s");
@@ -169,6 +184,7 @@ public final class ReflexProcess extends BaritoneProcessHelper {
             executor.cleanup();
         }
         lastOutput = null;
+        ACTIVE_STATUS = "idle";
     }
 
     @Override
@@ -197,6 +213,12 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         tuning.autoEat = s.reflexAutoEat.value;
         tuning.eatAtHunger = s.reflexEatAtHunger.value;
         tuning.creeperRadius = s.reflexCreeperRadius.value;
+        tuning.combatRetreatHp = s.reflexCombatRetreatHealth.value.floatValue();
+        tuning.retreatTargetHp = s.reflexRetreatTargetHealth.value.floatValue();
+        tuning.swarmCount = s.reflexSwarmCount.value;
+        tuning.pillarHeight = s.reflexPillarHeight.value;
+        tuning.mlgFallTrigger = s.reflexMlgFallTrigger.value;
+        tuning.fireWaterRadius = s.reflexFireWaterRadius.value;
     }
 
     private WorldSnapshot snapshot(LocalPlayer player, long now) {

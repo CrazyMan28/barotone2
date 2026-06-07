@@ -26,6 +26,7 @@ import baritone.api.command.exception.CommandException;
 import baritone.api.command.helpers.TabCompleteHelper;
 import baritone.api.utils.SettingsUtil;
 import baritone.ai.ReflexLog;
+import baritone.process.ReflexProcess;
 import net.minecraft.ChatFormatting;
 
 import java.util.Arrays;
@@ -54,6 +55,9 @@ public class ReflexCommand extends Command {
                             + " antiLava=" + s.reflexAntiLava.value
                             + " antiDrown=" + s.reflexAntiDrown.value + ")",
                     s.reflexesEnabled.value ? ChatFormatting.GREEN : ChatFormatting.YELLOW);
+            String live = ReflexProcess.ACTIVE_STATUS;
+            logDirect("Right now: " + live,
+                    "idle".equals(live) ? ChatFormatting.GRAY : ChatFormatting.GOLD);
             List<String> recent = ReflexLog.recent(5);
             if (recent.isEmpty()) {
                 logDirect("No recent reflex activity.", ChatFormatting.GRAY);
@@ -68,7 +72,8 @@ public class ReflexCommand extends Command {
         if (mode.equals("on")) {
             s.reflexesEnabled.value = true;
             SettingsUtil.save(s);
-            logDirect("Reflexes ON: auto-eat, creeper flee, fight back, anti-lava, anti-drown.", ChatFormatting.GREEN);
+            logDirect("Reflexes ON: eat, flee/pillar/wall, fight back, retreat-heal, "
+                    + "anti-lava/drown/fire/fall/suffocation.", ChatFormatting.GREEN);
         } else if (mode.equals("off")) {
             s.reflexesEnabled.value = false;
             SettingsUtil.save(s);
@@ -94,13 +99,16 @@ public class ReflexCommand extends Command {
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "Survival reflexes keep the bot alive without waiting on the AI:",
-                "auto-eat from the hotbar, flee creepers, fight back when hurt,",
-                "float out of lava, and surface before drowning. Interrupted",
-                "missions resume automatically once the danger has passed.",
+                "Survival reflexes keep the bot alive without waiting on the AI.",
+                "A scored-threat engine watches every tick for: lava, void drops,",
+                "drowning, sand/gravel suffocation, burning, falls (water-bucket MLG),",
+                "creepers (flee, then pillar/wall off a chase that won't shake),",
+                "skeletons (fight when geared, else flee), mob swarms, poison, hunger.",
+                "Losing fights disengage into retreat-and-heal. Interrupted missions",
+                "resume automatically once the danger has passed.",
                 "",
                 "Usage:",
-                "> reflex          - show status and recent reflex activity",
+                "> reflex          - show status, live threat, recent reflex activity",
                 "> reflex on/off   - master switch (individual reflex* settings exist too)"
         );
     }

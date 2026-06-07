@@ -18,6 +18,7 @@
 package baritone.ai;
 
 import baritone.ai.reflex.Detectors;
+import baritone.process.ReflexProcess;
 import baritone.api.BaritoneAPI;
 import baritone.api.IBaritone;
 import baritone.api.Settings;
@@ -2201,6 +2202,11 @@ public final class BaritoneTools {
         }
         try {
             s.addProperty("reflexes_enabled", BaritoneAPI.getSettings().reflexesEnabled.value);
+            String liveThreat = ReflexProcess.ACTIVE_STATUS;
+            if (liveThreat != null && !"idle".equals(liveThreat)) {
+                // a reflex is handling a danger RIGHT NOW — the agent should not fight it for control
+                s.addProperty("active_threat", liveThreat);
+            }
             List<String> reflexes = ReflexLog.recent(4);
             if (!reflexes.isEmpty()) {
                 JsonArray recent = new JsonArray();
