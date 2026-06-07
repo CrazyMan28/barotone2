@@ -2056,6 +2056,11 @@ public final class BaritoneTools {
         return AiCrafting.onClient(ctx, this::getStateOnClient);
     }
 
+    /** Move the listed items (a finished mission's deliverables) into the hotbar so they show. */
+    public String showcaseInHotbar(java.util.List<String> itemIds) {
+        return AiCrafting.arrangeItemsInHotbar(ctx, itemIds);
+    }
+
     /**
      * Typed state extraction for the hierarchical planner's criteria verification — the same
      * facts as get_state but filled directly on the client thread, no JSON round-trip. The

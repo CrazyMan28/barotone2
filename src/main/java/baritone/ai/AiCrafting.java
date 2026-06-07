@@ -3966,6 +3966,73 @@ public final class AiCrafting {
         });
     }
 
+    /**
+     * Move the listed items (e.g. the tools a mission just crafted) from the main inventory into
+     * the hotbar so they are VISIBLE in the window and immediately usable. Items already in the
+     * hotbar are left where they are; each newly-moved item lands in its own slot. Best-effort.
+     */
+    public static String arrangeItemsInHotbar(IPlayerContext ctx, java.util.List<String> itemIds) {
+        if (itemIds == null || itemIds.isEmpty()) {
+            return "";
+        }
+        return onClient(ctx, () -> {
+            LocalPlayer p = ctx.player();
+            if (p == null) {
+                return "";
+            }
+            if (!(p.containerMenu instanceof InventoryMenu)) {
+                p.closeContainer(); // rearranging is only safe on the plain inventory menu
+            }
+            StringBuilder moved = new StringBuilder();
+            for (String idRaw : itemIds) {
+                Item item = resolveHotbarItem(idRaw);
+                if (item == null) {
+                    continue;
+                }
+                boolean inHotbar = false;
+                for (int h = 0; h < 9; h++) {
+                    if (p.getInventory().getItem(h).is(item)) {
+                        inHotbar = true;
+                        break;
+                    }
+                }
+                if (inHotbar) {
+                    continue; // already shown
+                }
+                int menuSlot = findItemSlot(p.inventoryMenu, item);
+                if (menuSlot < 0) {
+                    continue; // not owned (or only in an off-inventory container)
+                }
+                int target = -1;
+                for (int h = 0; h < 9; h++) {
+                    if (p.getInventory().getItem(h).isEmpty()) {
+                        target = h;
+                        break;
+                    }
+                }
+                if (target < 0) {
+                    continue; // hotbar full — don't clobber what the player is holding
+                }
+                ctx.playerController().windowClick(p.inventoryMenu.containerId, menuSlot, target, ClickType.SWAP, p);
+                net.minecraft.resources.Identifier id = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(item);
+                moved.append(id == null ? idRaw : id.getPath()).append(' ');
+            }
+            return moved.toString().trim();
+        });
+    }
+
+    /** Resolve "minecraft:iron_pickaxe" or "iron_pickaxe" to an Item, or null if unknown/air. */
+    private static Item resolveHotbarItem(String idRaw) {
+        if (idRaw == null || idRaw.isBlank()) {
+            return null;
+        }
+        net.minecraft.resources.Identifier id = net.minecraft.resources.Identifier.tryParse(idRaw.trim());
+        if (id == null) {
+            return null;
+        }
+        return BuiltInRegistries.ITEM.get(id).map(net.minecraft.core.Holder.Reference::value).orElse(null);
+    }
+
     /** If the best owned tool of these tiers isn't already in the hotbar, swap it up from main inv. */
     private static String swapBestToolToHotbar(IPlayerContext ctx, LocalPlayer p, Item[] tiers) {
         for (Item tier : tiers) {

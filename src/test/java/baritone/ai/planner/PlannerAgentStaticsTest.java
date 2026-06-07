@@ -24,6 +24,7 @@ import com.google.gson.JsonParser;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -66,6 +67,37 @@ public class PlannerAgentStaticsTest {
                 PlannerAgent.effectivePlannerModel(null, "mistral-small-latest"));
         assertEquals("mistral-large-latest",
                 PlannerAgent.effectivePlannerModel("  mistral-large-latest  ", "x"));
+    }
+
+    @Test
+    public void collectsDeliverableToolAndArmorIdsForTheHotbar() {
+        // a finished mission should move the goods it made into the hotbar so the player sees them
+        PlanDocument d = new PlanDocument();
+        SuccessCriterion pick = new SuccessCriterion(); pick.type = "has_item"; pick.id = "minecraft:iron_pickaxe"; pick.count = 1;
+        SuccessCriterion logs = new SuccessCriterion(); logs.type = "has_item"; logs.id = "log"; logs.count = 5;          // raw material — skip
+        SuccessCriterion food = new SuccessCriterion(); food.type = "food_min"; food.count = 8;                           // not an item — skip
+        SuccessCriterion chest = new SuccessCriterion(); chest.type = "armor_equipped"; chest.slot = "chest"; chest.id = "diamond_chestplate";
+        d.finalCriteria = new java.util.ArrayList<>(java.util.Arrays.asList(pick, logs, food, chest));
+
+        java.util.List<String> ids = PlannerAgent.deliverableItemIds(d);
+        assertTrue("keeps the iron pickaxe (a tool)", ids.contains("minecraft:iron_pickaxe"));
+        assertTrue("keeps equipped armor", ids.contains("diamond_chestplate"));
+        assertFalse("drops raw materials like logs", ids.contains("log"));
+        assertFalse("ignores non-item criteria", ids.stream().anyMatch(s -> s.contains("food")));
+    }
+
+    @Test
+    public void deliverableIdsFallBackToLastStepWhenNoFinalCriteria() {
+        PlanDocument d = new PlanDocument();
+        SubGoal s1 = new SubGoal();
+        SubGoal s2 = new SubGoal();
+        SuccessCriterion sword = new SuccessCriterion(); sword.type = "has_item"; sword.id = "stone_sword"; sword.count = 1;
+        s2.criteria = new java.util.ArrayList<>(java.util.Collections.singletonList(sword));
+        d.subGoals = new java.util.ArrayList<>(java.util.Arrays.asList(s1, s2));
+        d.finalCriteria = new java.util.ArrayList<>();
+
+        java.util.List<String> ids = PlannerAgent.deliverableItemIds(d);
+        assertTrue(ids.contains("stone_sword"));
     }
 
     @Test

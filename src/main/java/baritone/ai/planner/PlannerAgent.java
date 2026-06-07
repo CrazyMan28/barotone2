@@ -129,6 +129,18 @@ public final class PlannerAgent implements Helper {
                     StateSnapshot snap = tools.snapshotForPlanner();
                     CriteriaEvaluator.Result fin = CriteriaEvaluator.evaluate(plan.finalCriteria, snap);
                     if (fin.met) {
+                        // surface the tools/armor it made in the hotbar so the player SEES the result
+                        // (crafted items land in the main inventory by default — an empty hotbar
+                        // reads as "nothing happened" even when the mission verified)
+                        try {
+                            List<String> deliverables = deliverableItemIds(plan);
+                            if (!deliverables.isEmpty()) {
+                                String shown = tools.showcaseInHotbar(deliverables);
+                                if (shown != null && !shown.isEmpty()) {
+                                    logDirect("[AI:planner] moved to hotbar: " + shown, ChatFormatting.GREEN);
+                                }
+                            }
+                        } catch (RuntimeException ignored) {}
                         GoalTracker.finish("All " + plan.subGoals.size() + " steps verified: " + mainGoal);
                         MissionMemory.recordCheckpointQuietly(mainGoal, "planner_done",
                                 plan.subGoals.size() + " steps verified", "done");
@@ -428,6 +440,38 @@ public final class PlannerAgent implements Helper {
             }
         }
         return null;
+    }
+
+    /**
+     * The finished-goods item ids to surface in the hotbar when a mission completes: tools and
+     * armor from the final criteria (or, if none, the last sub-goal's criteria). Raw materials
+     * (logs, cobblestone, ingots) and non-item criteria (food, y-level) are skipped — the player
+     * wants to see the TOOLS it made, not a hotbar of dirt.
+     */
+    static List<String> deliverableItemIds(PlanDocument plan) {
+        List<String> ids = new ArrayList<>();
+        if (plan == null) {
+            return ids;
+        }
+        List<SuccessCriterion> source = plan.finalCriteria != null && !plan.finalCriteria.isEmpty()
+                ? plan.finalCriteria
+                : (plan.subGoals != null && !plan.subGoals.isEmpty()
+                        ? plan.subGoals.get(plan.subGoals.size() - 1).criteria
+                        : java.util.Collections.emptyList());
+        for (SuccessCriterion c : source) {
+            if (c == null || c.id == null) {
+                continue;
+            }
+            String id = c.id;
+            boolean isTool = ToolTiers.toolType(id) != null;
+            boolean isArmor = ToolTiers.armorSlot(id) != null;
+            if (("has_item".equals(c.type) && (isTool || isArmor)) || "armor_equipped".equals(c.type)) {
+                if (!ids.contains(id)) {
+                    ids.add(id);
+                }
+            }
+        }
+        return ids;
     }
 
     /** The model the planner should use: its own (Large) model, or the mission model if unset. */
