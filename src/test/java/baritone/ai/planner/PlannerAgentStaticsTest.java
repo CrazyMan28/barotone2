@@ -55,6 +55,20 @@ public class PlannerAgentStaticsTest {
     }
 
     @Test
+    public void plannerPrefersItsOwnLargeModelOverTheExecutorModel() {
+        // the executor may run a cheap/fast model, but planning must use the strong planner model
+        assertEquals("mistral-large-latest",
+                PlannerAgent.effectivePlannerModel("mistral-large-latest", "mistral-small-latest"));
+        // blank planner model -> fall back to the mission model
+        assertEquals("mistral-small-latest",
+                PlannerAgent.effectivePlannerModel("", "mistral-small-latest"));
+        assertEquals("mistral-small-latest",
+                PlannerAgent.effectivePlannerModel(null, "mistral-small-latest"));
+        assertEquals("mistral-large-latest",
+                PlannerAgent.effectivePlannerModel("  mistral-large-latest  ", "x"));
+    }
+
+    @Test
     public void ignoresOtherToolCallsAndProse() {
         OpenAiChatClient.AssistantMessage prose = new OpenAiChatClient.AssistantMessage();
         prose.content = "here is my plan: ...";

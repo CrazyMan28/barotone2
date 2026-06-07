@@ -1382,6 +1382,15 @@ public final class Settings {
     public final Setting<Boolean> aiHierarchicalPlanner = new Setting<>(true);
 
     /**
+     * Model used ONLY for the planner's decompose/replan calls (the "main agent" that breaks the
+     * goal into sub-goals). Defaults to {@code mistral-large-latest} so planning is done by a strong
+     * model that traces the full tech ladder, even when the per-sub-goal executor runs a cheaper or
+     * faster model ({@link #mistralModel}). Only applies when a Mistral key is set; blank falls back
+     * to {@link #mistralModel}.
+     */
+    public final Setting<String> aiPlannerModel = new Setting<>("mistral-large-latest");
+
+    /**
      * Max tokens for the planner's decompose/replan calls. Larger than the mission default so the
      * model has room to think in the required {@code reasoning} field before listing sub-goals.
      */

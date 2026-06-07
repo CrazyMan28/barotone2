@@ -385,7 +385,10 @@ public final class PlannerAgent implements Helper {
             provider = "mistral";
             apiKey = mistralKey;
             endpoint = settings.mistralEndpoint.value;
-            model = settings.mistralModel.value;
+            // planning uses the strong planner model (default mistral-large-latest) even when the
+            // per-sub-goal executor runs a cheaper/faster model
+            model = effectivePlannerModel(settings.aiPlannerModel.value, settings.mistralModel.value);
+            logDirect("[AI:planner] planning with " + model, ChatFormatting.DARK_AQUA);
         } else {
             String ollamaModel = settings.ollamaModel.value == null ? "" : settings.ollamaModel.value.trim();
             if (ollamaModel.isEmpty()) {
@@ -425,6 +428,14 @@ public final class PlannerAgent implements Helper {
             }
         }
         return null;
+    }
+
+    /** The model the planner should use: its own (Large) model, or the mission model if unset. */
+    static String effectivePlannerModel(String plannerModel, String missionModel) {
+        if (plannerModel != null && !plannerModel.trim().isEmpty()) {
+            return plannerModel.trim();
+        }
+        return missionModel == null ? "" : missionModel.trim();
     }
 
     /** Pull the submit_plan arguments out of the assistant message, if it called the tool. */

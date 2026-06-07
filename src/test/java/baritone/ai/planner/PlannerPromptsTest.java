@@ -56,6 +56,22 @@ public class PlannerPromptsTest {
     }
 
     @Test
+    public void decompositionPromptForcesDependencyTracingAndCompletenessCheck() {
+        // live bug: "craft all stone tools" planned to gather logs -> place table -> craft stone
+        // tools, SKIPPING the wooden pickaxe and mining cobblestone (you can't craft stone tools
+        // without cobblestone, can't mine cobblestone without a pickaxe)
+        String p = PlannerPrompts.decompositionSystemPrompt();
+        assertTrue("must tell it to trace prerequisites/dependencies",
+                p.toLowerCase().contains("prerequisite") || p.toLowerCase().contains("dependency")
+                        || p.toLowerCase().contains("depends on"));
+        assertTrue("must require a completeness self-check before submitting",
+                p.toLowerCase().contains("self-check") || p.toLowerCase().contains("before you submit")
+                        || p.toLowerCase().contains("double-check"));
+        assertTrue("must name cobblestone needs a pickaxe as the canonical example",
+                p.toLowerCase().contains("cobblestone"));
+    }
+
+    @Test
     public void decompositionSystemPromptScalesThePlanToTheGoal() {
         // NOT hard-coded ladders: "get logs" must be one step; "get diamonds" with iron+food
         // already in the inventory must skip straight to mining

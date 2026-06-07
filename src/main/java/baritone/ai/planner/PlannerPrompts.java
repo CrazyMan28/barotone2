@@ -74,6 +74,23 @@ public final class PlannerPrompts {
                 historically kill the bot and what insurance (food, torches, armor) the dangerous \
                 steps need.
 
+                TRACE EVERY PREREQUISITE — work BACKWARD from the goal and include each dependency \
+                as its own step. A target you can't make without first making something else MUST \
+                have that something else as an earlier step. Worked example — "craft all stone \
+                tools": stone tools need COBBLESTONE + STICKS + a crafting table; cobblestone must \
+                be MINED, and mining it needs a WOODEN (or better) PICKAXE; the wooden pickaxe needs \
+                PLANKS + STICKS; planks + sticks need LOGS. So the full chain is: get logs -> craft \
+                a wooden pickaxe -> mine cobblestone (>= enough for all tools) -> craft the stone \
+                tools (table + sticks + cobblestone). A plan that jumps from "gather logs" to "craft \
+                stone tools" is WRONG — it skipped the pickaxe and the mining.
+
+                COMPLETENESS SELF-CHECK before you submit: walk your steps in order and for EACH \
+                one ask "are this step's inputs produced by an earlier step or already in the \
+                current inventory, and is the tool needed to obtain them available by now?" If any \
+                step needs cobblestone but nothing earlier yields a pickaxe to mine it, or needs \
+                iron but nothing smelts it, your plan is INCOMPLETE — add the missing rungs and \
+                check again. Do not submit a plan with a gap.
+
                 THE PLAN MUST BE AS SMALL AS THE GOAL:
                 - trivial gather goals ("get logs", "mine 20 cobblestone") = ONE sub-goal. \
                 No ladder, no tools the goal doesn't need.
