@@ -49,6 +49,8 @@ public final class ReflexEngine {
         public BehaviorId previous = BehaviorId.NONE;
         /** How long the released behavior had run, in ticks. */
         public int previousTicks;
+        /** Set (once) on the tick a stuck flee escalates to a resolution mode. */
+        public FleeMode resolvedMode;
     }
 
     private final ResponseArbiter arbiter = new ResponseArbiter();
@@ -56,6 +58,7 @@ public final class ReflexEngine {
 
     private ReflexBehavior current;
     private BehaviorId last = BehaviorId.NONE;
+    private FleeMode lastFleeMode = FleeMode.NORMAL;
     private int ticksInBehavior;
 
     public ReflexEngine() {
@@ -95,6 +98,11 @@ public final class ReflexEngine {
         } else {
             ticksInBehavior++;
         }
+        if (plan.behavior == BehaviorId.FLEE && plan.fleeMode != lastFleeMode
+                && plan.fleeMode != FleeMode.NORMAL) {
+            out.resolvedMode = plan.fleeMode;
+        }
+        lastFleeMode = plan.behavior == BehaviorId.FLEE ? plan.fleeMode : FleeMode.NORMAL;
         if (current != null) {
             out.actions = current.tick(s, t, plan);
         }

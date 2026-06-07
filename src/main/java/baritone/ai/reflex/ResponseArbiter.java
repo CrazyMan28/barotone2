@@ -44,6 +44,7 @@ public final class ResponseArbiter {
     private Threat activeCause;
     private int activeTicks;
     private int combatTargetId = -1;
+    private FleeMode fleeMode = FleeMode.NORMAL;
     private FleeEscalation flee;
 
     // hp-loss window for losingTrade()
@@ -115,11 +116,17 @@ public final class ResponseArbiter {
                 return engage(BehaviorId.RETREAT_HEAL, activeCause);
             }
             if (!released(s, t, fleeSuppressed)) {
-                return new ResponsePlan(active, activeCause, FleeMode.NORMAL, combatTargetId);
+                // running isn't working: RESOLVE the chase instead of fleeing forever
+                if (active == BehaviorId.FLEE && fleeMode == FleeMode.NORMAL
+                        && flee.unresolved(s.gameTime)) {
+                    fleeMode = pickFleeResolution(s, t);
+                }
+                return new ResponsePlan(active, activeCause, fleeMode, combatTargetId);
             }
             active = BehaviorId.NONE;
             activeCause = null;
             combatTargetId = -1;
+            fleeMode = FleeMode.NORMAL;
         }
 
         // 6. fresh engagement (working-gated)
@@ -186,13 +193,32 @@ public final class ResponseArbiter {
             active = behavior;
             activeCause = cause;
             activeTicks = 0;
+            fleeMode = FleeMode.NORMAL;
         } else {
             activeCause = cause;
         }
         if (behavior == BehaviorId.COMBAT && cause.source != null) {
             combatTargetId = cause.source.entityId;
         }
-        return new ResponsePlan(active, activeCause, FleeMode.NORMAL, combatTargetId);
+        return new ResponsePlan(active, activeCause, fleeMode, combatTargetId);
+    }
+
+    /**
+     * The resolution ladder for a chase that running couldn't shake: pillar above a creeper
+     * (it can't reach and won't detonate), wall off anything else's approach/arrows, and with
+     * no blocks to spare, at least try a perpendicular escape route.
+     */
+    private FleeMode pickFleeResolution(WorldSnapshot s, ReflexTuning t) {
+        double radius = Detectors.fleeEngageRadius(t) + 4D;
+        boolean creeperChasing = Detectors.anyWithin(s, radius, m -> m.creeper);
+        boolean canPlace = s.onGround && s.blockSlot >= 0;
+        if (creeperChasing && canPlace && s.blockCount >= t.pillarHeight) {
+            return FleeMode.PILLAR;
+        }
+        if (canPlace && s.blockCount >= 2) {
+            return FleeMode.WALL;
+        }
+        return FleeMode.NEW_DIRECTION;
     }
 
     private boolean released(WorldSnapshot s, ReflexTuning t, boolean fleeSuppressed) {

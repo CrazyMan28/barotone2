@@ -127,6 +127,28 @@ public final class ReflexProcess extends BaritoneProcessHelper {
             GoalTracker.setStatus(note);
             emitTelemetry("engage", out.plan.behavior, out.plan.cause, 0);
         }
+        if (out.resolvedMode != null) {
+            String how;
+            switch (out.resolvedMode) {
+                case PILLAR:
+                    how = "pillaring out of reach";
+                    break;
+                case WALL:
+                    how = "walling it off";
+                    break;
+                default:
+                    how = "trying a new direction";
+                    break;
+            }
+            String note = "[reflex] can't shake it - " + how;
+            ReflexLog.record(note);
+            logDirect(note, ChatFormatting.GOLD);
+            Map<String, Object> data = new HashMap<>();
+            data.put("phase", "resolve");
+            data.put("behavior", "flee");
+            data.put("mode", out.resolvedMode.name().toLowerCase(Locale.ROOT));
+            AgentTelemetry.emit("reflex", data);
+        }
         return out.plan.behavior != BehaviorId.NONE;
     }
 

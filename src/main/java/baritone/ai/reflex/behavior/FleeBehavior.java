@@ -19,6 +19,7 @@ package baritone.ai.reflex.behavior;
 
 import baritone.ai.reflex.BehaviorId;
 import baritone.ai.reflex.BlockPosSpec;
+import baritone.ai.reflex.FleeMode;
 import baritone.ai.reflex.GoalSpec;
 import baritone.ai.reflex.MobInfo;
 import baritone.ai.reflex.ReflexAction;
@@ -34,14 +35,26 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Run from creepers (and skeletons we can't take). Two ranges:
+ * Run from creepers (and skeletons we can't take). NORMAL mode has two ranges:
  * <ul>
  * <li>PANIC (inside blast range): sprint directly away NOW — faster than any path calc;</li>
  * <li>beyond: hand pathing a GoalRunAway from every flee-mob.</li>
  * </ul>
- * The escalation modes (PILLAR / WALL / NEW_DIRECTION) arrive with the resolution ladder.
+ * When the arbiter's escalation ladder decides running isn't working, the plan's
+ * {@link FleeMode} switches and this behavior RESOLVES the chase instead: PILLAR three
+ * blocks up (a creeper can't reach and won't detonate), WALL the mob's approach/arrow line
+ * off, or flee a rotated NEW_DIRECTION when there's nothing to build with.
  */
 public final class FleeBehavior implements ReflexBehavior {
+
+    /** Ticks spent placing the wall before resuming the run. */
+    private static final int WALL_PLACE_TICKS = 12;
+    /** Place at/after the jump apex (rising velocity has dropped below this). */
+    private static final double PILLAR_APEX_VEL = 0.15D;
+
+    private FleeMode lastMode = FleeMode.NORMAL;
+    private double pillarBase = Double.NaN;
+    private int wallTicks;
 
     @Override
     public BehaviorId id() {
@@ -50,10 +63,84 @@ public final class FleeBehavior implements ReflexBehavior {
 
     @Override
     public void enter(WorldSnapshot s, ResponsePlan plan) {
+        lastMode = FleeMode.NORMAL;
+        pillarBase = Double.NaN;
+        wallTicks = 0;
     }
 
     @Override
     public List<ReflexAction> tick(WorldSnapshot s, ReflexTuning t, ResponsePlan plan) {
+        if (plan.fleeMode != lastMode) {
+            lastMode = plan.fleeMode;
+            pillarBase = Double.NaN;
+            wallTicks = 0;
+        }
+        switch (plan.fleeMode) {
+            case PILLAR:
+                return tickPillar(s, t);
+            case WALL:
+                return wallTicks++ < WALL_PLACE_TICKS ? tickWall(s, t) : tickRun(s, t, plan, false);
+            case NEW_DIRECTION:
+                return tickRun(s, t, plan, true);
+            default:
+                return tickRun(s, t, plan, false);
+        }
+    }
+
+    @Override
+    public void exit() {
+    }
+
+    // ---------------------------------------------------------------- modes
+
+    /** Tower up out of reach: aim down, jump, fill the cell we vacate at each apex. */
+    private List<ReflexAction> tickPillar(WorldSnapshot s, ReflexTuning t) {
+        if (Double.isNaN(pillarBase)) {
+            pillarBase = Math.floor(s.posY);
+        }
+        if (s.posY - pillarBase >= t.pillarHeight - 0.2D || s.blockSlot < 0) {
+            return List.of(ReflexAction.releaseAll()); // tall enough (or out of blocks): stand safe
+        }
+        List<ReflexAction> actions = new ArrayList<>(4);
+        actions.add(ReflexAction.selectSlot(s.blockSlot));
+        actions.add(ReflexAction.snapLook(s.yaw, 90F));
+        if (s.onGround) {
+            actions.add(ReflexAction.hold(Input.JUMP, true));
+        } else if (s.velY <= PILLAR_APEX_VEL) {
+            actions.add(ReflexAction.placeBlock(new BlockPosSpec(
+                    (int) Math.floor(s.posX), (int) Math.floor(s.posY) - 1, (int) Math.floor(s.posZ))));
+        }
+        return actions;
+    }
+
+    /** Brick up the cell between us and the chaser, feet and head height. */
+    private List<ReflexAction> tickWall(WorldSnapshot s, ReflexTuning t) {
+        MobInfo nearest = nearestPursuer(s, Math.max(2D, t.creeperRadius) + 4D, true);
+        if (nearest == null || s.blockSlot < 0) {
+            return List.of(ReflexAction.releaseAll());
+        }
+        double dx = nearest.x - s.posX;
+        double dz = nearest.z - s.posZ;
+        int ox = 0, oz = 0;
+        if (Math.abs(dx) >= Math.abs(dz)) {
+            ox = dx >= 0 ? 1 : -1;
+        } else {
+            oz = dz >= 0 ? 1 : -1;
+        }
+        int feetY = (int) Math.floor(s.posY);
+        BlockPosSpec feet = new BlockPosSpec((int) Math.floor(s.posX) + ox, feetY, (int) Math.floor(s.posZ) + oz);
+        BlockPosSpec head = new BlockPosSpec(feet.x, feetY + 1, feet.z);
+        return List.of(
+                ReflexAction.releaseAll(),
+                ReflexAction.selectSlot(s.blockSlot),
+                ReflexAction.snapLook(ReflexMath.yawToward(s.posX, s.posZ, feet.x + 0.5D, feet.z + 0.5D), 35F),
+                ReflexAction.placeBlock(feet),
+                ReflexAction.placeBlock(head)
+        );
+    }
+
+    /** The classic run — optionally with the flee sources rotated 90° (NEW_DIRECTION). */
+    private List<ReflexAction> tickRun(WorldSnapshot s, ReflexTuning t, ResponsePlan plan, boolean rotated) {
         double radius = Math.max(2D, t.creeperRadius) + 4D;
         // engaged by a SWARM: every hostile is a pursuer, not just the creeper/skeleton set
         boolean fleeAll = plan != null && plan.cause != null && plan.cause.type == ThreatType.SWARM;
@@ -84,7 +171,17 @@ public final class FleeBehavior implements ReflexBehavior {
         }
         BlockPosSpec[] from = new BlockPosSpec[mobs.size()];
         for (int i = 0; i < mobs.size(); i++) {
-            from[i] = ReflexMath.feetBlock(mobs.get(i));
+            MobInfo m = mobs.get(i);
+            if (rotated) {
+                // pretend the threat sits 90° around us, so the escape path runs perpendicular
+                // to the (blocked) straight-away route
+                from[i] = new BlockPosSpec(
+                        (int) Math.floor(s.posX - (m.z - s.posZ)),
+                        (int) Math.floor(m.y),
+                        (int) Math.floor(s.posZ + (m.x - s.posX)));
+            } else {
+                from[i] = ReflexMath.feetBlock(m);
+            }
         }
         return List.of(
                 ReflexAction.releaseAll(),
@@ -92,7 +189,14 @@ public final class FleeBehavior implements ReflexBehavior {
         );
     }
 
-    @Override
-    public void exit() {
+    private static MobInfo nearestPursuer(WorldSnapshot s, double radius, boolean any) {
+        MobInfo nearest = null;
+        for (MobInfo m : s.mobs) {
+            boolean relevant = any ? (m.hostile || m.creeper || m.skeleton) : (m.creeper || m.skeleton);
+            if (relevant && m.distance <= radius && (nearest == null || m.distance < nearest.distance)) {
+                nearest = m;
+            }
+        }
+        return nearest;
     }
 }

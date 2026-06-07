@@ -31,9 +31,14 @@ import baritone.api.utils.IPlayerContext;
 import baritone.api.utils.Rotation;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
 
@@ -104,7 +109,7 @@ final class ReflexExecutor {
                     break;
                 }
                 case PLACE_BLOCK:
-                    // arrives with the flee-resolution step (pillar/wall)
+                    placeBlock(player, a.pos);
                     break;
                 case SET_GOAL:
                     goal = toGoal(a.goal);
@@ -127,6 +132,38 @@ final class ReflexExecutor {
             ctx.player().getInventory().setSelectedSlot(prevHotbarSlot);
         }
         prevHotbarSlot = -1;
+    }
+
+    /**
+     * Fill a cell with the held block via a hand-built {@code BlockHitResult} against a solid
+     * neighbor — the same idiom AiCrafting uses for stations, because reading the crosshair for
+     * placement is exactly what made the old code flaky. Skips silently if the cell is occupied
+     * (so behaviors can re-emit every tick) or no neighbor face is clickable.
+     */
+    private void placeBlock(LocalPlayer player, BlockPosSpec spec) {
+        BlockPos cell = toPos(spec);
+        if (!ctx.world().getBlockState(cell).canBeReplaced()) {
+            return; // already filled (idempotent re-emit)
+        }
+        // below first: pillar/wall cells almost always sit on something solid
+        Direction[] neighbors = {Direction.DOWN, Direction.NORTH, Direction.SOUTH,
+                Direction.WEST, Direction.EAST, Direction.UP};
+        for (Direction d : neighbors) {
+            BlockPos against = cell.relative(d);
+            BlockState state = ctx.world().getBlockState(against);
+            if (state.canBeReplaced() || state.isAir()) {
+                continue; // can't click against air/grass/fluid
+            }
+            Direction face = d.getOpposite(); // the face of 'against' pointing back into our cell
+            Vec3 hit = Vec3.atCenterOf(against)
+                    .add(face.getStepX() * 0.5D, face.getStepY() * 0.5D, face.getStepZ() * 0.5D);
+            BlockHitResult bhr = new BlockHitResult(hit, face, against, false);
+            InteractionResult res = ctx.minecraft().gameMode.useItemOn(player, InteractionHand.MAIN_HAND, bhr);
+            if (res.consumesAction()) {
+                player.swing(InteractionHand.MAIN_HAND);
+                return;
+            }
+        }
     }
 
     private static Goal toGoal(GoalSpec spec) {

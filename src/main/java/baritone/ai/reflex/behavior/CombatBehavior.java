@@ -70,7 +70,19 @@ public final class CombatBehavior implements ReflexBehavior {
                 ReflexMath.pitchToward(s.posX, s.posY, s.posZ, target.x, target.aimY, target.z)));
         if (target.distance <= t.strikeDistance) {
             if (s.attackStrengthScale >= 0.9F) {
+                // STRIKE: shield down (a raised shield soft-cancels the hit), full-charge swing
+                if (s.hasShieldOffhand) {
+                    actions.add(ReflexAction.hold(Input.CLICK_RIGHT, false));
+                }
                 actions.add(ReflexAction.attack(target.entityId));
+            } else {
+                // SPACE: cover behind the shield through the cooldown, step back if crowded
+                if (s.hasShieldOffhand) {
+                    actions.add(ReflexAction.hold(Input.CLICK_RIGHT, true));
+                }
+                if (target.distance < 2.5D) {
+                    actions.add(ReflexAction.hold(Input.MOVE_BACK, true));
+                }
             }
         } else if (target.distance <= t.rushDistance) {
             // rush a near target directly — works in tight holes/caves where pathing is slow
