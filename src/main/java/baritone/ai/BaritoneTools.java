@@ -138,14 +138,14 @@ public final class BaritoneTools {
         arr.add(fn("mine",
                 "Mine and break blocks (digs ores, logs, etc.) and STOP at quantity. THIS is the tool for 'mine N logs' "
                         + "or 'get N <block>': e.g. mine(['minecraft:log'], 67) gathers 67 logs and stops — it does NOT craft anything. "
-                        + "If quantity is 0 or omitted, mining never stops by count (use a number when the goal gives one). "
+                        + "Call it ONCE, then wait_until_idle — calling mine again while it runs does nothing but tell you to wait. "
                         + "For diamond (and other overworld ores), pass the stone ore id: deepslate variants are added automatically.",
                 params(
                         param("blocks", "array",
                                 "Block ids to mine, e.g. ['minecraft:diamond_ore'] (deepslate_diamond_ore is auto-included).",
                                 true, "string"),
                         param("quantity", "integer",
-                                "Total stop quantity across all listed blocks. 0 or omit for unlimited.", false)
+                                "Total stop quantity across all listed blocks. Omitted/0 defaults to 32 — pass the number your goal actually needs.", false)
                 )));
         arr.add(fn("follow_player",
                 "Follow a player by name. Useful for being escorted.",
@@ -1096,22 +1096,34 @@ public final class BaritoneTools {
             return err.toString();
         }
         int q = (a.has("quantity") && !a.get("quantity").isJsonNull()) ? a.get("quantity").getAsInt() : 0;
+        boolean defaultedQuantity = false;
+        if (q <= 0) {
+            // Unbounded mining is never what an agent wants: seen in the wild, mine(logs) with no
+            // quantity blew past 64 logs and never finished. Bound it so the process can complete.
+            q = 32;
+            defaultedQuantity = true;
+        }
         // Idempotency guard: don't re-mine what we already have. For blocks whose drop is the block
         // itself (logs, cobblestone, dirt...) the inventory count matches the requested ids; ores drop
         // a different item (raw_iron != iron_ore) so they simply won't match and we mine as normal.
-        if (q > 0) {
-            int have = inventoryCountOf(new java.util.HashSet<>(expanded));
-            if (have >= q) {
-                return "Already have " + have + " of " + String.join("/", expanded) + " (>= " + q
-                        + " requested). Did NOT mine — you already have enough; move to the next step.";
-            }
+        int have = inventoryCountOf(new java.util.HashSet<>(expanded));
+        if (have >= q) {
+            return "Already have " + have + " of " + String.join("/", expanded) + " (>= " + q
+                    + (defaultedQuantity ? " default" : " requested")
+                    + "). Did NOT mine — you already have enough; move to the next step.";
         }
         StringBuilder cmd = new StringBuilder("mine");
-        if (q > 0) {
-            cmd.append(' ').append(q);
-        }
+        cmd.append(' ').append(q);
         for (String id : expanded) {
             cmd.append(' ').append(id);
+        }
+        // Re-issue guard: calling mine again with the SAME request while the mine process is
+        // running RESTARTS it (recalculates paths, drops progress). Seen in the wild as an agent
+        // thrash-loop. Point the model at wait_until_idle instead.
+        if (cmd.toString().equals(lastMineCommand) && baritone.getMineProcess().isActive()) {
+            return "Already mining " + String.join("/", expanded) + " — the process is RUNNING (have "
+                    + have + " of " + q + " so far). Did NOT restart it. Call wait_until_idle to let it "
+                    + "finish, then get_state to verify the count.";
         }
         // Put the right tool in the HOTBAR first — autoTool only uses the hotbar, so an axe/pickaxe
         // sitting in the main inventory would be ignored and the bot would mine with its bare hand.

@@ -151,6 +151,10 @@ public final class PlannerPrompts {
         } else {
             sb.append("Call done() when this step is finished.\n");
         }
+        sb.append("LONG ACTIONS: start ONE action (mine/goto/explore), then call wait_until_idle and ")
+                .append("check get_state. NEVER re-issue the same mine/goto call while it is still running — ")
+                .append("re-issuing RESTARTS the process and wastes the whole run. When a criterion is ")
+                .append("has_item X >= N, pass N as the mine quantity so mining stops by itself.\n");
         sb.append("Do NOT work ahead on later steps. ");
         sb.append("Do NOT call set_goal_plan, update_goal_status or complete_goal_step — the planner owns the plan display.");
         return sb.toString();

@@ -115,6 +115,18 @@ public class PlannerPromptsTest {
     }
 
     @Test
+    public void subGoalPreambleTeachesLongActionDiscipline() {
+        // seen in the wild: the sub-agent re-issued the same mine() call dozens of times,
+        // restarting the mine process each time and blowing past the needed count
+        String p = PlannerPrompts.subGoalPreamble("get full diamond armor",
+                java.util.Collections.emptyList(), sub());
+        assertTrue("must teach mine -> wait_until_idle", p.contains("wait_until_idle"));
+        assertTrue("must forbid re-issuing a running action", p.toLowerCase().contains("re-issue"));
+        assertTrue("must teach passing the criterion count as mine quantity",
+                p.toLowerCase().contains("quantity"));
+    }
+
+    @Test
     public void recoveryPreambleSendsTheBotToTheDrops() {
         String p = PlannerPrompts.recoveryPreamble(123, -58, 456, 140);
         assertTrue(p.contains("123"));
