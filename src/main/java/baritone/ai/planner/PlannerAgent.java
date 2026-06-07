@@ -265,6 +265,17 @@ public final class PlannerAgent implements Helper {
         logDirect("[AI:planner] death #" + g.deaths + " on '" + g.title + "' — " + verdict.reason,
                 ChatFormatting.YELLOW);
 
+        // Death dropped everything carried — re-verify the steps we'd checked off and UN-check the
+        // ones whose gear is now gone, rewinding the cursor. Without this the bot keeps "stone
+        // pickaxe" checked and tries to mine iron with the wooden pickaxe (or fist) it just lost.
+        int unchecked = PlanReverify.afterDeath(plan, tools.snapshotForPlanner());
+        if (unchecked > 0) {
+            logDirect("[AI:planner] death invalidated " + unchecked + " completed step(s) — re-doing them",
+                    ChatFormatting.YELLOW);
+            PlannerStore.save(plan);
+            publishPlan(plan);
+        }
+
         if (verdict.decision == DeathPolicy.Decision.RECOVER_THEN_CONTINUE && !cancelled) {
             GoalTracker.setStatus("Recovering dropped items (death #" + g.deaths + ")");
             int secondsLeft = (int) Math.max(0, settings.aiPlannerDespawnSeconds.value - secondsSince);
@@ -278,7 +289,11 @@ public final class PlannerAgent implements Helper {
                 MistralAgent.ACTIVE.compareAndSet(recovery, null);
                 currentSubAgent = null;
             }
-            return plan; // retry the same sub-goal with whatever was recovered
+            // recovery may have brought gear back — re-check so still-satisfied steps stay done
+            PlanReverify.afterDeath(plan, tools.snapshotForPlanner());
+            PlannerStore.save(plan);
+            publishPlan(plan);
+            return plan; // retry from the rewound cursor with whatever was recovered
         }
 
         return replanOrGiveUp(plan, mainGoal, settings,
