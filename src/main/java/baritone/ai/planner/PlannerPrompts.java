@@ -42,6 +42,14 @@ public final class PlannerPrompts {
             - {"type":"armor_equipped","slot":"chest","id":"diamond"} — armor WORN in slot \
             (head|chest|legs|feet) is at least material leather|golden|chainmail|iron|diamond|netherite.
             - {"type":"reached_y_at_most","count":-50} — the player has descended to y <= count.
+
+            CRITERIA ARE CHECKED AT THE END OF THE STEP, AFTER ALL CRAFTING — and crafting \
+            CONSUMES its ingredients (1 coal + 1 stick -> 4 torches means the coal count DROPS). \
+            Never pair a has_item count on a raw material with crafting that consumes it in the \
+            same step: either require only the PRODUCT (has_item torch >= 8), or demand the \
+            LEFTOVER you actually want and tell the executor to gather extra to cover what \
+            crafting will eat. A step that requires both "8 coal" and "torches made from that \
+            coal" can NEVER verify.
             """;
 
     public static String decompositionSystemPrompt() {

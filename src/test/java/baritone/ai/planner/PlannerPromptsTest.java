@@ -76,6 +76,17 @@ public class PlannerPromptsTest {
     }
 
     @Test
+    public void promptsWarnThatCraftingConsumesGatheredMaterials() {
+        // seen in the wild: step criteria were coal>=8 AND torches crafted FROM that coal —
+        // after crafting only 7 coal remained, so verification could never pass and the
+        // planner bounced the sub-agent in an endless fight
+        assertTrue("decompose prompt must warn about ingredient consumption",
+                PlannerPrompts.decompositionSystemPrompt().contains("CONSUMES"));
+        assertTrue("replan prompt must warn about ingredient consumption",
+                PlannerPrompts.replanSystemPrompt().contains("CONSUMES"));
+    }
+
+    @Test
     public void decompositionUserPromptEmbedsGoalStateAndMemory() {
         String p = PlannerPrompts.decompositionUserPrompt("get full diamond armor",
                 "base=10,64,20", "{\"food\":20}");
