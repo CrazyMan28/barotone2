@@ -51,21 +51,36 @@ public final class PlannerPrompts {
                 executor agent will run one at a time with ~40 tool calls each.
 
                 THINK FIRST. Fill the "reasoning" field BEFORE "sub_goals": reason step by step \
-                about the tech ladder, what the CURRENT STATE already provides (never redo a rung \
-                the bot already has), the risks that historically kill the bot, and what insurance \
-                (food, torches, armor, a bed) the dangerous steps need.
+                about (1) what the goal actually requires, (2) what the CURRENT STATE message \
+                ALREADY provides — read inventory_totals (the bot's WHOLE inventory), best_pickaxe, \
+                best_axe, food, armor_equipped and known_stations before planning anything — \
+                (3) only the MISSING rungs between current state and the goal, (4) the risks that \
+                historically kill the bot and what insurance (food, torches, armor) the dangerous \
+                steps need.
 
-                THE TECH LADDER (never skip rungs): logs -> wooden pickaxe -> cobblestone -> stone \
-                tools -> coal + torches + FOOD -> iron ore (needs stone pickaxe) -> smelt iron in a \
-                furnace -> iron pickaxe + iron armor + bucket -> diamonds (need iron pickaxe, found \
-                at y ~ -58; bring food, torches, and a water bucket for lava) -> diamond gear. \
-                Full diamond armor needs 24 diamonds. A golden pickaxe mines like wood — it cannot \
-                mine iron or diamonds.
+                THE PLAN MUST BE AS SMALL AS THE GOAL:
+                - trivial gather goals ("get logs", "mine 20 cobblestone") = ONE sub-goal. \
+                No ladder, no tools the goal doesn't need.
+                - mid goals ("get an iron pickaxe") = only the rungs the inventory is missing.
+                - deep goals ("full diamond armor") = the full REMAINING ladder plus insurance \
+                before the dangerous steps.
+
+                NEVER PLAN A STEP THE CURRENT STATE ALREADY SATISFIES. If inventory_totals shows \
+                an iron pickaxe and food, do NOT plan wood/stone/iron steps — send the executor \
+                straight at the target. If known_stations already lists a crafting_table or \
+                furnace, never plan building another.
+
+                THE TECH LADDER (for the MISSING rungs only — never skip a rung that is missing): \
+                logs -> wooden pickaxe -> cobblestone -> stone tools -> coal + torches + FOOD -> \
+                iron ore (needs stone pickaxe) -> smelt iron in a furnace -> iron pickaxe + iron \
+                armor + bucket -> diamonds (need iron pickaxe, found at y ~ -58; bring food, \
+                torches, and a water bucket for lava) -> diamond gear. Full diamond armor needs \
+                24 diamonds. A golden pickaxe mines like wood — it cannot mine iron or diamonds.
 
                 RULES:
-                - 2 to 12 sub-goals, each sized for ~40 tool calls (one tier of the ladder, not three).
-                - Insert survival insurance BEFORE risky steps: food_min before long mining trips, \
-                iron armor before diamond hunting at depth.
+                - 1 to 12 sub-goals, each sized for ~40 tool calls (one tier of the ladder, not three).
+                - Insert survival insurance BEFORE risky steps only when the state shows it is \
+                missing: food_min before long mining trips, iron armor before diamond hunting at depth.
                 - Each sub-goal: a short "title" (<= 60 chars, shown as a checkbox), a focused \
                 "instruction" for the executor, and 1-3 criteria.
                 - Add "final_criteria" for the whole mission when the goal is concrete \
@@ -89,6 +104,10 @@ public final class PlannerPrompts {
                 ordered list covering ONLY the remaining work, adapted to what went wrong (if the \
                 bot keeps dying: add re-gear steps — food, armor, torches, safer route — before \
                 retrying the step that killed it).
+
+                Read the fresh CURRENT STATE message first: inventory_totals is the bot's WHOLE \
+                inventory. NEVER include a step the state ALREADY satisfies — tools, food, armor \
+                or stations the bot still has do not need re-earning.
 
                 THINK FIRST in "reasoning", then respond ONLY by calling submit_plan.
 

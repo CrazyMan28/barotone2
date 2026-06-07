@@ -56,6 +56,26 @@ public class PlannerPromptsTest {
     }
 
     @Test
+    public void decompositionSystemPromptScalesThePlanToTheGoal() {
+        // NOT hard-coded ladders: "get logs" must be one step; "get diamonds" with iron+food
+        // already in the inventory must skip straight to mining
+        String p = PlannerPrompts.decompositionSystemPrompt();
+        assertTrue("plans may be a single sub-goal", p.contains("1 to 12"));
+        assertTrue("must call out trivial goals = one step", p.toLowerCase().contains("trivial"));
+        assertTrue("must tell the model to read the WHOLE inventory first",
+                p.contains("inventory_totals"));
+        assertTrue("must forbid planning steps the inventory already satisfies",
+                p.contains("ALREADY"));
+    }
+
+    @Test
+    public void replanSystemPromptAlsoSkipsWhatTheInventoryAlreadyHas() {
+        String p = PlannerPrompts.replanSystemPrompt();
+        assertTrue(p.contains("ALREADY"));
+        assertTrue(p.contains("submit_plan"));
+    }
+
+    @Test
     public void decompositionUserPromptEmbedsGoalStateAndMemory() {
         String p = PlannerPrompts.decompositionUserPrompt("get full diamond armor",
                 "base=10,64,20", "{\"food\":20}");
