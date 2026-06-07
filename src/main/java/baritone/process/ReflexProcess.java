@@ -18,38 +18,44 @@
 package baritone.process;
 
 import baritone.Baritone;
+import baritone.ai.AgentTelemetry;
 import baritone.ai.GoalTracker;
 import baritone.ai.MistralAgent;
 import baritone.ai.ReflexLog;
-import baritone.ai.ReflexPlanner;
-import baritone.ai.ReflexPlanner.Conditions;
-import baritone.ai.ReflexPlanner.Reflex;
+import baritone.ai.reflex.BehaviorId;
+import baritone.ai.reflex.BlockPosSpec;
+import baritone.ai.reflex.Detectors;
+import baritone.ai.reflex.MobInfo;
+import baritone.ai.reflex.ReflexEngine;
+import baritone.ai.reflex.ReflexTuning;
+import baritone.ai.reflex.WorldSnapshot;
 import baritone.api.Settings;
-import baritone.api.pathing.goals.GoalNear;
-import baritone.api.pathing.goals.GoalRunAway;
 import baritone.api.process.PathingCommand;
 import baritone.api.process.PathingCommandType;
-import baritone.api.utils.Rotation;
-import baritone.api.utils.RotationUtils;
-import baritone.api.utils.VecUtils;
-import baritone.api.utils.input.Input;
 import baritone.utils.BaritoneProcessHelper;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.tags.FluidTags;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import net.minecraft.world.food.FoodProperties;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.phys.AABB;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Survival reflexes: a deterministic, every-tick guardian that keeps the bot alive without waiting
@@ -57,24 +63,15 @@ import java.util.Locale;
  * high-priority Baritone process so any interrupted mine/follow/goto process resumes automatically
  * when the danger has passed.
  *
- * Priority ladder (see {@link ReflexPlanner}): escape lava > anti-drown > flee creepers >
- * fight back > eat. Flee/fight only engage while the bot is actually working (pathing or on an AI
- * mission) so manual play is never hijacked; lava/drown/eat are pure lifesavers and always armed.
+ * <p>Since the scored-threat redesign this class is a thin adapter: it samples the world into a
+ * pure {@link WorldSnapshot}, lets the {@link ReflexEngine} (detectors → arbiter → behavior FSMs,
+ * all unit-tested without Minecraft) decide, and executes the returned actions via
+ * {@link ReflexExecutor}. All decision logic lives in {@code baritone.ai.reflex} — change it
+ * there, not here.
  */
 public final class ReflexProcess extends BaritoneProcessHelper {
 
-    private static final int EAT_RELEASE_FOOD_LEVEL = 18;
-    private static final int FIGHT_DISENGAGE_TICKS = 100;
-    private static final int EAT_TIMEOUT_TICKS = 400;
-    /** Stop fleeing after this long if we still can't shake the mob (a creeper following us, or a
-     *  terrain trap), so the mission resumes instead of oscillating "fleeing" forever. */
-    private static final int MAX_FLEE_TICKS = 200;          // ~10s
-    private static final int FLEE_COOLDOWN_TICKS = 120;     // ~6s before flee may re-engage
-    private static final int FLEE_EPISODE_GAP_TICKS = 100;  // gap that counts as a fresh flee episode
-    /** Below this health (HP, 20 = full) we'd rather flee a skeleton than trade hits with it. */
-    private static final float COMBAT_MIN_HEALTH = 8.0F;    // 4 hearts
-    /** Melee weapons best→worst. Having one in the hotbar (plus health) makes us willing to fight a
-     *  skeleton instead of fleeing into a dead end; matched by Items constants (ProGuard-safe). */
+    /** Melee weapons best→worst (matched by Items constants — ProGuard-safe). */
     private static final Item[] MELEE_WEAPONS = {
             Items.NETHERITE_SWORD, Items.DIAMOND_SWORD, Items.IRON_SWORD, Items.STONE_SWORD,
             Items.GOLDEN_SWORD, Items.WOODEN_SWORD,
@@ -82,28 +79,29 @@ public final class ReflexProcess extends BaritoneProcessHelper {
             Items.GOLDEN_AXE, Items.WOODEN_AXE
     };
 
-    private Reflex mode = Reflex.NONE;
-    private int modeTicks;
-    private int prevHotbarSlot = -1;
+    private final ReflexEngine engine = new ReflexEngine();
+    private final ReflexTuning tuning = new ReflexTuning();
+    private final ReflexExecutor executor;
+
     private long lastHurtAt = Long.MIN_VALUE;
     private long lastWorkingAt = Long.MIN_VALUE;
-    private LivingEntity fightTarget;
-    private boolean loggedNoFood;
-    // Flee watchdog: force-ends a flee episode that can't shake the mob (see ReflexPlanner.FleeWatchdog).
-    private final ReflexPlanner.FleeWatchdog fleeWatchdog =
-            new ReflexPlanner.FleeWatchdog(MAX_FLEE_TICKS, FLEE_COOLDOWN_TICKS, FLEE_EPISODE_GAP_TICKS);
+    private ReflexEngine.Output lastOutput;
 
     public ReflexProcess(Baritone baritone) {
         super(baritone);
+        this.executor = new ReflexExecutor(baritone, ctx);
     }
 
     @Override
     public boolean isActive() {
         LocalPlayer player = ctx.player();
         if (player == null || ctx.world() == null || !Baritone.settings().reflexesEnabled.value) {
-            if (mode != Reflex.NONE) {
-                endReflex("reflexes disabled");
+            if (engine.active() != BehaviorId.NONE) {
+                ReflexLog.record("[reflex] " + engine.active().describe + " stopped (reflexes disabled)");
+                engine.abort();
+                executor.cleanup();
             }
+            lastOutput = null;
             return false;
         }
         long now = ctx.world().getGameTime();
@@ -114,111 +112,211 @@ public final class ReflexProcess extends BaritoneProcessHelper {
             lastWorkingAt = now;
         }
 
-        Conditions c = sample(player, now);
-        Reflex next = ReflexPlanner.pick(mode, c);
-        if (next != mode) {
-            transition(next);
+        refreshTuning();
+        ReflexEngine.Output out = engine.tick(snapshot(player, now), tuning);
+        lastOutput = out;
+        if (out.released) {
+            executor.cleanup();
+            ReflexLog.record("[reflex] " + out.previous.describe + " ended after " + (out.previousTicks / 20) + "s");
+            emitTelemetry("done", out.previous, null, out.previousTicks);
         }
-        return mode != Reflex.NONE;
+        if (out.engaged) {
+            String note = "[reflex] " + out.plan.behavior.describe;
+            ReflexLog.record(note);
+            logDirect(note, ChatFormatting.GOLD);
+            GoalTracker.setStatus(note);
+            emitTelemetry("engage", out.plan.behavior, out.plan.cause, 0);
+        }
+        return out.plan.behavior != BehaviorId.NONE;
     }
 
     @Override
     public PathingCommand onTick(boolean calcFailed, boolean isSafeToCancel) {
-        LocalPlayer player = ctx.player();
-        if (player == null || mode == Reflex.NONE) {
+        ReflexEngine.Output out = lastOutput;
+        if (out == null || out.plan.behavior == BehaviorId.NONE) {
             return new PathingCommand(null, PathingCommandType.DEFER);
         }
-        modeTicks++;
-        switch (mode) {
-            case LAVA:
-                return tickLava(player);
-            case DROWN:
-                baritone.getInputOverrideHandler().setInputForceState(Input.JUMP, true);
-                return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
-            case FLEE:
-                return tickFlee(player);
-            case FIGHT:
-                return tickFight(player);
-            case EAT:
-                return tickEat(player);
-            default:
-                return new PathingCommand(null, PathingCommandType.DEFER);
-        }
+        return executor.execute(out.actions, true);
     }
 
-    // ---------------------------------------------------------------- conditions
+    @Override
+    public void onLostControl() {
+        if (engine.active() != BehaviorId.NONE) {
+            ReflexLog.record("[reflex] " + engine.active().describe + " stopped (lost control)");
+            engine.abort();
+            executor.cleanup();
+        }
+        lastOutput = null;
+    }
 
-    private Conditions sample(LocalPlayer player, long now) {
+    @Override
+    public String displayName0() {
+        return "reflexes (" + engine.active().lower() + ")";
+    }
+
+    @Override
+    public double priority() {
+        return 10; // above every normal process and the inventory pauser (5.1)
+    }
+
+    @Override
+    public boolean isTemporary() {
+        return true;
+    }
+
+    // ---------------------------------------------------------------- sampling
+
+    private void refreshTuning() {
         Settings s = Baritone.settings();
-        Conditions c = new Conditions();
-        c.working = lastWorkingAt != Long.MIN_VALUE && now - lastWorkingAt <= 40;
+        tuning.antiLava = s.reflexAntiLava.value;
+        tuning.antiDrown = s.reflexAntiDrown.value;
+        tuning.fleeCreepers = s.reflexFleeCreepers.value;
+        tuning.fightBack = s.reflexFightBack.value;
+        tuning.autoEat = s.reflexAutoEat.value;
+        tuning.eatAtHunger = s.reflexEatAtHunger.value;
+        tuning.creeperRadius = s.reflexCreeperRadius.value;
+    }
 
-        c.inLava = s.reflexAntiLava.value && player.isInLava();
+    private WorldSnapshot snapshot(LocalPlayer player, long now) {
+        WorldSnapshot s = new WorldSnapshot();
+        s.gameTime = now;
+        // vitals
+        s.hp = player.getHealth();
+        s.maxHp = player.getMaxHealth();
+        s.food = player.getFoodData().getFoodLevel();
+        s.air = player.getAirSupply();
+        s.maxAir = player.getMaxAirSupply();
+        s.onFire = player.isOnFire();
+        s.inLava = player.isInLava();
+        s.underWater = player.isUnderWater();
+        s.poisoned = player.hasEffect(MobEffects.POISON) || player.hasEffect(MobEffects.WITHER);
+        s.ticksSinceHurt = lastHurtAt == Long.MIN_VALUE
+                ? Integer.MAX_VALUE : (int) Math.min(Integer.MAX_VALUE, now - lastHurtAt);
+        s.working = lastWorkingAt != Long.MIN_VALUE && now - lastWorkingAt <= 40;
+        // position & motion
+        s.posX = player.getX();
+        s.posY = player.getY();
+        s.posZ = player.getZ();
+        s.velY = player.getDeltaMovement().y;
+        s.fallDistance = player.fallDistance;
+        s.onGround = player.onGround();
+        s.horizontalCollision = player.horizontalCollision;
+        sampleBelow(player, s);
+        s.headBlockedByGravity = ctx.world().getBlockState(player.blockPosition().above())
+                .getBlock() instanceof FallingBlock;
+        // look & UI
+        s.yaw = ctx.playerRotations().getYaw();
+        s.pitch = ctx.playerRotations().getPitch();
+        s.screenOpen = ctx.minecraft().screen != null;
+        s.attackStrengthScale = player.getAttackStrengthScale(0F);
+        // inventory
+        s.selectedSlot = player.getInventory().getSelectedSlot();
+        sampleHotbar(player, s);
+        s.hasShieldOffhand = player.getOffhandItem().is(Items.SHIELD);
+        // world scans the pure core can't do itself
+        if (s.inLava) {
+            s.lavaEscape = findLavaEscape(player);
+        }
+        // mobs
+        double scan = Math.max(Math.max(2D, tuning.creeperRadius) + 4D, 8.5D);
+        for (Monster e : ctx.world().getEntitiesOfClass(Monster.class,
+                new AABB(player.blockPosition()).inflate(scan),
+                m -> m.isAlive() && player.distanceTo(m) <= scan)) {
+            s.mobs.add(mobInfo(player, e));
+        }
+        return s;
+    }
 
-        int air = player.getAirSupply();
-        c.drowning = s.reflexAntiDrown.value && player.isUnderWater() && air < 90;
-        c.drownDone = !player.isUnderWater() || air >= 250;
+    private MobInfo mobInfo(LocalPlayer player, Monster e) {
+        MobInfo m = new MobInfo();
+        m.entityId = e.getId();
+        m.typeId = EntityType.getKey(e.getType()).getPath();
+        m.x = e.getX();
+        m.y = e.getY();
+        m.z = e.getZ();
+        m.aimY = e.getBoundingBox().getCenter().y;
+        m.distance = player.distanceTo(e);
+        m.lineOfSight = player.hasLineOfSight(e);
+        m.creeper = e instanceof Creeper;
+        m.skeleton = e instanceof AbstractSkeleton;
+        m.hostile = true;
+        m.ignited = e instanceof Creeper && ((Creeper) e).isIgnited();
+        return m;
+    }
 
-        double engageRadius = Math.max(2D, s.reflexCreeperRadius.value);
-        // Split nearby flee-mobs: creepers must NEVER be meleed (they explode); skeletons CAN be
-        // fought if we're geared for it. Fleeing a skeleton into a dead-end cave just eats arrows.
-        LivingEntity nearestSkeleton = null;
-        double skDist = Double.MAX_VALUE;
-        boolean creeperPresent = false;
-        for (LivingEntity e : nearbyFleeMobs(player, engageRadius)) {
-            if (e instanceof Creeper) {
-                creeperPresent = true;
-            } else {
-                double d = player.distanceTo(e);
-                if (d < skDist) {
-                    skDist = d;
-                    nearestSkeleton = e;
+    /** Best melee weapon (slot+tier) and best safe food in the hotbar, plus blocks/buckets. */
+    private void sampleHotbar(LocalPlayer player, WorldSnapshot s) {
+        int bestRank = Integer.MAX_VALUE;
+        for (int slot = 0; slot < 9; slot++) {
+            ItemStack stack = player.getInventory().getItem(slot);
+            if (stack == null || stack.isEmpty()) {
+                continue;
+            }
+            Item item = stack.getItem();
+            for (int rank = 0; rank < MELEE_WEAPONS.length; rank++) {
+                if (MELEE_WEAPONS[rank] == item) {
+                    if (rank < bestRank) {
+                        bestRank = rank;
+                        s.bestWeaponSlot = slot;
+                        s.bestWeaponTier = rank;
+                    }
+                    break;
+                }
+            }
+            FoodProperties food = stack.get(DataComponents.FOOD);
+            if (food != null && Detectors.isSafeFood(item.toString())
+                    && food.nutrition() > s.bestFoodNutrition) {
+                s.bestFoodNutrition = food.nutrition();
+                s.bestFoodSlot = slot;
+            }
+            if (item == Items.WATER_BUCKET && s.waterBucketSlot < 0) {
+                s.waterBucketSlot = slot;
+            }
+            if (item instanceof BlockItem) {
+                s.blockCount += stack.getCount();
+                if (s.blockSlot < 0) {
+                    s.blockSlot = slot;
                 }
             }
         }
-        // "Geared up" = a melee weapon ready in the hotbar AND enough health to trade hits.
-        boolean combatReady = s.reflexFightBack.value
-                && player.getHealth() >= COMBAT_MIN_HEALTH
-                && hotbarWeaponSlot(player) >= 0;
-        // Fight a skeleton when geared (and no creeper around to flee from first); otherwise flee it.
-        boolean fightSkeleton = nearestSkeleton != null && combatReady && !creeperPresent;
+    }
 
-        boolean fleeNeeded = s.reflexFleeCreepers.value
-                && (creeperPresent || (nearestSkeleton != null && !fightSkeleton));
-        // Watchdog: if we can't shake a mob we're fleeing (chased / blocked path), give up for a
-        // cooldown so the mission resumes instead of oscillating "fleeing" forever.
-        boolean inCooldown = fleeWatchdog.suppressed(now, fleeNeeded);
-        c.creeperNear = fleeNeeded && !inCooldown;
-        c.fleeDone = inCooldown || !fleeRequiredWithin(player, engageRadius + 4D, combatReady);
-
-        boolean recentlyHurt = lastHurtAt != Long.MIN_VALUE && now - lastHurtAt <= FIGHT_DISENGAGE_TICKS;
-        LivingEntity threat = null;
-        if (fightSkeleton) {
-            threat = nearestSkeleton;                       // stand and fight a skeleton we can take
-        } else if (s.reflexFightBack.value && recentlyHurt) {
-            threat = nearestHostile(player, 4.5D);          // fight back at melee mobs (zombies) when hit
+    /** Air gap straight down from the feet (for fall/void threats). */
+    private void sampleBelow(LocalPlayer player, WorldSnapshot s) {
+        BlockPos pos = player.blockPosition().below();
+        int minY = ctx.world().getMinY();
+        for (int i = 0; i < tuning.voidScanDepth; i++) {
+            if (pos.getY() < minY) {
+                s.voidBelow = true;
+                return;
+            }
+            if (!ctx.world().getBlockState(pos).isAir()) {
+                return;
+            }
+            s.gapBelow++;
+            pos = pos.below();
         }
-        c.hostileThreat = threat != null;
-        if (threat != null) {
-            fightTarget = threat;
-        }
-        boolean targetIsSkeleton = fightTarget instanceof net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
-        c.fightDone = fightTarget == null
-                || !fightTarget.isAlive()
-                || fightTarget.distanceTo(player) > 8.0D
-                || (!targetIsSkeleton && !recentlyHurt);    // melee-mob fight ends when we stop being hit
+    }
 
-        boolean screenOpen = ctx.minecraft().screen != null;
-        int foodSlot = findSafeFoodSlot(player);
-        c.hungry = s.reflexAutoEat.value
-                && player.getFoodData().getFoodLevel() <= s.reflexEatAtHunger.value
-                && !screenOpen
-                && foodSlot >= 0;
-        c.eatDone = player.getFoodData().getFoodLevel() >= EAT_RELEASE_FOOD_LEVEL
-                || screenOpen
-                || foodSlot < 0
-                || modeTicks > EAT_TIMEOUT_TICKS;
-        return c;
+    /** Nearest column that isn't lava (feet, head and floor all clear), ring-searched outward. */
+    private BlockPosSpec findLavaEscape(LocalPlayer player) {
+        BlockPos feet = player.blockPosition();
+        for (int radius = 2; radius <= 6; radius += 2) {
+            for (int dir = 0; dir < 8; dir++) {
+                double angle = dir * Math.PI / 4D;
+                BlockPos candidate = feet.offset(
+                        (int) Math.round(Math.cos(angle) * radius), 0,
+                        (int) Math.round(Math.sin(angle) * radius));
+                if (!isLavaAt(candidate) && !isLavaAt(candidate.above()) && !isLavaAt(candidate.below())) {
+                    return new BlockPosSpec(candidate.getX(), candidate.getY(), candidate.getZ());
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean isLavaAt(BlockPos pos) {
+        return ctx.world().getBlockState(pos).getFluidState().is(FluidTags.LAVA);
     }
 
     private boolean isWorking() {
@@ -233,289 +331,20 @@ public final class ReflexProcess extends BaritoneProcessHelper {
                 .orElse(false);
     }
 
-    /** Mobs handled by the flee/fight reflex rather than ignored: creepers (explode — always flee)
-     *  and skeletons (Skeleton/Stray/Bogged — flee when unarmed, but fight when geared up; see
-     *  {@code sample()}). Unarmed, running beats meleeing — closing on a skeleton just eats arrows. */
-    private static boolean isFleeMob(net.minecraft.world.entity.Entity e) {
-        return e instanceof Creeper
-                || e instanceof net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
-    }
+    // ---------------------------------------------------------------- telemetry
 
-    private List<LivingEntity> nearbyFleeMobs(LocalPlayer player, double radius) {
-        return ctx.world().getEntitiesOfClass(LivingEntity.class,
-                new AABB(player.blockPosition()).inflate(radius),
-                e -> e.isAlive() && isFleeMob(e) && player.distanceTo(e) <= radius);
-    }
-
-    private LivingEntity nearestHostile(LocalPlayer player, double radius) {
-        // Don't melee flee-mobs (creepers/skeletons) — those are handled by the flee reflex.
-        List<Monster> monsters = ctx.world().getEntitiesOfClass(Monster.class,
-                new AABB(player.blockPosition()).inflate(radius),
-                e -> e.isAlive() && !isFleeMob(e) && player.distanceTo(e) <= radius);
-        Monster best = null;
-        double bestDist = Double.MAX_VALUE;
-        for (Monster m : monsters) {
-            double d = player.distanceTo(m);
-            if (d < bestDist) {
-                bestDist = d;
-                best = m;
-            }
+    private static void emitTelemetry(String phase, BehaviorId behavior,
+                                      baritone.ai.reflex.Threat cause, int durationTicks) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("phase", phase);
+        data.put("behavior", behavior.name().toLowerCase(Locale.ROOT));
+        if (cause != null) {
+            data.put("threat", cause.type.name().toLowerCase(Locale.ROOT));
+            data.put("severity", cause.severity);
         }
-        return best;
-    }
-
-    /** Hotbar slot (0-8) holding the best melee weapon by {@link #MELEE_WEAPONS} order, or -1 if none. */
-    private int hotbarWeaponSlot(LocalPlayer player) {
-        int bestSlot = -1;
-        int bestRank = Integer.MAX_VALUE;
-        for (int slot = 0; slot < 9; slot++) {
-            Item item = player.getInventory().getItem(slot).getItem();
-            for (int rank = 0; rank < MELEE_WEAPONS.length; rank++) {
-                if (MELEE_WEAPONS[rank] == item) {
-                    if (rank < bestRank) {
-                        bestRank = rank;
-                        bestSlot = slot;
-                    }
-                    break;
-                }
-            }
+        if (durationTicks > 0) {
+            data.put("duration_s", durationTicks / 20);
         }
-        return bestSlot;
-    }
-
-    /** True if a mob we must FLEE is within radius: any creeper, or — when not combat-ready — any skeleton. */
-    private boolean fleeRequiredWithin(LocalPlayer player, double radius, boolean combatReady) {
-        for (LivingEntity e : nearbyFleeMobs(player, radius)) {
-            if (e instanceof Creeper || !combatReady) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private int findSafeFoodSlot(LocalPlayer player) {
-        int best = -1;
-        int bestNutrition = -1;
-        for (int slot = 0; slot < 9; slot++) {
-            ItemStack stack = player.getInventory().getItem(slot);
-            if (stack == null || stack.isEmpty()) {
-                continue;
-            }
-            FoodProperties food = stack.get(DataComponents.FOOD);
-            if (food == null || !ReflexPlanner.isSafeFood(stack.getItem().toString())) {
-                continue;
-            }
-            if (food.nutrition() > bestNutrition) {
-                bestNutrition = food.nutrition();
-                best = slot;
-            }
-        }
-        return best;
-    }
-
-    // ---------------------------------------------------------------- behaviors
-
-    private PathingCommand tickLava(LocalPlayer player) {
-        // Float up, and push toward the nearest non-lava column if one is in reach.
-        baritone.getInputOverrideHandler().setInputForceState(Input.JUMP, true);
-        BlockPos escape = findLavaEscape(player);
-        if (escape != null) {
-            Rotation rot = RotationUtils.calcRotationFromVec3d(ctx.playerHead(),
-                    VecUtils.getBlockPosCenter(escape), ctx.playerRotations());
-            baritone.getLookBehavior().updateTarget(new Rotation(rot.getYaw(), 0F), true);
-            baritone.getInputOverrideHandler().setInputForceState(Input.MOVE_FORWARD, true);
-        }
-        return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
-    }
-
-    private BlockPos findLavaEscape(LocalPlayer player) {
-        BlockPos feet = player.blockPosition();
-        for (int radius = 2; radius <= 6; radius += 2) {
-            for (int dir = 0; dir < 8; dir++) {
-                double angle = dir * Math.PI / 4D;
-                BlockPos candidate = feet.offset(
-                        (int) Math.round(Math.cos(angle) * radius), 0,
-                        (int) Math.round(Math.sin(angle) * radius));
-                if (!isLavaAt(candidate) && !isLavaAt(candidate.above()) && !isLavaAt(candidate.below())) {
-                    return candidate;
-                }
-            }
-        }
-        return null;
-    }
-
-    private boolean isLavaAt(BlockPos pos) {
-        return ctx.world().getBlockState(pos).getFluidState().is(FluidTags.LAVA);
-    }
-
-    private PathingCommand tickFlee(LocalPlayer player) {
-        List<LivingEntity> mobs = nearbyFleeMobs(player, Math.max(2D, Baritone.settings().reflexCreeperRadius.value) + 4D);
-        if (mobs.isEmpty()) {
-            baritone.getInputOverrideHandler().clearAllKeys();
-            return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
-        }
-        // PANIC: a creeper inside blast range (or a skeleton point-blank) is faster than a path can
-        // be computed. Sprint directly away NOW; the smarter GoalRunAway pathing takes over after.
-        LivingEntity nearest = mobs.get(0);
-        double nearestDist = Double.MAX_VALUE;
-        for (LivingEntity m : mobs) {
-            double d = player.distanceTo(m);
-            if (d < nearestDist) {
-                nearestDist = d;
-                nearest = m;
-            }
-        }
-        if (nearestDist <= 4.5D) {
-            Rotation away = RotationUtils.calcRotationFromVec3d(ctx.playerHead(),
-                    player.position().add(player.position().subtract(nearest.position()).normalize().scale(8D)),
-                    ctx.playerRotations());
-            baritone.getLookBehavior().updateTarget(new Rotation(away.getYaw(), 5F), true);
-            baritone.getInputOverrideHandler().setInputForceState(Input.MOVE_FORWARD, true);
-            baritone.getInputOverrideHandler().setInputForceState(Input.SPRINT, true);
-            if (player.horizontalCollision) {
-                baritone.getInputOverrideHandler().setInputForceState(Input.JUMP, true);
-            }
-            return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
-        }
-        baritone.getInputOverrideHandler().clearAllKeys();
-        BlockPos[] from = mobs.stream().map(LivingEntity::blockPosition).toArray(BlockPos[]::new);
-        return new PathingCommand(new GoalRunAway(16, from), PathingCommandType.FORCE_REVALIDATE_GOAL_AND_PATH);
-    }
-
-    private PathingCommand tickFight(LocalPlayer player) {
-        baritone.getInputOverrideHandler().clearAllKeys();
-        LivingEntity target = fightTarget;
-        if (target == null || !target.isAlive()) {
-            return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
-        }
-        // Hold the best weapon we've got before swinging.
-        int weaponSlot = hotbarWeaponSlot(player);
-        if (weaponSlot >= 0 && player.getInventory().getSelectedSlot() != weaponSlot) {
-            player.getInventory().setSelectedSlot(weaponSlot);
-        }
-        // Aim at the CENTER of the target's hitbox from our eyes — works for a mob above, below
-        // (zombie in the hole with us), or beside us.
-        Rotation rot = RotationUtils.calcRotationFromVec3d(player.getEyePosition(1F),
-                target.getBoundingBox().getCenter(), ctx.playerRotations());
-        // SNAP the look directly THIS tick. updateTarget() asks for a *smoothed* turn that hasn't
-        // landed by the time we swing — that's why it was "looking the wrong way" while attacking.
-        // Setting the player's rotation here makes the body face the mob before the hit, every tick.
-        player.setYRot(rot.getYaw());
-        player.setXRot(rot.getPitch());
-        player.yBodyRot = rot.getYaw();
-        player.yHeadRot = rot.getYaw();
-        baritone.getLookBehavior().updateTarget(rot, true);
-        double dist = player.distanceTo(target);
-        if (dist <= 3.6D) {
-            if (player.getAttackStrengthScale(0F) >= 0.9F) {
-                ctx.minecraft().gameMode.attack(player, target);
-                player.swing(net.minecraft.world.InteractionHand.MAIN_HAND);
-            }
-            return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
-        }
-        // Not in reach yet — close the gap. Rush a near target directly (works in tight holes/caves
-        // where pathing is slow); path to a farther one with GoalNear. We're already facing it.
-        if (dist <= 6D) {
-            baritone.getInputOverrideHandler().setInputForceState(Input.MOVE_FORWARD, true);
-            baritone.getInputOverrideHandler().setInputForceState(Input.SPRINT, true);
-            if (player.horizontalCollision) {
-                baritone.getInputOverrideHandler().setInputForceState(Input.JUMP, true);
-            }
-            return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
-        }
-        return new PathingCommand(new GoalNear(target.blockPosition(), 2),
-                PathingCommandType.FORCE_REVALIDATE_GOAL_AND_PATH);
-    }
-
-    private PathingCommand tickEat(LocalPlayer player) {
-        int foodSlot = findSafeFoodSlot(player);
-        if (foodSlot < 0) {
-            return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
-        }
-        if (prevHotbarSlot < 0) {
-            prevHotbarSlot = player.getInventory().getSelectedSlot();
-        }
-        if (player.getInventory().getSelectedSlot() != foodSlot) {
-            player.getInventory().setSelectedSlot(foodSlot);
-        }
-        // Look up at the sky so the use-click can never open a chest/door in front of us.
-        baritone.getLookBehavior().updateTarget(
-                new Rotation(ctx.playerRotations().getYaw(), -75F), true);
-        baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_RIGHT, true);
-        return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
-    }
-
-    // ---------------------------------------------------------------- lifecycle
-
-    private void transition(Reflex next) {
-        if (mode != Reflex.NONE) {
-            cleanupMode();
-            String note = "[reflex] " + describe(mode) + " ended after " + (modeTicks / 20) + "s";
-            ReflexLog.record(note);
-        }
-        mode = next;
-        modeTicks = 0;
-        loggedNoFood = false;
-        if (next != Reflex.NONE) {
-            String note = "[reflex] " + describe(next);
-            ReflexLog.record(note);
-            logDirect(note, ChatFormatting.GOLD);
-            GoalTracker.setStatus(note);
-        }
-    }
-
-    private void endReflex(String reason) {
-        cleanupMode();
-        ReflexLog.record("[reflex] " + describe(mode) + " stopped (" + reason + ")");
-        mode = Reflex.NONE;
-        modeTicks = 0;
-    }
-
-    private void cleanupMode() {
-        baritone.getInputOverrideHandler().clearAllKeys();
-        if (prevHotbarSlot >= 0 && ctx.player() != null) {
-            ctx.player().getInventory().setSelectedSlot(prevHotbarSlot);
-        }
-        prevHotbarSlot = -1;
-        fightTarget = null;
-    }
-
-    private static String describe(Reflex reflex) {
-        switch (reflex) {
-            case LAVA:
-                return "escaping lava";
-            case DROWN:
-                return "surfacing for air";
-            case FLEE:
-                return "fleeing danger";
-            case FIGHT:
-                return "fighting back";
-            case EAT:
-                return "eating";
-            default:
-                return "idle";
-        }
-    }
-
-    @Override
-    public void onLostControl() {
-        if (mode != Reflex.NONE) {
-            endReflex("lost control");
-        }
-    }
-
-    @Override
-    public String displayName0() {
-        return "reflexes (" + describe(mode).toLowerCase(Locale.ROOT) + ")";
-    }
-
-    @Override
-    public double priority() {
-        return 10; // above every normal process and the inventory pauser (5.1)
-    }
-
-    @Override
-    public boolean isTemporary() {
-        return true;
+        AgentTelemetry.emit("reflex", data);
     }
 }

@@ -17,6 +17,7 @@
 
 package baritone.ai;
 
+import baritone.ai.reflex.Detectors;
 import baritone.api.BaritoneAPI;
 import baritone.api.IBaritone;
 import baritone.api.Settings;
@@ -2126,7 +2127,7 @@ public final class BaritoneTools {
                 ItemStack st = p.getInventory().getItem(i);
                 if (st == null || st.isEmpty()) continue;
                 if (st.get(net.minecraft.core.component.DataComponents.FOOD) != null
-                        && ReflexPlanner.isSafeFood(st.getItem().toString())) {
+                        && Detectors.isSafeFood(st.getItem().toString())) {
                     edible += st.getCount();
                 }
             }
