@@ -29,6 +29,7 @@ import baritone.api.behavior.IPathingBehavior;
 import baritone.api.command.manager.ICommandManager;
 import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.IPlayerContext;
+import baritone.api.utils.input.Input;
 import baritone.api.utils.SettingsUtil;
 import baritone.cache.WorldData;
 import baritone.command.defaults.AiCommand;
@@ -250,6 +251,25 @@ public final class BaritoneTools {
                                 "Display name / name-tag substring to match, case-insensitive (optional if type given).", false),
                         param("max_wait_seconds", "integer",
                                 "Cap for walking to the entity (default 90, max 300).", false)
+                )));
+        arr.add(fn("hunt",
+                "Hunt food animals for meat: finds the nearest cow/pig/chicken/sheep/rabbit (or a specific one), "
+                        + "walks to it, ATTACKS until it dies, collects the dropped raw meat, and repeats until it has "
+                        + "killed `quantity` animals or none are left nearby. THIS is how you 'get food' from animals — "
+                        + "then cook the raw meat with furnace_smelt and call eat. Equip a sword first (equip_item) for faster kills.",
+                params(
+                        param("animal", "string",
+                                "Which food animal: 'cow','pig','chicken','sheep','rabbit', or 'any' (default any nearby food animal).", false),
+                        param("quantity", "integer", "How many animals to kill (default 3, max 20).", false),
+                        param("max_wait_seconds", "integer", "Overall time cap (default 120, max 300).", false)
+                )));
+        arr.add(fn("eat",
+                "Eat food NOW to refill the hunger bar: selects the best edible food in your inventory, eats it, and "
+                        + "repeats until full (food=20) or you run out. Use after cooking meat or when get_state shows low food. "
+                        + "Returns what it ate and the resulting food level. (Survival reflexes also auto-eat when starving, "
+                        + "but call this to top up on purpose.)",
+                params(
+                        param("max_items", "integer", "Max food items to eat (default 8). It stops early once food is full.", false)
                 )));
         arr.add(fn("use_item_on_block",
                 "Equip an optional item, then use the held item on the nearest matching block within a small radius.",
@@ -545,6 +565,10 @@ public final class BaritoneTools {
                     return ok(findEntities(args));
                 case "interact_entity":
                     return ok(interactEntity(args));
+                case "hunt":
+                    return ok(hunt(args));
+                case "eat":
+                    return ok(eat(args));
                 case "use_item_on_block": {
                     if (args.has("item_id") && !args.get("item_id").isJsonNull()
                             && !args.get("item_id").getAsString().isBlank()) {
@@ -1006,6 +1030,303 @@ public final class BaritoneTools {
             return "Right-clicked " + label + " (" + res + ").";
         });
         return result;
+    }
+
+    /** Food animals worth hunting for meat (entity type id paths). */
+    private static final java.util.Set<String> FOOD_ANIMALS = java.util.Set.of(
+            "cow", "pig", "chicken", "sheep", "rabbit", "mooshroom");
+
+    /** Find food animals, walk to each, attack until dead, collect the meat, repeat. */
+    private String hunt(JsonObject a) {
+        String animal = (a.has("animal") && !a.get("animal").isJsonNull())
+                ? a.get("animal").getAsString().trim().toLowerCase(Locale.ROOT) : "";
+        if (animal.equals("any") || animal.equals("food") || animal.isEmpty()) {
+            animal = "";
+        }
+        int quantity = (a.has("quantity") && !a.get("quantity").isJsonNull())
+                ? Math.min(20, Math.max(1, a.get("quantity").getAsInt())) : 3;
+        int maxWait = (a.has("max_wait_seconds") && !a.get("max_wait_seconds").isJsonNull())
+                ? Math.min(300, Math.max(10, a.get("max_wait_seconds").getAsInt())) : 120;
+        BaritoneAPI.getSettings().allowInventory.value = true;
+        final String wanted = animal;
+        long deadline = System.currentTimeMillis() + maxWait * 1000L;
+        int killed = 0;
+
+        while (killed < quantity && System.currentTimeMillis() < deadline) {
+            if (MistralAgent.isCancelled()) {
+                return "hunt cancelled after " + killed + " kill(s).";
+            }
+            // nearest matching live food animal within 48 blocks
+            net.minecraft.world.entity.LivingEntity target = AiCrafting.onClient(ctx, () -> {
+                LocalPlayer p = ctx.player();
+                if (p == null || ctx.world() == null) {
+                    return null;
+                }
+                return ctx.world().getEntitiesOfClass(net.minecraft.world.entity.LivingEntity.class,
+                        new net.minecraft.world.phys.AABB(p.blockPosition()).inflate(48),
+                        e -> e.isAlive() && e != p && isHuntableFood(e, wanted))
+                        .stream().min(java.util.Comparator.comparingDouble(p::distanceTo)).orElse(null);
+            });
+            if (target == null) {
+                if (killed > 0) {
+                    break;
+                }
+                return "ERROR: No " + (wanted.isEmpty() ? "food animals" : wanted)
+                        + " found within 48 blocks. explore() to find a herd, or try a different animal.";
+            }
+            final net.minecraft.world.entity.LivingEntity tgt = target;
+            String label = AiCrafting.onClient(ctx, () -> entityTypeId(tgt));
+
+            // approach, re-pathing toward the (possibly fleeing) animal
+            long apprDeadline = Math.min(deadline, System.currentTimeMillis() + 40_000L);
+            long lastGoal = 0L;
+            boolean reached = false;
+            try {
+                while (System.currentTimeMillis() < apprDeadline) {
+                    if (MistralAgent.isCancelled()) {
+                        return "hunt cancelled after " + killed + " kill(s).";
+                    }
+                    Double dist = AiCrafting.onClient(ctx, () -> {
+                        LocalPlayer p = ctx.player();
+                        return (p == null || !tgt.isAlive()) ? -1.0 : (double) p.distanceTo(tgt);
+                    });
+                    if (dist == null || dist < 0) {
+                        break; // died/unloaded
+                    }
+                    if (dist <= 3.0) {
+                        reached = true;
+                        break;
+                    }
+                    if (System.currentTimeMillis() - lastGoal > 1000L) {
+                        lastGoal = System.currentTimeMillis();
+                        AiCrafting.onClient(ctx, () -> {
+                            baritone.getCustomGoalProcess().setGoalAndPath(
+                                    new baritone.api.pathing.goals.GoalNear(tgt.blockPosition(), 2));
+                            return null;
+                        });
+                    }
+                    Thread.sleep(250);
+                }
+                AiCrafting.onClient(ctx, () -> {
+                    baritone.getCustomGoalProcess().onLostControl();
+                    return null;
+                });
+                if (!reached) {
+                    continue; // couldn't catch this one; loop picks the next nearest
+                }
+                // attack until it dies (or we time out / it flees out of reach)
+                long killDeadline = Math.min(deadline, System.currentTimeMillis() + 15_000L);
+                boolean dead = false;
+                while (System.currentTimeMillis() < killDeadline) {
+                    if (MistralAgent.isCancelled()) {
+                        return "hunt cancelled after " + killed + " kill(s).";
+                    }
+                    Boolean stillAlive = AiCrafting.onClient(ctx, () -> {
+                        LocalPlayer p = ctx.player();
+                        if (p == null || !tgt.isAlive()) {
+                            return false;
+                        }
+                        if (p.distanceTo(tgt) > 4.0) {
+                            // chase: re-path toward it
+                            baritone.getCustomGoalProcess().setGoalAndPath(
+                                    new baritone.api.pathing.goals.GoalNear(tgt.blockPosition(), 2));
+                            return true;
+                        }
+                        net.minecraft.world.phys.Vec3 aim = tgt.position().add(0, tgt.getBbHeight() * 0.6, 0);
+                        AiCrafting.visiblyLookAt(ctx, aim, 30);
+                        net.minecraft.client.Minecraft.getInstance().gameMode.attack(p, tgt);
+                        p.swing(net.minecraft.world.InteractionHand.MAIN_HAND);
+                        return true;
+                    });
+                    if (Boolean.FALSE.equals(stillAlive)) {
+                        dead = true;
+                        break;
+                    }
+                    Thread.sleep(550); // ~ attack cooldown so each swing lands full damage
+                }
+                AiCrafting.onClient(ctx, () -> {
+                    baritone.getCustomGoalProcess().onLostControl();
+                    return null;
+                });
+                if (dead) {
+                    killed++;
+                    // walk over the drop spot so Baritone auto-collects the meat
+                    AiCrafting.onClient(ctx, () -> {
+                        baritone.getCustomGoalProcess().setGoalAndPath(
+                                new baritone.api.pathing.goals.GoalNear(ctx.playerFeet(), 1));
+                        return null;
+                    });
+                    Thread.sleep(900);
+                    AiCrafting.onClient(ctx, () -> {
+                        baritone.getCustomGoalProcess().onLostControl();
+                        return null;
+                    });
+                }
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                return "hunt interrupted after " + killed + " kill(s).";
+            }
+        }
+        String inv = AiCrafting.onClient(ctx, this::rawFoodSummaryOnClient);
+        return "Hunted " + killed + " animal(s). " + inv
+                + (killed > 0 ? " Cook raw meat with furnace_smelt, then call eat." : "");
+    }
+
+    private boolean isHuntableFood(net.minecraft.world.entity.LivingEntity e, String wanted) {
+        String id = entityTypeId(e);
+        String path = id.contains(":") ? id.substring(id.indexOf(':') + 1) : id;
+        if (!wanted.isEmpty()) {
+            return path.equals(wanted) || path.contains(wanted);
+        }
+        return FOOD_ANIMALS.contains(path);
+    }
+
+    /** Count raw/cooked meats currently in the inventory, for the hunt report. */
+    private String rawFoodSummaryOnClient() {
+        LocalPlayer p = ctx.player();
+        if (p == null) {
+            return "";
+        }
+        Map<String, Integer> meats = new LinkedHashMap<>();
+        for (int i = 0; i < p.getInventory().getContainerSize(); i++) {
+            ItemStack st = p.getInventory().getItem(i);
+            if (st == null || st.isEmpty()) {
+                continue;
+            }
+            String id = st.getItem().toString();
+            if (id.contains("beef") || id.contains("porkchop") || id.contains("chicken")
+                    || id.contains("mutton") || id.contains("rabbit") || id.contains("leather")) {
+                meats.merge(id, st.getCount(), Integer::sum);
+            }
+        }
+        if (meats.isEmpty()) {
+            return "No meat in inventory (drops may have despawned or you missed the kill).";
+        }
+        StringBuilder sb = new StringBuilder("Inventory now has: ");
+        boolean first = true;
+        for (Map.Entry<String, Integer> e : meats.entrySet()) {
+            if (!first) {
+                sb.append(", ");
+            }
+            sb.append(e.getValue()).append("x ").append(e.getKey());
+            first = false;
+        }
+        return sb.append('.').toString();
+    }
+
+    /** Eat the best edible food repeatedly until the hunger bar is full or food runs out. */
+    private String eat(JsonObject a) {
+        int maxItems = (a.has("max_items") && !a.get("max_items").isJsonNull())
+                ? Math.min(36, Math.max(1, a.get("max_items").getAsInt())) : 8;
+        BaritoneAPI.getSettings().allowInventory.value = true;
+        StringBuilder eaten = new StringBuilder();
+        int ateCount = 0;
+        int startFood = AiCrafting.onClient(ctx, () -> {
+            LocalPlayer p = ctx.player();
+            return p == null ? -1 : p.getFoodData().getFoodLevel();
+        });
+        if (startFood < 0) {
+            return "ERROR: Player not in world.";
+        }
+        if (startFood >= 20) {
+            return "Food bar is already full (20/20). No need to eat.";
+        }
+
+        try {
+            for (int i = 0; i < maxItems; i++) {
+                if (MistralAgent.isCancelled()) {
+                    break;
+                }
+                // select the best safe food into the held hotbar slot
+                String selected = AiCrafting.onClient(ctx, this::selectBestFoodOnClient);
+                if (selected == null) {
+                    if (ateCount == 0) {
+                        return "ERROR: No edible food in inventory. Hunt animals (hunt) and cook the meat "
+                                + "(furnace_smelt), or farm/gather crops first.";
+                    }
+                    break;
+                }
+                Integer foodNow = AiCrafting.onClient(ctx, () -> {
+                    LocalPlayer p = ctx.player();
+                    return p == null ? 20 : p.getFoodData().getFoodLevel();
+                });
+                if (foodNow != null && foodNow >= 20) {
+                    break;
+                }
+                // hold the USE key to eat one item, like the reflex EAT behavior does
+                AiCrafting.onClient(ctx, () -> {
+                    baritone.getInputOverrideHandler().setInputForceState(
+                            Input.CLICK_RIGHT, true);
+                    return null;
+                });
+                Thread.sleep(1900); // eating an item takes ~1.6s; give it a little slack
+                AiCrafting.onClient(ctx, () -> {
+                    baritone.getInputOverrideHandler().setInputForceState(
+                            Input.CLICK_RIGHT, false);
+                    return null;
+                });
+                ateCount++;
+                if (eaten.indexOf(selected) < 0) {
+                    eaten.append(eaten.length() == 0 ? "" : ", ").append(selected);
+                }
+            }
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        } finally {
+            AiCrafting.onClient(ctx, () -> {
+                baritone.getInputOverrideHandler().setInputForceState(
+                        Input.CLICK_RIGHT, false);
+                return null;
+            });
+        }
+        int endFood = AiCrafting.onClient(ctx, () -> {
+            LocalPlayer p = ctx.player();
+            return p == null ? startFood : p.getFoodData().getFoodLevel();
+        });
+        if (ateCount == 0) {
+            return "Did not eat (no usable food).";
+        }
+        return "Ate " + ateCount + " item(s)" + (eaten.length() > 0 ? " (" + eaten + ")" : "")
+                + ". Food: " + startFood + " -> " + endFood + "/20.";
+    }
+
+    /** Put the best safe food into the held hotbar slot; returns its id, or null if none. */
+    private String selectBestFoodOnClient() {
+        LocalPlayer p = ctx.player();
+        if (p == null) {
+            return null;
+        }
+        int bestSlot = -1;
+        int bestNutrition = -1;
+        String bestId = null;
+        for (int i = 0; i < p.getInventory().getContainerSize(); i++) {
+            ItemStack st = p.getInventory().getItem(i);
+            if (st == null || st.isEmpty()) {
+                continue;
+            }
+            net.minecraft.world.food.FoodProperties food =
+                    st.get(net.minecraft.core.component.DataComponents.FOOD);
+            if (food == null || !Detectors.isSafeFood(st.getItem().toString())) {
+                continue;
+            }
+            if (food.nutrition() > bestNutrition) {
+                bestNutrition = food.nutrition();
+                bestSlot = i;
+                bestId = st.getItem().toString();
+            }
+        }
+        if (bestSlot < 0) {
+            return null;
+        }
+        int held = p.getInventory().getSelectedSlot();
+        if (bestSlot < 9) {
+            p.getInventory().setSelectedSlot(bestSlot); // already in hotbar
+        } else {
+            // SWAP it from main inventory into the held hotbar slot
+            ctx.playerController().windowClick(p.inventoryMenu.containerId,
+                    bestSlot, held, net.minecraft.world.inventory.ClickType.SWAP, p);
+        }
+        return bestId;
     }
 
     /**
