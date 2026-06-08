@@ -1369,12 +1369,35 @@ public final class AiCrafting {
             if (!first) {
                 sb.append(", ");
             }
-            sb.append(e.getValue()).append(" more ").append(e.getKey());
+            sb.append(e.getValue()).append(" more ").append(e.getKey()).append(howToGet(e.getKey()));
             first = false;
         }
-        sb.append(". GO GET the missing item(s) NOW — mine it (e.g. mine(['minecraft:cobblestone'], N)), "
-                + "smelt it, or craft the intermediate — then retry. Do NOT repeat this craft until you have them.");
+        sb.append(". GO GET the missing item(s) NOW, then retry this craft. Do NOT repeat the craft until you have them.");
         return sb.toString();
+    }
+
+    /** A short "how to obtain" hint so the agent uses the right source (cobblestone &lt;- mining stone). */
+    private static String howToGet(String itemName) {
+        if (itemName == null) {
+            return "";
+        }
+        String n = itemName.toLowerCase(Locale.ROOT);
+        if (n.equals("cobblestone") || n.equals("cobbled_deepslate")) {
+            return " (mine stone — it drops cobblestone; use mine(['minecraft:stone'], N))";
+        }
+        if (n.endsWith("_ingot")) {
+            return " (smelt the matching ore in a furnace)";
+        }
+        if (n.endsWith("_planks") || n.equals("planks")) {
+            return " (craft from logs)";
+        }
+        if (n.equals("stick")) {
+            return " (craft from planks)";
+        }
+        if (n.endsWith("_log") || n.equals("log")) {
+            return " (chop trees: mine(['minecraft:log'], N))";
+        }
+        return " (mine/gather/smelt it)";
     }
 
     /** Readable item name an ingredient accepts ("cobblestone", "iron_ingot"), or "an ingredient". */
