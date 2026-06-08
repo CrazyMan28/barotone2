@@ -463,7 +463,7 @@ public final class AiCrafting {
             return err == null ? "FILLED" : err;
         });
         if (placementErr.startsWith("ERROR:")) {
-            return placementErr;
+            return actionableCraftError(ctx, recipe, placementErr);
         }
         if ("FILLED".equals(placementErr)) {
             String r = finishCraftingTableAfterServerUpdate(ctx,
@@ -487,7 +487,7 @@ public final class AiCrafting {
                 return err == null ? "FILLED" : err;
             });
             if (shapedErr.startsWith("ERROR:")) {
-                return shapedErr;
+                return actionableCraftError(ctx, recipe, shapedErr);
             }
             if ("FILLED".equals(shapedErr)) {
                 String r = finishCraftingTableAfterServerUpdate(ctx,
@@ -514,7 +514,7 @@ public final class AiCrafting {
                 return err == null ? "FILLED" : err;
             });
             if (slErr.startsWith("ERROR:")) {
-                return slErr;
+                return actionableCraftError(ctx, recipe, slErr);
             }
             if ("FILLED".equals(slErr)) {
                 String r = finishCraftingTableAfterServerUpdate(ctx,
@@ -526,8 +526,8 @@ public final class AiCrafting {
             }
         }
 
-        return "ERROR: No crafting result for " + rid
-                + " (placement, shaped, and shapeless strategies failed or ingredients missing).";
+        return actionableCraftError(ctx, recipe, "ERROR: No crafting result for " + rid
+                + " (placement, shaped, and shapeless strategies failed or ingredients missing).");
     }
 
     /**
@@ -1336,6 +1336,70 @@ public final class AiCrafting {
         } catch (ReflectiveOperationException e) {
             return List.of();
         }
+    }
+
+    /**
+     * Turns a vague "missing ingredient" into an actionable shortfall the agent can act on:
+     * exactly which items it still needs and how many, with an instruction to GO GATHER them
+     * (mine cobblestone, smelt iron, …) instead of pointlessly retrying the same failing craft.
+     * Returns null if the inventory can actually supply the recipe (no shortfall).
+     */
+    private static String ingredientShortfallMessage(IPlayerContext ctx, CraftingRecipe recipe) {
+        LocalPlayer p = ctx.player();
+        if (p == null) {
+            return null;
+        }
+        List<Ingredient> needs = flatIngredientsForRecipe(recipe);
+        if (needs.isEmpty()) {
+            return null;
+        }
+        List<ItemStack> pool = copyPlayerInvStacks(p.containerMenu);
+        java.util.LinkedHashMap<String, Integer> missing = new java.util.LinkedHashMap<>();
+        for (Ingredient ing : needs) {
+            if (!consumeOneMatchingFromPool(pool, ing)) {
+                missing.merge(representativeIngredientName(ing), 1, Integer::sum);
+            }
+        }
+        if (missing.isEmpty()) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder("ERROR: Not enough materials to craft this. You still need: ");
+        boolean first = true;
+        for (java.util.Map.Entry<String, Integer> e : missing.entrySet()) {
+            if (!first) {
+                sb.append(", ");
+            }
+            sb.append(e.getValue()).append(" more ").append(e.getKey());
+            first = false;
+        }
+        sb.append(". GO GET the missing item(s) NOW — mine it (e.g. mine(['minecraft:cobblestone'], N)), "
+                + "smelt it, or craft the intermediate — then retry. Do NOT repeat this craft until you have them.");
+        return sb.toString();
+    }
+
+    /** Readable item name an ingredient accepts ("cobblestone", "iron_ingot"), or "an ingredient". */
+    private static String representativeIngredientName(Ingredient ing) {
+        for (ItemStack s : probeStacksForIngredient(ing)) {
+            if (!s.isEmpty()) {
+                net.minecraft.resources.Identifier id = BuiltInRegistries.ITEM.getKey(s.getItem());
+                if (id != null) {
+                    return id.getPath();
+                }
+            }
+        }
+        return "an ingredient";
+    }
+
+    /** Replace a vague missing-ingredient error with the actionable shortfall, when applicable. */
+    private static String actionableCraftError(IPlayerContext ctx, CraftingRecipe recipe, String rawErr) {
+        if (rawErr != null && (rawErr.contains("Missing ingredient") || rawErr.contains("No crafting result")
+                || rawErr.contains("Could not take matching"))) {
+            String shortfall = onClient(ctx, () -> ingredientShortfallMessage(ctx, recipe));
+            if (shortfall != null) {
+                return shortfall;
+            }
+        }
+        return rawErr;
     }
 
     private static boolean inventoryCouldSupplyRecipe(AbstractContainerMenu menu, CraftingRecipe recipe) {
