@@ -146,7 +146,9 @@ public final class BaritoneTools {
                                 "Block ids to mine, e.g. ['minecraft:diamond_ore'] (deepslate_diamond_ore is auto-included).",
                                 true, "string"),
                         param("quantity", "integer",
-                                "Total stop quantity across all listed blocks. Omitted/0 defaults to 32 — pass the number your goal actually needs.", false)
+                                "How many MORE to mine (it gathers this many additional, even if you already have some — so "
+                                        + "'mine 2 more cobblestone' when you have 6 correctly ends at 8). Omitted defaults to 32. "
+                                        + "Mining stone yields cobblestone; mining an ore yields its raw item.", false)
                 )));
         arr.add(fn("follow_player",
                 "Follow a player by name. Useful for being escorted.",
@@ -1450,14 +1452,24 @@ public final class BaritoneTools {
             q = 32;
             defaultedQuantity = true;
         }
-        // Idempotency guard: don't re-mine what we already have. For blocks whose drop is the block
-        // itself (logs, cobblestone, dirt...) the inventory count matches the requested ids; ores drop
-        // a different item (raw_iron != iron_ore) so they simply won't match and we mine as normal.
-        int have = inventoryCountOf(new java.util.HashSet<>(expanded));
-        if (have >= q) {
-            return "Already have " + have + " of " + String.join("/", expanded) + " (>= " + q
-                    + (defaultedQuantity ? " default" : " requested")
-                    + "). Did NOT mine — you already have enough; move to the next step.";
+        // Count what mining these blocks YIELDS (stone->cobblestone, iron_ore->raw_iron, logs->logs)
+        // so the "already have"/top-up logic reflects reality, not the raw block id.
+        int have = inventoryCountOf(dropIdsFor(expanded));
+        String topUpNote = "";
+        if (defaultedQuantity) {
+            // No quantity given: treat q as a TOTAL target and skip if we already have a batch.
+            if (have >= q) {
+                return "Already have " + have + " of " + String.join("/", expanded) + " (>= " + q
+                        + " default). Did NOT mine — you already have enough; move to the next step.";
+            }
+        } else {
+            // EXPLICIT quantity means "mine this many MORE". Baritone's mine count is the TOTAL the
+            // inventory should reach, so add the current yield: "mine 2 more cobblestone" when you
+            // already have 6 must target 8 (not 2, which Baritone treats as already-satisfied and
+            // mines nothing). This is the "wouldn't let it mine 2 more" bug.
+            int target = have + q;
+            topUpNote = " (had " + have + ", mining " + q + " more -> " + target + ")";
+            q = target;
         }
         StringBuilder cmd = new StringBuilder("mine");
         cmd.append(' ').append(q);
@@ -1484,8 +1496,31 @@ public final class BaritoneTools {
         }
         lastMineCommand = cmd.toString();   // remembered so wait_until_idle can relocate + retry if stuck
         executeCommand(lastMineCommand);
-        return "Mining: " + cmd.substring(5).trim()
+        return "Mining: " + cmd.substring(5).trim() + topUpNote
                 + (expanded.size() > blocks.size() ? " (added deepslate/stone ore pair where applicable)" : "");
+    }
+
+    /** The item ids that mining each of these blocks YIELDS (stone->cobblestone, ore->raw_*), so the
+     *  mine top-up/idempotency logic counts what you'll actually GET, not the block id. */
+    private static java.util.Set<String> dropIdsFor(List<String> blockIds) {
+        java.util.Set<String> drops = new java.util.HashSet<>();
+        for (String id : blockIds) {
+            String p = id.contains(":") ? id.substring(id.indexOf(':') + 1) : id;
+            switch (p) {
+                case "stone": drops.add("minecraft:cobblestone"); break;
+                case "deepslate": drops.add("minecraft:cobbled_deepslate"); break;
+                case "iron_ore": case "deepslate_iron_ore": drops.add("minecraft:raw_iron"); break;
+                case "gold_ore": case "deepslate_gold_ore": case "nether_gold_ore": drops.add("minecraft:raw_gold"); break;
+                case "copper_ore": case "deepslate_copper_ore": drops.add("minecraft:raw_copper"); break;
+                case "coal_ore": case "deepslate_coal_ore": drops.add("minecraft:coal"); break;
+                case "diamond_ore": case "deepslate_diamond_ore": drops.add("minecraft:diamond"); break;
+                case "emerald_ore": case "deepslate_emerald_ore": drops.add("minecraft:emerald"); break;
+                case "redstone_ore": case "deepslate_redstone_ore": drops.add("minecraft:redstone"); break;
+                case "lapis_ore": case "deepslate_lapis_ore": drops.add("minecraft:lapis_lazuli"); break;
+                default: drops.add(id); break; // logs, cobblestone, dirt, etc. drop themselves
+            }
+        }
+        return drops;
     }
 
     /** Player feet position read on the client thread (null if not in world). */
