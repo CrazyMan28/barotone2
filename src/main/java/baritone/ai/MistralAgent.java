@@ -94,6 +94,10 @@ public final class MistralAgent implements Helper {
             + "- For 2x2-only crafting recipes with inventory (E) open: craft_recipe_in_inventory or craft_shaped_in_inventory (4 strings).\n"
             + "- For furnace/smoker/blast furnace with GUI open: furnace_smelt (input item, optional fuel, optional recipe id to validate, wait cap). "
             + "Vanilla campfires have no container GUI.\n"
+            + "- A FURNACE ONLY SMELTS/COOKS one input into one output: raw_iron->iron_ingot, raw_gold->gold_ingot, cobblestone->stone, "
+            + "sand->glass, raw meat->cooked meat. You CANNOT make TOOLS or a furnace or a pickaxe in a furnace. To CRAFT any tool/item "
+            + "(stone_pickaxe, stone_axe, furnace, etc.) use open_station('crafting_table') then craft_recipe_at_table('minecraft:<item>'). "
+            + "STONE TOOLS are CRAFTED from cobblestone + sticks at a CRAFTING TABLE — never put cobblestone in a furnace to make a tool.\n"
             + "- If a crafting/station GUI is not open, use open_station first. Use craft_item by output item id when you know what you want. "
             + "For wooden pickaxe/axe, prefer make_wooden_tool or craft_recipe_at_table('minecraft:wooden_pickaxe').\n"
             + "- If open_station / a placement fails (e.g. 'no solid block in front', 'no crafting table nearby'), call look_around: "
@@ -259,6 +263,15 @@ public final class MistralAgent implements Helper {
             }
             endpoint = settings.mistralEndpoint.value;
             model = settings.mistralModel.value;
+            // Planner sub-agents run on a smarter model (default mistral-medium-latest) so they
+            // reason about WHICH station to use (furnace = smelt only; crafting table = make tools)
+            // instead of e.g. trying to smelt cobblestone into a pickaxe.
+            if (subAgentMode) {
+                String sub = settings.aiSubAgentModel.value;
+                if (sub != null && !sub.trim().isEmpty()) {
+                    model = sub.trim();
+                }
+            }
         }
         worker = Thread.currentThread();
         RUNNING.set(this);
@@ -320,6 +333,10 @@ public final class MistralAgent implements Helper {
         boolean verbose = settings.mistralVerbose.value;
         double temp = settings.mistralTemperature.value;
         int maxTok = settings.mistralMaxTokens.value;
+        // give planner sub-agents extra output room to think (reason in `content`) before each tool call
+        if (subAgentMode && settings.aiSubAgentMaxTokens.value > maxTok) {
+            maxTok = settings.aiSubAgentMaxTokens.value;
+        }
         int maxHistory = settings.mistralMaxHistoryMessages.value;
         int keepRecent = settings.mistralKeepRecentMessages.value;
         int maxMissionSeconds = settings.mistralMaxMissionSeconds.value;

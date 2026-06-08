@@ -1433,6 +1433,20 @@ public final class Settings {
     public final Setting<String> aiPlannerModel = new Setting<>("mistral-large-latest");
 
     /**
+     * Model used by the hierarchical planner's per-sub-goal EXECUTOR agents. Defaults to
+     * {@code mistral-medium-latest} so each sub-agent reasons well about which tool/station to use
+     * (furnace = smelt only; crafting table = make tools) instead of flailing on a tiny model.
+     * Only applies when a Mistral key is set; blank falls back to {@link #mistralModel}.
+     */
+    public final Setting<String> aiSubAgentModel = new Setting<>("mistral-medium-latest");
+
+    /**
+     * Max output tokens for planner sub-agents, giving them room to reason before each tool call.
+     * Applied only when larger than {@link #mistralMaxTokens}.
+     */
+    public final Setting<Integer> aiSubAgentMaxTokens = new Setting<>(2048);
+
+    /**
      * Max tokens for the planner's decompose/replan calls. Larger than the mission default so the
      * model has room to think in the required {@code reasoning} field AND emit a full multi-step plan
      * without the JSON being truncated mid-arguments (a truncated plan call is unparseable and forces
