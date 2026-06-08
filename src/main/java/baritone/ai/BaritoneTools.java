@@ -29,13 +29,13 @@ import baritone.api.behavior.IPathingBehavior;
 import baritone.api.command.manager.ICommandManager;
 import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.IPlayerContext;
-import baritone.api.utils.input.Input;
 import baritone.api.utils.SettingsUtil;
 import baritone.cache.WorldData;
 import baritone.command.defaults.AiCommand;
 import baritone.command.defaults.UndercoverCommand;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.Container;
@@ -1269,16 +1269,20 @@ public final class BaritoneTools {
                 if (foodNow != null && foodNow >= 20) {
                     break;
                 }
-                // hold the USE key to eat one item, like the reflex EAT behavior does
+                // Aim at the sky and hold the REAL use key. Vanilla only eats while options.keyUse
+                // is physically down (it releases any item-use otherwise), and the input-override
+                // right-click can't help because it only fires when the crosshair is on a block.
                 AiCrafting.onClient(ctx, () -> {
-                    baritone.getInputOverrideHandler().setInputForceState(
-                            Input.CLICK_RIGHT, true);
+                    LocalPlayer p = ctx.player();
+                    if (p != null) {
+                        p.setXRot(-75F); // look up so startUseItem eats instead of interacting
+                    }
+                    Minecraft.getInstance().options.keyUse.setDown(true);
                     return null;
                 });
                 Thread.sleep(1900); // eating an item takes ~1.6s; give it a little slack
                 AiCrafting.onClient(ctx, () -> {
-                    baritone.getInputOverrideHandler().setInputForceState(
-                            Input.CLICK_RIGHT, false);
+                    Minecraft.getInstance().options.keyUse.setDown(false);
                     return null;
                 });
                 ateCount++;
@@ -1290,8 +1294,7 @@ public final class BaritoneTools {
             Thread.currentThread().interrupt();
         } finally {
             AiCrafting.onClient(ctx, () -> {
-                baritone.getInputOverrideHandler().setInputForceState(
-                        Input.CLICK_RIGHT, false);
+                Minecraft.getInstance().options.keyUse.setDown(false);
                 return null;
             });
         }

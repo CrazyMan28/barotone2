@@ -18,7 +18,6 @@
 package baritone.ai.reflex;
 
 import baritone.ai.reflex.behavior.RetreatAndHealBehavior;
-import baritone.api.utils.input.Input;
 import org.junit.Test;
 
 import java.util.List;
@@ -74,8 +73,8 @@ public class RetreatAndHealBehaviorTest {
         ReflexAction slot = find(actions, ReflexAction.Kind.SELECT_SLOT);
         assertNotNull("clear of mobs: eat back to full hunger for regen", slot);
         assertEquals(2, slot.slot);
-        assertTrue(actions.stream().anyMatch(a ->
-                a.kind == ReflexAction.Kind.HOLD_INPUT && a.input == Input.CLICK_RIGHT && a.pressed));
+        assertNotNull("clear of mobs: drive the use key so the food is actually eaten",
+                find(actions, ReflexAction.Kind.USE_ITEM));
     }
 
     @Test

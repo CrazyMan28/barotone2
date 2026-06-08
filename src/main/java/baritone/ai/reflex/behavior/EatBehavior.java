@@ -23,13 +23,13 @@ import baritone.ai.reflex.ReflexBehavior;
 import baritone.ai.reflex.ReflexTuning;
 import baritone.ai.reflex.ResponsePlan;
 import baritone.ai.reflex.WorldSnapshot;
-import baritone.api.utils.input.Input;
 
 import java.util.List;
 
 /**
- * Auto-eat: select the best safe food, look skyward (so the use-click can never open a chest or
- * door in front of us), hold use. The executor saves/restores the previous hotbar slot.
+ * Auto-eat: select the best safe food, look skyward (so {@code startUseItem} can never interact
+ * with a block — it eats instead), and drive the real use key so vanilla actually consumes the
+ * food. The executor saves/restores the previous hotbar slot and releases the key when done.
  */
 public final class EatBehavior implements ReflexBehavior {
 
@@ -50,7 +50,7 @@ public final class EatBehavior implements ReflexBehavior {
         return List.of(
                 ReflexAction.selectSlot(s.bestFoodSlot),
                 ReflexAction.look(s.yaw, -75F),
-                ReflexAction.hold(Input.CLICK_RIGHT, true)
+                ReflexAction.useItem()
         );
     }
 

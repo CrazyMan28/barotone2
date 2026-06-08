@@ -28,7 +28,6 @@ import baritone.ai.reflex.ReflexMath;
 import baritone.ai.reflex.ReflexTuning;
 import baritone.ai.reflex.ResponsePlan;
 import baritone.ai.reflex.WorldSnapshot;
-import baritone.api.utils.input.Input;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -112,7 +111,7 @@ public final class RetreatAndHealBehavior implements ReflexBehavior {
             return List.of(
                     ReflexAction.selectSlot(s.bestFoodSlot),
                     ReflexAction.look(s.yaw, -75F),
-                    ReflexAction.hold(Input.CLICK_RIGHT, true)
+                    ReflexAction.useItem()
             );
         }
         return List.of(ReflexAction.releaseAll());

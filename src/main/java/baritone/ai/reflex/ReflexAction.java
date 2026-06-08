@@ -45,6 +45,13 @@ public final class ReflexAction {
         ATTACK,
         /** Place a block into this cell (hand-built BlockHitResult against a neighbor face). */
         PLACE_BLOCK,
+        /**
+         * Hold the real USE key down THIS tick so vanilla {@code handleKeybinds} actually starts and
+         * keeps an item-use going (this is how eating works — the input-override right-click can't,
+         * because Minecraft releases any item-use whose {@code keyUse} isn't physically down). Aim at
+         * the sky alongside it so {@code startUseItem} eats instead of interacting with a block.
+         */
+        USE_ITEM,
         /** Hand Baritone a pathing goal (FORCE_REVALIDATE). Without one, an active behavior pauses pathing. */
         SET_GOAL
     }
@@ -99,6 +106,11 @@ public final class ReflexAction {
         return new ReflexAction(Kind.PLACE_BLOCK, null, false, 0, 0, -1, -1, cell, null);
     }
 
+    /** Hold the real use key this tick to drive vanilla item-use (eating). */
+    public static ReflexAction useItem() {
+        return new ReflexAction(Kind.USE_ITEM, null, true, 0, 0, -1, -1, null, null);
+    }
+
     public static ReflexAction setGoal(GoalSpec goal) {
         return new ReflexAction(Kind.SET_GOAL, null, false, 0, 0, -1, -1, null, goal);
     }
@@ -118,6 +130,8 @@ public final class ReflexAction {
                 return "attack(#" + entityId + ")";
             case PLACE_BLOCK:
                 return "place" + pos;
+            case USE_ITEM:
+                return "useItem()";
             case SET_GOAL:
                 return "goal(" + goal.kind + ")";
             default:

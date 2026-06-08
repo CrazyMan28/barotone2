@@ -93,7 +93,8 @@ public class EngineParityTest {
         assertNotNull(look);
         assertEquals("keep current yaw", 123F, look.yaw, 0.01F);
         assertEquals("look skyward so use can't open a chest", -75F, look.pitch, 0.01F);
-        assertTrue(holds(out.actions, Input.CLICK_RIGHT));
+        assertNotNull("must actually drive the use key so vanilla eats",
+                find(out.actions, ReflexAction.Kind.USE_ITEM));
     }
 
     @Test

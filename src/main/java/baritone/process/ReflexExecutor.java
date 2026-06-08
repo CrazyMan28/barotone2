@@ -53,6 +53,8 @@ final class ReflexExecutor {
     private final IPlayerContext ctx;
     /** Hotbar slot to restore when the current reflex episode ends (-1 = nothing to restore). */
     private int prevHotbarSlot = -1;
+    /** Whether we're currently forcing the real use key down (to drive eating) — so we know to release it. */
+    private boolean forcingUse;
 
     ReflexExecutor(Baritone baritone, IPlayerContext ctx) {
         this.baritone = baritone;
@@ -72,8 +74,12 @@ final class ReflexExecutor {
             return new PathingCommand(null, PathingCommandType.DEFER);
         }
         Goal goal = null;
+        boolean wantUse = false;
         for (ReflexAction a : actions) {
             switch (a.kind) {
+                case USE_ITEM:
+                    wantUse = true;
+                    break;
                 case HOLD_INPUT:
                     baritone.getInputOverrideHandler().setInputForceState(a.input, a.pressed);
                     break;
@@ -118,6 +124,16 @@ final class ReflexExecutor {
                     break;
             }
         }
+        // Drive eating through the REAL use key: vanilla handleKeybinds only starts/continues an
+        // item-use while options.keyUse is physically down (and releases it otherwise). We never
+        // stomp the human's right-click — we only touch the key once we've started forcing it.
+        if (wantUse) {
+            ctx.minecraft().options.keyUse.setDown(true);
+            forcingUse = true;
+        } else if (forcingUse) {
+            ctx.minecraft().options.keyUse.setDown(false);
+            forcingUse = false;
+        }
         if (goal != null) {
             return new PathingCommand(goal, PathingCommandType.FORCE_REVALIDATE_GOAL_AND_PATH);
         }
@@ -128,6 +144,10 @@ final class ReflexExecutor {
     /** End-of-episode cleanup: release every forced key and restore the hotbar slot. */
     void cleanup() {
         baritone.getInputOverrideHandler().clearAllKeys();
+        if (forcingUse && ctx.minecraft() != null) {
+            ctx.minecraft().options.keyUse.setDown(false);
+            forcingUse = false;
+        }
         if (prevHotbarSlot >= 0 && ctx.player() != null) {
             ctx.player().getInventory().setSelectedSlot(prevHotbarSlot);
         }
