@@ -28,6 +28,7 @@ import baritone.ai.reflex.BlockPosSpec;
 import baritone.ai.reflex.Detectors;
 import baritone.ai.reflex.MobInfo;
 import baritone.ai.reflex.ReflexEngine;
+import baritone.ai.reflex.ReflexMath;
 import baritone.ai.reflex.ReflexTuning;
 import baritone.ai.reflex.WorldSnapshot;
 import baritone.api.Settings;
@@ -42,9 +43,12 @@ import net.minecraft.tags.FluidTags;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
+import net.minecraft.world.level.LightLayer;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.food.FoodProperties;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
@@ -93,6 +97,10 @@ public final class ReflexProcess extends BaritoneProcessHelper {
     private long lastHurtAt = Long.MIN_VALUE;
     private long lastWorkingAt = Long.MIN_VALUE;
     private ReflexEngine.Output lastOutput;
+
+    /** Per-entity distance last tick, so we can derive each mob's closing speed. */
+    private Map<Integer, Double> prevMobDist = new HashMap<>();
+    private long prevSnapshotTick = Long.MIN_VALUE;
 
     public ReflexProcess(Baritone baritone) {
         super(baritone);
@@ -232,6 +240,11 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         tuning.pillarHeight = s.reflexPillarHeight.value;
         tuning.mlgFallTrigger = s.reflexMlgFallTrigger.value;
         tuning.fireWaterRadius = s.reflexFireWaterRadius.value;
+        tuning.perceptionRadius = s.reflexPerceptionRadius.value;
+        tuning.predictiveFleeBonus = s.reflexPredictiveRange.value;
+        tuning.minMobDwellTicks = s.reflexMinDwellTicks.value;
+        tuning.mobReleaseGraceTicks = s.reflexReleaseGraceTicks.value;
+        tuning.proactiveEatHunger = s.reflexProactiveEatHunger.value;
     }
 
     private WorldSnapshot snapshot(LocalPlayer player, long now) {
@@ -277,17 +290,26 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         if (s.onFire && !s.inLava && !s.underWater) {
             s.nearestWater = findWaterNear(player);
         }
-        // mobs
-        double scan = Math.max(Math.max(2D, tuning.creeperRadius) + 4D, 8.5D);
+        sampleSurroundings(player, s);
+        sampleAmbient(player, s);
+        // mobs (perception radius reaches past the engage radius so the bot can react to a
+        // threat that is closing fast while it is still far enough to do something about it)
+        double scan = Math.max(Math.max(2D, tuning.creeperRadius) + 4D, tuning.perceptionRadius);
+        long dtTicks = prevSnapshotTick == Long.MIN_VALUE ? 1 : Math.max(1, now - prevSnapshotTick);
+        Map<Integer, Double> curMobDist = new HashMap<>();
         for (Monster e : ctx.world().getEntitiesOfClass(Monster.class,
                 new AABB(player.blockPosition()).inflate(scan),
                 m -> m.isAlive() && player.distanceTo(m) <= scan)) {
-            s.mobs.add(mobInfo(player, e));
+            MobInfo info = mobInfo(player, e, dtTicks);
+            s.mobs.add(info);
+            curMobDist.put(info.entityId, info.distance);
         }
+        prevMobDist = curMobDist;
+        prevSnapshotTick = now;
         return s;
     }
 
-    private MobInfo mobInfo(LocalPlayer player, Monster e) {
+    private MobInfo mobInfo(LocalPlayer player, Monster e, long dtTicks) {
         MobInfo m = new MobInfo();
         m.entityId = e.getId();
         m.typeId = EntityType.getKey(e.getType()).getPath();
@@ -301,6 +323,9 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         m.skeleton = e instanceof AbstractSkeleton;
         m.hostile = true;
         m.ignited = e instanceof Creeper && ((Creeper) e).isIgnited();
+        m.aggro = e instanceof Mob && ((Mob) e).getTarget() == player;
+        Double prev = prevMobDist.get(m.entityId);
+        m.approachingSpeed = prev == null ? 0D : (prev - m.distance) / dtTicks;
         return m;
     }
 
@@ -356,6 +381,70 @@ public final class ReflexProcess extends BaritoneProcessHelper {
             s.gapBelow++;
             pos = pos.below();
         }
+    }
+
+    /**
+     * Cheap look-ahead so behaviors never flee/sprint into lava or off a ledge. Fills the
+     * per-octant safety flags plus the forward lava/drop flags relative to the current look yaw.
+     */
+    private void sampleSurroundings(LocalPlayer player, WorldSnapshot s) {
+        BlockPos feet = player.blockPosition();
+        for (int i = 0; i < ReflexMath.OCTANTS; i++) {
+            BlockPos step = feet.offset(ReflexMath.OCTANT_DX[i], 0, ReflexMath.OCTANT_DZ[i]);
+            s.octantSafe[i] = isStepSafe(step);
+        }
+        int forward = ReflexMath.nearestOctant(s.yaw);
+        int dx = ReflexMath.OCTANT_DX[forward];
+        int dz = ReflexMath.OCTANT_DZ[forward];
+        for (int d = 1; d <= 3; d++) {
+            BlockPos ahead = feet.offset(dx * d, 0, dz * d);
+            if (isLavaAt(ahead) || isLavaAt(ahead.above())) {
+                s.lavaAhead = true;
+            }
+            if (isKillingDrop(ahead)) {
+                s.dropAhead = true;
+            }
+        }
+    }
+
+    /** A neighbor cell the bot could move into without lava, a wall, or a killing drop. */
+    private boolean isStepSafe(BlockPos step) {
+        if (isLavaAt(step) || isLavaAt(step.above())) {
+            return false;
+        }
+        if (isSolid(step) && isSolid(step.above())) {
+            return false; // a full wall — can't path through it on a panic sprint
+        }
+        return !isKillingDrop(step);
+    }
+
+    private boolean isSolid(BlockPos pos) {
+        BlockState state = ctx.world().getBlockState(pos);
+        return !state.isAir() && !state.canBeReplaced();
+    }
+
+    /** Open air below {@code step} deep enough that walking off it would hurt or kill. */
+    private boolean isKillingDrop(BlockPos step) {
+        BlockPos p = step.below();
+        int minY = ctx.world().getMinY();
+        int gap = 0;
+        for (int i = 0; i < 6; i++) {
+            if (p.getY() < minY) {
+                return true;
+            }
+            if (!ctx.world().getBlockState(p).isAir()) {
+                return false;
+            }
+            gap++;
+            p = p.below();
+        }
+        return gap >= 4;
+    }
+
+    private void sampleAmbient(LocalPlayer player, WorldSnapshot s) {
+        s.lightLevel = ctx.world().getBrightness(LightLayer.BLOCK, player.blockPosition());
+        long dayTime = ctx.world().getDayTime() % 24000L;
+        s.night = dayTime >= 13000L && dayTime <= 23000L;
     }
 
     /** Nearest column that isn't lava (feet, head and floor all clear), ring-searched outward. */

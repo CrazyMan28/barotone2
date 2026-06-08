@@ -135,6 +135,10 @@ public class HealthModulationTest {
         s.hp = 15;
         s.poisoned = false;
         s.gameTime = 1;
+        // committed episode: doesn't flap closed the instant we cross the target hp
+        assertEquals(BehaviorId.RETREAT_HEAL, a.decide(s, t).behavior);
+        // ...but once we've been clear past the commit window the mission resumes
+        s.gameTime = 40;
         assertEquals(BehaviorId.NONE, a.decide(s, t).behavior);
     }
 

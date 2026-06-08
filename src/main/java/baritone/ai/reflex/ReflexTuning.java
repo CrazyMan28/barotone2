@@ -33,6 +33,24 @@ public final class ReflexTuning {
     public int eatAtHunger = 13;
     public double creeperRadius = 7.0D;
 
+    // ---- perception ("vision")
+    /** How far the adapter scans for mobs (>= engage radius so we see threats coming). */
+    public double perceptionRadius = 16.0D;
+    /** Closing speed (blocks/tick) above which a mob counts as "approaching" for early engage. */
+    public double approachSpeedThreshold = 0.06D;
+    /** Extra engage distance granted to a mob that is approaching (or aggroed on us). */
+    public double predictiveFleeBonus = 4.0D;
+
+    // ---- anti-flap (committed mob episodes)
+    /** A freshly engaged mob behavior won't release for at least this many ticks. */
+    public int minMobDwellTicks = 12;
+    /** Once a mob behavior wants to release, it must stay "clear" this long first (debounce). */
+    public int mobReleaseGraceTicks = 16;
+
+    // ---- proactive survival
+    /** Top the hunger bar up during a calm lull once food drops to this (no threats around). */
+    public int proactiveEatHunger = 16;
+
     // ---- eat (pre-redesign constants)
     public int eatReleaseFood = 18;
     public int eatTimeoutTicks = 400;
@@ -49,6 +67,7 @@ public final class ReflexTuning {
     public int combatLossWindowTicks = 60;
     public int swarmCount = 3;               // this many hostiles = a swarm, don't brawl
     public double swarmRadius = 6.0D;
+    public int combatStrafeTicks = 12;       // flip the kite/strafe direction every this many ticks
 
     // ---- flee + escalation (ports the FleeWatchdog values)
     public int maxFleeTicks = 200;           // ~10s unresolved -> escalate

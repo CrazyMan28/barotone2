@@ -34,8 +34,11 @@ import java.util.List;
 /**
  * Stand and fight: equip the best weapon, SNAP the aim onto the target's hitbox center (smooth
  * turns haven't landed by the time we swing), swing only when the attack is charged, close the
- * gap by rushing near targets and pathing to far ones. Shield use and cooldown spacing arrive
- * with the combat-micro step.
+ * gap by rushing near targets and pathing to far ones.
+ *
+ * <p>Against a skeleton it also <em>kites</em>: strafe (flipping direction periodically) while
+ * closing and between swings so arrows miss, raising the shield through the attack cooldown. If a
+ * wall stops a back-step the bot strafes instead of standing still in the corner getting hit.
  */
 public final class CombatBehavior implements ReflexBehavior {
 
@@ -68,6 +71,9 @@ public final class CombatBehavior implements ReflexBehavior {
         actions.add(ReflexAction.snapLook(
                 ReflexMath.yawToward(s.posX, s.posZ, target.x, target.z),
                 ReflexMath.pitchToward(s.posX, s.posY, s.posZ, target.x, target.aimY, target.z)));
+        boolean kite = target.skeleton; // strafe-dodge ranged attackers; brawl everything else
+        Input strafe = ((s.gameTime / Math.max(1, t.combatStrafeTicks)) % 2 == 0)
+                ? Input.MOVE_RIGHT : Input.MOVE_LEFT;
         if (target.distance <= t.strikeDistance) {
             if (s.attackStrengthScale >= 0.9F) {
                 // STRIKE: shield down (a raised shield soft-cancels the hit), full-charge swing
@@ -75,19 +81,28 @@ public final class CombatBehavior implements ReflexBehavior {
                     actions.add(ReflexAction.hold(Input.CLICK_RIGHT, false));
                 }
                 actions.add(ReflexAction.attack(target.entityId));
+                if (kite) {
+                    actions.add(ReflexAction.hold(strafe, true)); // keep moving between swings
+                }
             } else {
-                // SPACE: cover behind the shield through the cooldown, step back if crowded
+                // SPACE: cover behind the shield through the cooldown
                 if (s.hasShieldOffhand) {
                     actions.add(ReflexAction.hold(Input.CLICK_RIGHT, true));
                 }
-                if (target.distance < 2.5D) {
+                if (target.distance < 2.5D && !s.horizontalCollision) {
                     actions.add(ReflexAction.hold(Input.MOVE_BACK, true));
+                } else if (kite || s.horizontalCollision) {
+                    // cornered (can't back up) or kiting: sidestep instead of eating hits in place
+                    actions.add(ReflexAction.hold(strafe, true));
                 }
             }
         } else if (target.distance <= t.rushDistance) {
             // rush a near target directly — works in tight holes/caves where pathing is slow
             actions.add(ReflexAction.hold(Input.MOVE_FORWARD, true));
             actions.add(ReflexAction.hold(Input.SPRINT, true));
+            if (kite) {
+                actions.add(ReflexAction.hold(strafe, true)); // strafe-approach to dodge arrows
+            }
             if (s.horizontalCollision) {
                 actions.add(ReflexAction.hold(Input.JUMP, true));
             }

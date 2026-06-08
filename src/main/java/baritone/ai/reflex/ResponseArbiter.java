@@ -46,6 +46,8 @@ public final class ResponseArbiter {
     private int combatTargetId = -1;
     private FleeMode fleeMode = FleeMode.NORMAL;
     private FleeEscalation flee;
+    /** Debounces release of mob behaviors so a mob bobbing in/out of range can't cause flapping. */
+    private final ThreatMemory mobMemory = new ThreatMemory();
 
     // hp-loss window for losingTrade()
     private long hpWindowStart = Long.MIN_VALUE;
@@ -94,6 +96,8 @@ public final class ResponseArbiter {
             combatTargetId = meleeThreat.source.entityId;
         }
 
+        long now = s.gameTime;
+
         // 5. running behavior: preemption, escalation, stickiness, release
         if (active != BehaviorId.NONE) {
             activeTicks++;
@@ -102,20 +106,27 @@ public final class ResponseArbiter {
                     && behaviorFor(top.type) != active) {
                 BehaviorId wanted = behaviorFor(top.type);
                 if (!isMobBehavior(wanted)) {
-                    return engage(wanted, top); // lethal terrain always preempts
+                    return engage(wanted, top, now); // lethal terrain always preempts
                 }
                 // healing already breaks contact — don't let a mere flee threat cancel it
                 if (active != BehaviorId.RETREAT_HEAL) {
                     if (active == BehaviorId.COMBAT && losingTrade(s, t)) {
-                        return engage(BehaviorId.RETREAT_HEAL, activeCause);
+                        return engage(BehaviorId.RETREAT_HEAL, activeCause, now);
                     }
-                    return engage(wanted, top); // creeper joins the fight -> flee, etc.
+                    return engage(wanted, top, now); // creeper joins the fight -> flee, etc.
                 }
             }
             if (active == BehaviorId.COMBAT && losingTrade(s, t)) {
-                return engage(BehaviorId.RETREAT_HEAL, activeCause);
+                return engage(BehaviorId.RETREAT_HEAL, activeCause, now);
             }
-            if (!released(s, t, fleeSuppressed)) {
+            // anti-flap: a committed mob episode debounces its release so a mob crossing the
+            // engage boundary can't make us thrash; terrain reflexes release the instant the
+            // physical condition clears (no flapping risk there, and we want them snappy).
+            boolean wantRelease = released(s, t, fleeSuppressed);
+            boolean doRelease = isMobBehavior(active)
+                    ? mobMemory.shouldRelease(now, wantRelease, t.minMobDwellTicks, t.mobReleaseGraceTicks)
+                    : wantRelease;
+            if (!doRelease) {
                 // running isn't working: RESOLVE the chase instead of fleeing forever
                 if (active == BehaviorId.FLEE && fleeMode == FleeMode.NORMAL
                         && flee.unresolved(s.gameTime)) {
@@ -127,6 +138,7 @@ public final class ResponseArbiter {
             activeCause = null;
             combatTargetId = -1;
             fleeMode = FleeMode.NORMAL;
+            mobMemory.reset();
         }
 
         // 6. fresh engagement (working-gated)
@@ -135,7 +147,7 @@ public final class ResponseArbiter {
         if (top == null) {
             return ResponsePlan.NONE;
         }
-        return engage(behaviorFor(top.type), top);
+        return engage(behaviorFor(top.type), top, now);
     }
 
     /** Ticks the current behavior has been running (for eat timeout, telemetry). */
@@ -188,12 +200,17 @@ public final class ResponseArbiter {
         return best;
     }
 
-    private ResponsePlan engage(BehaviorId behavior, Threat cause) {
+    private ResponsePlan engage(BehaviorId behavior, Threat cause, long now) {
         if (behavior != active) {
             active = behavior;
             activeCause = cause;
             activeTicks = 0;
             fleeMode = FleeMode.NORMAL;
+            if (isMobBehavior(behavior)) {
+                mobMemory.onEngage(now);
+            } else {
+                mobMemory.reset();
+            }
         } else {
             activeCause = cause;
         }

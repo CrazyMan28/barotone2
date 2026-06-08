@@ -91,6 +91,28 @@ public final class Detectors {
         return best;
     }
 
+    /** A mob closing on us fast (or already aggroed) — engage it before it reaches melee range. */
+    public static boolean approaching(MobInfo m, ReflexTuning t) {
+        return m.aggro || m.approachingSpeed >= t.approachSpeedThreshold;
+    }
+
+    /** Engage radius for one mob: the base flee radius, extended when the mob is bearing down. */
+    public static double effFleeRadius(MobInfo m, ReflexTuning t) {
+        return fleeEngageRadius(t) + (approaching(m, t) ? t.predictiveFleeBonus : 0D);
+    }
+
+    /** Nearest mob matching {@code filter} inside its own (predictive) engage radius. */
+    public static MobInfo nearestFlee(WorldSnapshot s, ReflexTuning t, Predicate<MobInfo> filter) {
+        MobInfo best = null;
+        for (MobInfo m : s.mobs) {
+            if (filter.test(m) && m.distance <= effFleeRadius(m, t)
+                    && (best == null || m.distance < best.distance)) {
+                best = m;
+            }
+        }
+        return best;
+    }
+
     public static boolean anyWithin(WorldSnapshot s, double radius, Predicate<MobInfo> filter) {
         return nearest(s, radius, filter) != null;
     }
@@ -107,7 +129,7 @@ public final class Detectors {
     /** A skeleton we choose to stand and fight: geared, healthy, and no creeper to flee first. */
     public static MobInfo skeletonToFight(WorldSnapshot s, ReflexTuning t) {
         double radius = fleeEngageRadius(t);
-        if (!combatReady(s, t) || anyWithin(s, radius, m -> m.creeper)) {
+        if (!combatReady(s, t) || nearestFlee(s, t, m -> m.creeper) != null) {
             return null;
         }
         return nearest(s, radius, m -> m.skeleton);
@@ -132,9 +154,8 @@ public final class Detectors {
         if (!t.fleeCreepers) {
             return null;
         }
-        double radius = fleeEngageRadius(t);
-        MobInfo creeper = nearest(s, radius, m -> m.creeper);
-        MobInfo skeleton = nearest(s, radius, m -> m.skeleton);
+        MobInfo creeper = nearestFlee(s, t, m -> m.creeper);
+        MobInfo skeleton = nearestFlee(s, t, m -> m.skeleton);
         boolean fightSkeleton = skeleton != null && skeletonToFight(s, t) != null;
         if (creeper != null) {
             int sev = SEV_FLEE_MOB + (creeper.ignited ? SEV_IGNITED_BONUS : 0);
@@ -162,8 +183,17 @@ public final class Detectors {
     }
 
     public static Threat hunger(WorldSnapshot s, ReflexTuning t) {
-        return t.autoEat && s.food <= t.eatAtHunger && !s.screenOpen && s.bestFoodSlot >= 0
-                ? new Threat(ThreatType.HUNGER, SEV_HUNGER) : null;
+        if (!t.autoEat || s.screenOpen || s.bestFoodSlot < 0) {
+            return null;
+        }
+        // urgent: always eat once hunger is low enough to threaten regen / sprint.
+        boolean urgent = s.food <= t.eatAtHunger;
+        // proactive: top the bar up earlier during a calm lull so we never coast into starvation
+        // mid-mission — but only when nothing hostile is around (EAT is the lowest priority, so a
+        // real threat still preempts the moment one appears).
+        boolean lull = s.food <= t.proactiveEatHunger
+                && !anyWithin(s, t.swarmRadius, m -> m.hostile || m.creeper || m.skeleton);
+        return urgent || lull ? new Threat(ThreatType.HUNGER, SEV_HUNGER) : null;
     }
 
     /** On fire (and not in lava/water, which own their cases). Scarier the lower our hp. */

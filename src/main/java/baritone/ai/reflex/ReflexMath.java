@@ -23,7 +23,49 @@ public final class ReflexMath {
     /** Standing eye height — close enough for combat aim and escape looks. */
     public static final double EYE_HEIGHT = 1.62D;
 
+    /**
+     * The 8 compass octants as unit-ish block offsets, indexed 0..7 starting at south(+Z) and
+     * going clockwise: S, SW... no — in MC coords clockwise-from-south is S, SE, E, NE, N, NW, W,
+     * SW when you turn yaw negative. We just need a fixed, self-consistent set the snapshot and
+     * the behaviors agree on; {@link #octantYaw} converts an index to the matching look yaw.
+     */
+    public static final int[] OCTANT_DX = {0, 1, 1, 1, 0, -1, -1, -1};
+    public static final int[] OCTANT_DZ = {1, 1, 0, -1, -1, -1, 0, 1};
+
+    public static final int OCTANTS = 8;
+
     private ReflexMath() {
+    }
+
+    /** The look yaw that faces straight along octant {@code i}. */
+    public static float octantYaw(int i) {
+        return yawToward(0, 0, OCTANT_DX[i], OCTANT_DZ[i]);
+    }
+
+    /** The octant index whose direction best matches {@code yaw}. */
+    public static int nearestOctant(float yaw) {
+        int best = 0;
+        float bestDelta = Float.MAX_VALUE;
+        for (int i = 0; i < OCTANTS; i++) {
+            float delta = Math.abs(angleDelta(yaw, octantYaw(i)));
+            if (delta < bestDelta) {
+                bestDelta = delta;
+                best = i;
+            }
+        }
+        return best;
+    }
+
+    /** Signed smallest difference a-b folded into [-180,180]. */
+    public static float angleDelta(float a, float b) {
+        float d = (a - b) % 360F;
+        if (d < -180F) {
+            d += 360F;
+        }
+        if (d > 180F) {
+            d -= 360F;
+        }
+        return d;
     }
 
     /** Yaw that faces (toX,toZ) from (fromX,fromZ). */

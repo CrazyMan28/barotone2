@@ -160,10 +160,14 @@ public class ResponseArbiterTest {
         s.mobs.add(creeperAt(9));
         s.gameTime = 1;
         assertEquals(BehaviorId.FLEE, decide(a, s));
-        // past the release radius the flee ends
+        // even past the release radius, the committed episode debounces the release (anti-flap):
+        // a single boundary crossing must NOT end the flee immediately
         s.mobs.clear();
         s.mobs.add(creeperAt(12));
         s.gameTime = 2;
+        assertEquals(BehaviorId.FLEE, decide(a, s));
+        // ...but once it has stayed gone past the dwell + release grace, the episode ends
+        s.gameTime = 40;
         assertEquals(BehaviorId.NONE, decide(a, s));
     }
 
@@ -246,6 +250,10 @@ public class ResponseArbiterTest {
         assertEquals(BehaviorId.COMBAT, decide(a, s));
         s.mobs.clear(); // dead/despawned -> gone from the snapshot
         s.gameTime = 1;
+        // committed: combat doesn't flap off the instant the target vanishes for one tick
+        assertEquals(BehaviorId.COMBAT, decide(a, s));
+        // but once the target has stayed gone past the commit window, the fight is over
+        s.gameTime = 40;
         assertEquals(BehaviorId.NONE, decide(a, s));
     }
 

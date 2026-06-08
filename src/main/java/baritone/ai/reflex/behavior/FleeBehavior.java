@@ -159,9 +159,17 @@ public final class FleeBehavior implements ReflexBehavior {
             return List.of(ReflexAction.releaseAll());
         }
         if (nearest.distance <= t.panicDistance) {
-            // PANIC: sprint directly away before pathing can even compute
+            // PANIC: sprint away before pathing can even compute — but never INTO lava or off a
+            // ledge. Use the average away-vector from every pursuer, snapped to a safe direction.
+            float awayYaw = Moves.awayFromAll(s, mobs);
             List<ReflexAction> actions = new ArrayList<>(4);
-            actions.add(ReflexAction.look(ReflexMath.yawAway(s.posX, s.posZ, nearest.x, nearest.z), 5F));
+            if (Moves.boxedIn(s, awayYaw)) {
+                // hazards all around: don't run into one. Face the threat and let the escalation
+                // ladder resolve it (pillar/wall) instead of sprinting to our death.
+                actions.add(ReflexAction.look(awayYaw, 5F));
+                return actions;
+            }
+            actions.add(ReflexAction.look(Moves.safeFleeYaw(s, awayYaw), 5F));
             actions.add(ReflexAction.hold(Input.MOVE_FORWARD, true));
             actions.add(ReflexAction.hold(Input.SPRINT, true));
             if (s.horizontalCollision) {

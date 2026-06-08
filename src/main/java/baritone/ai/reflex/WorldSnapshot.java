@@ -84,6 +84,25 @@ public final class WorldSnapshot {
     /** Nearest reachable water block when on fire, else null. */
     public BlockPosSpec nearestWater;
 
+    // ---- forward perception ("vision"): cheap look-ahead so reflexes act BEFORE the bot is
+    //      already dying. Indexed by octant (see ReflexMath.OCTANT_*): 0=south(+Z), going
+    //      clockwise through SW/W/NW/N/NE/E/SE. The adapter fills these from block scans.
+    /** Lava within a couple blocks straight ahead (look/travel direction). */
+    public boolean lavaAhead;
+    /** A killing drop (open gap) within a couple blocks straight ahead. */
+    public boolean dropAhead;
+    /**
+     * Per-octant "is it safe to move/flee that way" — false means lava, a long drop, or a wall
+     * blocks that direction. All-true by default so unscanned tests treat every way as open.
+     */
+    public boolean[] octantSafe = {true, true, true, true, true, true, true, true};
+
+    // ---- ambient (spawn / night awareness)
+    /** Block-light at the feet (0-15); low light at night is where hostiles spawn on top of you. */
+    public int lightLevel = 15;
+    /** Derived from the world day-time: night is when new hostiles spawn. */
+    public boolean night;
+
     // ---- entities & damage
     public List<MobInfo> mobs = new ArrayList<>();
     public List<DamageEvent> recentDamage = new ArrayList<>();

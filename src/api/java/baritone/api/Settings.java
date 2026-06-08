@@ -1292,6 +1292,41 @@ public final class Settings {
     public final Setting<Double> reflexFireWaterRadius = new Setting<>(8.0);
 
     /**
+     * How far (blocks) the reflexes scan for hostile mobs each tick. Larger than the engage radius
+     * on purpose: it is the bot's "vision", letting it react to a threat that is closing fast while
+     * it is still far enough away to do something about it.
+     */
+    public final Setting<Double> reflexPerceptionRadius = new Setting<>(16.0);
+
+    /**
+     * Extra engage distance (blocks) granted to a mob that is bearing down on the bot (approaching
+     * fast or already aggroed). Lets the flee reflex start moving before a creeper reaches blast
+     * range instead of waiting for it to cross the fixed radius. {@code 0} disables predictive flee.
+     */
+    public final Setting<Double> reflexPredictiveRange = new Setting<>(4.0);
+
+    /**
+     * Anti-flap: a freshly engaged mob reflex (flee / fight / retreat) commits for at least this
+     * many ticks before it may release, so a mob bobbing across the engage boundary can't make the
+     * bot thrash between fleeing and working.
+     */
+    public final Setting<Integer> reflexMinDwellTicks = new Setting<>(12);
+
+    /**
+     * Anti-flap: once a mob reflex wants to release (threat gone), the threat must stay gone this
+     * many ticks before control actually returns to the mission. Bridges brief line-of-sight or
+     * range losses so a single chase is one episode, not ten.
+     */
+    public final Setting<Integer> reflexReleaseGraceTicks = new Setting<>(16);
+
+    /**
+     * During a calm lull (no hostiles nearby) the auto-eat reflex tops the hunger bar up once it
+     * drops to this, so the bot never coasts into starvation mid-mission. Always at least the
+     * urgent {@link #reflexEatAtHunger} threshold in practice; a real threat still preempts eating.
+     */
+    public final Setting<Integer> reflexProactiveEatHunger = new Setting<>(16);
+
+    /**
      * When true, lines written to {@code <gameDir>/baritone/remote_commands.txt} are executed as
      * Baritone chat commands once per second and the file is truncated. Used for unattended
      * training-data farming sessions driven from outside the game. Local filesystem only; no

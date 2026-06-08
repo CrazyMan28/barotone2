@@ -35,6 +35,15 @@ public final class MobInfo {
     public double aimY;
     /** Distance from the player (same metric as {@code player.distanceTo}). */
     public double distance;
+    /**
+     * Closing speed in blocks/tick toward the player (positive = getting closer, negative =
+     * retreating). The adapter derives it from the change in distance across ticks; it lets the
+     * detectors engage a fast-approaching threat earlier instead of waiting for it to reach the
+     * fixed engage radius.
+     */
+    public double approachingSpeed;
+    /** This mob is actively targeting the player (its attack/aggro target is us). */
+    public boolean aggro;
     public boolean lineOfSight = true;
     /** Creeper — explodes, must NEVER be meleed. */
     public boolean creeper;
