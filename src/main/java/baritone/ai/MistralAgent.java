@@ -17,6 +17,7 @@
 
 package baritone.ai;
 
+import baritone.ai.planner.DeathWatch;
 import baritone.api.BaritoneAPI;
 import baritone.api.IBaritone;
 import baritone.api.Settings;
@@ -261,6 +262,10 @@ public final class MistralAgent implements Helper {
         }
         worker = Thread.currentThread();
         RUNNING.set(this);
+        // A sub-agent that dies mid-step has just lost all its gear (it would keep mining cobblestone
+        // with its fist). Snapshot the death counter so the loop can bail the instant a new death
+        // happens and hand control back to the planner, which re-verifies/recovers.
+        long deathSeqAtStart = subAgentMode ? DeathWatch.currentSeq() : -1L;
         tools.setForbidExplore(goalForbidsExplore(userGoal));
         GoalTracker.setStatus(planMode ? "Planning" : "Starting");
         MissionMemory.recordCheckpointQuietly(userGoal, "agent_started", provider + ":" + model, "running");
@@ -351,6 +356,12 @@ public final class MistralAgent implements Helper {
                 if (cancelled) {
                     logDirect("[AI] cancelled.", ChatFormatting.YELLOW);
                     return cancelOutcome("Cancelled");
+                }
+                // Died mid-step: stop now (don't mine with a fist after respawn) and hand back to
+                // the planner, which un-checks the gear we lost and recovers/replans.
+                if (subAgentMode && DeathWatch.currentSeq() > deathSeqAtStart) {
+                    logDirect("[AI] died mid-step — handing back to the planner.", ChatFormatting.YELLOW);
+                    return failOutcome("died mid-step (lost gear; planner will recover/re-gear)");
                 }
 
                 OpenAiChatClient.AssistantMessage am;
