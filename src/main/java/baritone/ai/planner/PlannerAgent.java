@@ -425,28 +425,48 @@ public final class PlannerAgent implements Helper {
                 settings.mistralMaxRetries.value, settings.mistralRetryBackoffMillis.value,
                 settings.mistralRequestTimeoutSeconds.value);
         JsonArray toolDefs = submitPlanToolDefs();
+        int maxTok = Math.max(512, settings.aiPlannerMaxTokens.value);
 
-        JsonArray messages = new JsonArray();
-        messages.add(chatMessage("system", systemPrompt));
-        messages.add(chatMessage("user", userPrompt));
-
-        for (int attempt = 0; attempt < 2 && !cancelled; attempt++) {
+        // Each attempt sends a FRESHLY BUILT message list (system + user [+ a corrective nudge]).
+        // We never append the model's previous tool-call turn: Mistral rejects any history where an
+        // assistant tool_call lacks a matching tool response ("Not the same number of function calls
+        // and responses", HTTP 422) — which is exactly what broke the old retry and made the planner
+        // fall back to the plain agent.
+        for (int attempt = 0; attempt < 3 && !cancelled; attempt++) {
+            JsonArray messages = plannerMessages(systemPrompt, userPrompt, attempt);
             try {
-                OpenAiChatClient.AssistantMessage am = client.chat(model, messages,
-                        toolDefs, 0.2, Math.max(512, settings.aiPlannerMaxTokens.value));
+                OpenAiChatClient.AssistantMessage am = client.chat(model, messages, toolDefs, 0.2, maxTok);
                 JsonObject args = extractSubmitPlanArgs(am);
                 if (args != null) {
                     return args;
                 }
-                messages.add(am.raw);
-                messages.add(chatMessage("user",
-                        "You must respond by CALLING the submit_plan tool with reasoning and sub_goals. No prose."));
+                logDirect("[AI:planner] plan reply had no usable submit_plan call"
+                        + (attempt < 2 ? " — retrying" : " — falling back"), ChatFormatting.YELLOW);
             } catch (Exception e) {
                 logDirect("[AI:planner] plan call failed (" + truncate(String.valueOf(e.getMessage()), 120)
-                        + ")" + (attempt == 0 ? " — retrying" : ""), ChatFormatting.YELLOW);
+                        + ")" + (attempt < 2 ? " — retrying" : " — falling back"), ChatFormatting.YELLOW);
             }
         }
         return null;
+    }
+
+    /**
+     * Build the message list for one planner attempt — always just a system + user pair, plus a
+     * corrective nudge on retries. Crucially NEVER contains an assistant or tool message, so the
+     * request can't carry an unanswered tool_call (the cause of Mistral's HTTP 422).
+     */
+    static JsonArray plannerMessages(String systemPrompt, String userPrompt, int attempt) {
+        JsonArray messages = new JsonArray();
+        messages.add(chatMessage("system", systemPrompt));
+        messages.add(chatMessage("user", userPrompt));
+        if (attempt > 0) {
+            messages.add(chatMessage("user",
+                    "Your previous reply was not a usable submit_plan call. Respond NOW by calling the "
+                            + "submit_plan tool ONLY, with valid, COMPLETE JSON arguments: a short 'reasoning' "
+                            + "string and a 'sub_goals' array. Keep each instruction concise so the JSON is not "
+                            + "truncated. Do not write any prose outside the tool call."));
+        }
+        return messages;
     }
 
     /**

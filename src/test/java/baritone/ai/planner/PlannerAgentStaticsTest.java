@@ -101,6 +101,24 @@ public class PlannerAgentStaticsTest {
     }
 
     @Test
+    public void plannerMessagesNeverCarryAnUnansweredToolCall() {
+        // Mistral 422 "Not the same number of function calls and responses" happens when an
+        // assistant tool_call has no matching tool response. The planner request must therefore
+        // only ever contain system/user roles — never assistant or tool.
+        for (int attempt = 0; attempt < 3; attempt++) {
+            JsonArray msgs = PlannerAgent.plannerMessages("sys", "usr", attempt);
+            for (com.google.gson.JsonElement el : msgs) {
+                String role = el.getAsJsonObject().get("role").getAsString();
+                assertTrue("only system/user roles allowed, got " + role,
+                        role.equals("system") || role.equals("user"));
+            }
+        }
+        // first attempt is just system + user; retries add a corrective user nudge
+        assertEquals(2, PlannerAgent.plannerMessages("sys", "usr", 0).size());
+        assertEquals(3, PlannerAgent.plannerMessages("sys", "usr", 1).size());
+    }
+
+    @Test
     public void ignoresOtherToolCallsAndProse() {
         OpenAiChatClient.AssistantMessage prose = new OpenAiChatClient.AssistantMessage();
         prose.content = "here is my plan: ...";

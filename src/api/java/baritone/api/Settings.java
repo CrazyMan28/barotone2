@@ -1392,9 +1392,11 @@ public final class Settings {
 
     /**
      * Max tokens for the planner's decompose/replan calls. Larger than the mission default so the
-     * model has room to think in the required {@code reasoning} field before listing sub-goals.
+     * model has room to think in the required {@code reasoning} field AND emit a full multi-step plan
+     * without the JSON being truncated mid-arguments (a truncated plan call is unparseable and forces
+     * a fallback to the plain agent).
      */
-    public final Setting<Integer> aiPlannerMaxTokens = new Setting<>(2048);
+    public final Setting<Integer> aiPlannerMaxTokens = new Setting<>(4096);
 
     /**
      * Tool-call budget per planner sub-goal (each sub-goal is a fresh sub-agent conversation).
