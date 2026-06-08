@@ -435,7 +435,8 @@ public final class PlannerAgent implements Helper {
         for (int attempt = 0; attempt < 3 && !cancelled; attempt++) {
             JsonArray messages = plannerMessages(systemPrompt, userPrompt, attempt);
             try {
-                OpenAiChatClient.AssistantMessage am = client.chat(model, messages, toolDefs, 0.2, maxTok);
+                // "any" forces the model to call submit_plan (the only tool) — no prose-instead-of-tool
+                OpenAiChatClient.AssistantMessage am = client.chat(model, messages, toolDefs, 0.2, maxTok, "any");
                 JsonObject args = extractSubmitPlanArgs(am);
                 if (args != null) {
                     return args;

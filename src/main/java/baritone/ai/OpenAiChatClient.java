@@ -89,6 +89,19 @@ public final class OpenAiChatClient {
                                  JsonArray tools,
                                  double temperature,
                                  int maxTokens) throws IOException, InterruptedException {
+        return chat(model, messages, tools, temperature, maxTokens, "auto");
+    }
+
+    /**
+     * @param toolChoice "auto" (model decides), "any" (must call SOME tool — use to force a
+     *                   single-tool schema like the planner's submit_plan), or "none".
+     */
+    public AssistantMessage chat(String model,
+                                 JsonArray messages,
+                                 JsonArray tools,
+                                 double temperature,
+                                 int maxTokens,
+                                 String toolChoice) throws IOException, InterruptedException {
         if (model == null || model.isBlank()) {
             throw new IOException(providerName + " model is not set.");
         }
@@ -100,7 +113,7 @@ public final class OpenAiChatClient {
         body.add("messages", messages);
         if (tools != null && tools.size() > 0) {
             body.add("tools", tools);
-            body.addProperty("tool_choice", "auto");
+            body.addProperty("tool_choice", toolChoice == null ? "auto" : toolChoice);
         }
 
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(URI.create(endpoint))
