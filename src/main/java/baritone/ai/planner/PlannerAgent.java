@@ -140,6 +140,13 @@ public final class PlannerAgent implements Helper {
                                     logDirect("[AI:planner] moved to hotbar: " + shown, ChatFormatting.GREEN);
                                 }
                             }
+                            // if the goal produced armor, actually WEAR it so it lands on the player
+                            if (wantsArmor(plan)) {
+                                String worn = tools.equipBestArmor();
+                                if (worn != null && worn.startsWith("Equipped")) {
+                                    logDirect("[AI:planner] " + worn, ChatFormatting.GREEN);
+                                }
+                            }
                         } catch (RuntimeException ignored) {}
                         GoalTracker.finish("All " + plan.subGoals.size() + " steps verified: " + mainGoal);
                         MissionMemory.recordCheckpointQuietly(mainGoal, "planner_done",
@@ -472,6 +479,23 @@ public final class PlannerAgent implements Helper {
             }
         }
         return ids;
+    }
+
+    /** True when the plan's deliverables include any armor (so we should auto-wear it on finish). */
+    static boolean wantsArmor(PlanDocument plan) {
+        for (String id : deliverableItemIds(plan)) {
+            if (ToolTiers.armorSlot(id) != null) {
+                return true;
+            }
+        }
+        if (plan != null && plan.finalCriteria != null) {
+            for (SuccessCriterion c : plan.finalCriteria) {
+                if ("armor_equipped".equals(c.type)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /** The model the planner should use: its own (Large) model, or the mission model if unset. */

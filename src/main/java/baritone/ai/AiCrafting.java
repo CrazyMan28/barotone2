@@ -3966,6 +3966,90 @@ public final class AiCrafting {
         });
     }
 
+    /** InventoryMenu armor slot indices: 5=head, 6=chest, 7=legs, 8=feet (vanilla). */
+    private static final int[] ARMOR_MENU_SLOTS = {5, 6, 7, 8};
+    private static final String[] ARMOR_SLOT_NAMES = {"head", "chest", "legs", "feet"};
+    private static final String[] ARMOR_SUFFIX = {"_helmet", "_chestplate", "_leggings", "_boots"};
+
+    /**
+     * Put on the best armor the player owns in each empty/worse slot — reads the inventory, finds
+     * the highest-tier helmet/chestplate/leggings/boots, and wears it via the armor slots. The
+     * agent had no way to actually equip armor before this (it could only see what was worn).
+     * Best-effort; only swaps when the inventory piece beats what's currently worn.
+     */
+    public static String equipBestArmor(IPlayerContext ctx) {
+        return onClient(ctx, () -> {
+            LocalPlayer p = ctx.player();
+            if (p == null) {
+                return "Player not in world.";
+            }
+            if (!ensurePlayerInventoryMenu(ctx, p)) {
+                return "Could not open the inventory to equip armor.";
+            }
+            net.minecraft.world.inventory.AbstractContainerMenu menu = p.inventoryMenu;
+            StringBuilder worn = new StringBuilder();
+            for (int s = 0; s < ARMOR_MENU_SLOTS.length; s++) {
+                int armorSlot = ARMOR_MENU_SLOTS[s];
+                int currentRank = armorRankOf(menu.getSlot(armorSlot).getItem());
+                // find the best matching piece in the main inventory/hotbar
+                int bestInvSlot = -1;
+                int bestRank = currentRank;
+                String bestName = null;
+                for (int i = INV_FIRST_MAIN; i <= INV_LAST_HOTBAR; i++) {
+                    ItemStack st = menu.getSlot(i).getItem();
+                    if (st.isEmpty()) {
+                        continue;
+                    }
+                    net.minecraft.resources.Identifier id = BuiltInRegistries.ITEM.getKey(st.getItem());
+                    if (id == null || !id.getPath().endsWith(ARMOR_SUFFIX[s])) {
+                        continue;
+                    }
+                    int r = armorRankOf(st);
+                    if (r > bestRank) {
+                        bestRank = r;
+                        bestInvSlot = i;
+                        bestName = id.getPath();
+                    }
+                }
+                if (bestInvSlot < 0) {
+                    continue; // nothing better to wear in this slot
+                }
+                // pick up the armor piece, drop it into the armor slot, then stash whatever came back
+                click(ctx, bestInvSlot, ClickType.PICKUP, 0);
+                click(ctx, armorSlot, ClickType.PICKUP, 0);
+                if (!p.containerMenu.getCarried().isEmpty()) {
+                    click(ctx, bestInvSlot, ClickType.PICKUP, 0); // return the previously-worn piece
+                }
+                worn.append(ARMOR_SLOT_NAMES[s]).append('=').append(bestName).append(' ');
+            }
+            String result = worn.toString().trim();
+            return result.isEmpty() ? "Already wearing the best armor I have (or have none)." : "Equipped armor: " + result;
+        });
+    }
+
+    /** Protection rank of an armor item (leather<gold<chain<iron<diamond<netherite), -1 if not armor. */
+    private static int armorRankOf(ItemStack st) {
+        if (st == null || st.isEmpty()) {
+            return -1;
+        }
+        net.minecraft.resources.Identifier id = BuiltInRegistries.ITEM.getKey(st.getItem());
+        if (id == null) {
+            return -1;
+        }
+        String path = id.getPath();
+        boolean isArmor = false;
+        for (String suf : ARMOR_SUFFIX) {
+            if (path.endsWith(suf)) {
+                isArmor = true;
+                break;
+            }
+        }
+        if (!isArmor) {
+            return -1;
+        }
+        return baritone.ai.planner.ToolTiers.armorRank(baritone.ai.planner.ToolTiers.armorMaterial(path));
+    }
+
     /**
      * Move the listed items (e.g. the tools a mission just crafted) from the main inventory into
      * the hotbar so they are VISIBLE in the window and immediately usable. Items already in the

@@ -220,6 +220,11 @@ public final class BaritoneTools {
                 params(
                         param("item_id", "string", "Item id, e.g. minecraft:bucket or diamond_pickaxe.", true)
                 )));
+        arr.add(fn("equip_armor",
+                "PUT ON armor. Reads your inventory and wears the best helmet/chestplate/leggings/boots you own "
+                        + "(only upgrades — won't downgrade what you already wear). Call this after crafting/finding armor; "
+                        + "get_state's armor_equipped shows what is currently worn.",
+                params()));
         arr.add(fn("right_click",
                 "Right-click with the currently held item, using the current crosshair target if there is one.",
                 params()));
@@ -532,6 +537,8 @@ public final class BaritoneTools {
                     return ok(openStation(args));
                 case "equip_item":
                     return ok(AiCrafting.equipItem(ctx, args.get("item_id").getAsString()));
+                case "equip_armor":
+                    return ok(AiCrafting.equipBestArmor(ctx));
                 case "right_click":
                     return ok(AiCrafting.rightClick(ctx));
                 case "find_entities":
@@ -2059,6 +2066,11 @@ public final class BaritoneTools {
     /** Move the listed items (a finished mission's deliverables) into the hotbar so they show. */
     public String showcaseInHotbar(java.util.List<String> itemIds) {
         return AiCrafting.arrangeItemsInHotbar(ctx, itemIds);
+    }
+
+    /** Put on the best armor the player owns (used by equip_armor + planner completion). */
+    public String equipBestArmor() {
+        return AiCrafting.equipBestArmor(ctx);
     }
 
     /**
