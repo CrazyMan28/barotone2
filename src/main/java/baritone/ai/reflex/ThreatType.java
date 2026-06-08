@@ -32,6 +32,8 @@ public enum ThreatType {
     SWARM,
     RANGED,
     MELEE_MOB,
+    /** Being beaten by mob(s) we can't/shouldn't trade with (low hp or outnumbered) — retreat+heal. */
+    OVERWHELMED,
     POISON,
     HUNGER
 }

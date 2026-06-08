@@ -245,6 +245,7 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         tuning.minMobDwellTicks = s.reflexMinDwellTicks.value;
         tuning.mobReleaseGraceTicks = s.reflexReleaseGraceTicks.value;
         tuning.proactiveEatHunger = s.reflexProactiveEatHunger.value;
+        tuning.fightMaxMobs = s.reflexFightMaxMobs.value;
     }
 
     private WorldSnapshot snapshot(LocalPlayer player, long now) {

@@ -31,7 +31,9 @@ import baritone.ai.reflex.WorldSnapshot;
 import baritone.api.utils.input.Input;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Lick your wounds: BREAK CONTACT (run until no hostile is close), then EAT back to full
@@ -39,14 +41,18 @@ import java.util.List;
  * {@code retreatTargetHp} and the interrupted mission resumes.
  *
  * <p>If the bot can't actually break contact (cornered, mob faster than us) the watchdog notices
- * the lack of progress and the bot WALLS the chaser off instead of running into a corner forever,
- * turning "retreat" into a defensible heal.
+ * the lack of progress and the bot BUNKERS: it seals the open sides toward the attackers with
+ * blocks — boxing itself into a corner — then eats and regenerates behind the wall instead of
+ * running into a dead end forever. Once it can't be reached it heals; once healed the arbiter
+ * hands control back.
  */
 public final class RetreatAndHealBehavior implements ReflexBehavior {
 
+    /** A mob this close can still land a melee hit / shoot us — keep sealing rather than eating. */
+    private static final double REACH = 3.5D;
+
     private final BehaviorWatchdog watchdog = new BehaviorWatchdog(60, 3.0D, 2.0D);
-    private boolean defending;
-    private int defendTicks;
+    private boolean bunkering;
 
     @Override
     public BehaviorId id() {
@@ -56,13 +62,12 @@ public final class RetreatAndHealBehavior implements ReflexBehavior {
     @Override
     public void enter(WorldSnapshot s, ResponsePlan plan) {
         watchdog.reset();
-        defending = false;
-        defendTicks = 0;
+        bunkering = false;
     }
 
     @Override
     public List<ReflexAction> tick(WorldSnapshot s, ReflexTuning t, ResponsePlan plan) {
-        // BREAK_CONTACT: any hostile in pressure range -> keep running (or wall up if we can't)
+        // BREAK_CONTACT: any hostile in pressure range -> keep running (or bunker if we can't)
         List<MobInfo> chasing = new ArrayList<>();
         MobInfo nearest = null;
         for (MobInfo m : s.mobs) {
@@ -74,15 +79,19 @@ public final class RetreatAndHealBehavior implements ReflexBehavior {
             }
         }
         if (!chasing.isEmpty()) {
-            boolean stuck = watchdog.stuck(s.gameTime, s.posX, s.posZ, s.hp);
-            if (stuck && s.blockSlot >= 0) {
-                defending = true; // can't outrun them: brick up and heal behind it
+            // once we've failed to gain ground, commit to bunkering for the rest of the episode
+            if (watchdog.stuck(s.gameTime, s.posX, s.posZ, s.hp) && s.blockSlot >= 0) {
+                bunkering = true;
             }
-            if (defending && s.blockSlot >= 0 && defendTicks++ < 12 && nearest != null) {
-                return wallOff(s, nearest);
+            if (bunkering && s.blockSlot >= 0) {
+                boolean reachable = nearest != null && nearest.distance <= REACH;
+                if (reachable) {
+                    return sealCorner(s, chasing); // a wall is still missing: keep bricking up
+                }
+                // walled off: heal behind cover
+                return healOrWait(s, t);
             }
-            defending = false;
-            defendTicks = 0;
+            // still mobile: run for safety (Baritone pathing keeps this off hazards)
             BlockPosSpec[] from = new BlockPosSpec[chasing.size()];
             for (int i = 0; i < chasing.size(); i++) {
                 from[i] = ReflexMath.feetBlock(chasing.get(i));
@@ -93,7 +102,12 @@ public final class RetreatAndHealBehavior implements ReflexBehavior {
             );
         }
         watchdog.reset();
-        // HEAL: top the hunger bar up so natural regen runs
+        bunkering = false;
+        return healOrWait(s, t);
+    }
+
+    /** EAT to refill hunger so natural regen runs, else just hold position and regenerate. */
+    private static List<ReflexAction> healOrWait(WorldSnapshot s, ReflexTuning t) {
         if (s.food < t.eatReleaseFood && s.bestFoodSlot >= 0) {
             return List.of(
                     ReflexAction.selectSlot(s.bestFoodSlot),
@@ -101,31 +115,40 @@ public final class RetreatAndHealBehavior implements ReflexBehavior {
                     ReflexAction.hold(Input.CLICK_RIGHT, true)
             );
         }
-        // WAIT: hold position and regen (pathing stays paused while we're engaged)
         return List.of(ReflexAction.releaseAll());
     }
 
-    /** Brick the cell between us and the chaser (feet + head) so we can heal behind cover. */
-    private static List<ReflexAction> wallOff(WorldSnapshot s, MobInfo mob) {
-        double dx = mob.x - s.posX;
-        double dz = mob.z - s.posZ;
-        int ox = 0;
-        int oz = 0;
-        if (Math.abs(dx) >= Math.abs(dz)) {
-            ox = dx >= 0 ? 1 : -1;
-        } else {
-            oz = dz >= 0 ? 1 : -1;
-        }
+    /**
+     * Brick the feet+head cell on the side of every distinct attacker direction, boxing ourselves
+     * into a corner. Placement is idempotent in the executor (already-filled cells are skipped), so
+     * re-emitting every tick simply completes and maintains the enclosure.
+     */
+    private static List<ReflexAction> sealCorner(WorldSnapshot s, List<MobInfo> attackers) {
         int feetY = (int) Math.floor(s.posY);
-        BlockPosSpec feet = new BlockPosSpec((int) Math.floor(s.posX) + ox, feetY, (int) Math.floor(s.posZ) + oz);
-        BlockPosSpec head = new BlockPosSpec(feet.x, feetY + 1, feet.z);
-        return List.of(
-                ReflexAction.releaseAll(),
-                ReflexAction.selectSlot(s.blockSlot),
-                ReflexAction.snapLook(ReflexMath.yawToward(s.posX, s.posZ, feet.x + 0.5D, feet.z + 0.5D), 35F),
-                ReflexAction.placeBlock(feet),
-                ReflexAction.placeBlock(head)
-        );
+        int bx = (int) Math.floor(s.posX);
+        int bz = (int) Math.floor(s.posZ);
+        List<ReflexAction> actions = new ArrayList<>();
+        actions.add(ReflexAction.releaseAll());
+        actions.add(ReflexAction.selectSlot(s.blockSlot));
+        Set<Long> sides = new HashSet<>();
+        for (MobInfo m : attackers) {
+            double dx = m.x - s.posX;
+            double dz = m.z - s.posZ;
+            int ox = 0;
+            int oz = 0;
+            if (Math.abs(dx) >= Math.abs(dz)) {
+                ox = dx >= 0 ? 1 : -1;
+            } else {
+                oz = dz >= 0 ? 1 : -1;
+            }
+            if (!sides.add((((long) ox) << 32) ^ (oz & 0xffffffffL))) {
+                continue; // already sealing that side this tick
+            }
+            BlockPosSpec feet = new BlockPosSpec(bx + ox, feetY, bz + oz);
+            actions.add(ReflexAction.placeBlock(feet));
+            actions.add(ReflexAction.placeBlock(new BlockPosSpec(feet.x, feetY + 1, feet.z)));
+        }
+        return actions;
     }
 
     @Override

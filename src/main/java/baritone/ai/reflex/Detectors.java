@@ -37,6 +37,8 @@ public final class Detectors {
     public static final int SEV_FLEE_MOB = 80;
     /** A hissing creeper gets this on top of {@link #SEV_FLEE_MOB}. */
     public static final int SEV_IGNITED_BONUS = 15;
+    /** Getting beaten and can't win the trade — break off and heal. Above melee, below mob-flee. */
+    public static final int SEV_OVERWHELMED = 75;
     public static final int SEV_MELEE = 60;
     public static final int SEV_POISON = 50;
     public static final int SEV_HUNGER = 30;
@@ -68,9 +70,34 @@ public final class Detectors {
         return !RISKY_FOODS.contains(path);
     }
 
-    /** Geared and healthy enough to trade hits instead of running. */
+    /** Geared, healthy AND not outnumbered enough to stand and trade with a skeleton. */
     public static boolean combatReady(WorldSnapshot s, ReflexTuning t) {
-        return t.fightBack && s.hp >= t.combatMinHealth && s.bestWeaponSlot >= 0;
+        return t.fightBack && s.hp >= t.combatMinHealth && s.bestWeaponSlot >= 0 && !outnumbered(s, t);
+    }
+
+    /**
+     * Healthy and not outnumbered enough to brawl a melee mob (fists are fine for a lone zombie).
+     * The difference from {@link #combatReady} is that brawling doesn't require a weapon — but the
+     * moment we're outnumbered or low on hp we'd rather run than trade.
+     */
+    public static boolean canBrawl(WorldSnapshot s, ReflexTuning t) {
+        return t.fightBack && s.hp >= t.combatMinHealth && !outnumbered(s, t);
+    }
+
+    /** Count of hostiles (any kind) within {@code radius}. */
+    public static int hostilesWithin(WorldSnapshot s, double radius) {
+        int count = 0;
+        for (MobInfo m : s.mobs) {
+            if (m.distance <= radius && (m.hostile || m.creeper || m.skeleton)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /** More hostiles crowding melee range than we're willing to take on at once. */
+    public static boolean outnumbered(WorldSnapshot s, ReflexTuning t) {
+        return hostilesWithin(s, t.meleeEngageRadius + 2D) > t.fightMaxMobs;
     }
 
     public static boolean recentlyHurt(WorldSnapshot s, ReflexTuning t) {
@@ -167,13 +194,13 @@ public final class Detectors {
         return null;
     }
 
-    /** A mob we stand and fight: a skeleton we're geared for, or any melee mob that just hit us. */
+    /** A mob we stand and fight: a skeleton we're geared for, or a melee mob that just hit us. */
     public static Threat meleeFight(WorldSnapshot s, ReflexTuning t) {
         MobInfo skeleton = skeletonToFight(s, t);
         if (skeleton != null) {
             return new Threat(ThreatType.MELEE_MOB, SEV_MELEE, skeleton);
         }
-        if (t.fightBack && recentlyHurt(s, t)) {
+        if (canBrawl(s, t) && recentlyHurt(s, t)) {
             MobInfo target = nearest(s, t.meleeEngageRadius, m -> m.hostile && !m.creeper && !m.skeleton);
             if (target != null) {
                 return new Threat(ThreatType.MELEE_MOB, SEV_MELEE, target);
@@ -182,18 +209,32 @@ public final class Detectors {
         return null;
     }
 
+    /**
+     * Being beaten by something we can't (or shouldn't) trade with — low hp, outnumbered, or no
+     * weapon — so we break contact and heal instead of standing there dying. Creepers are excluded
+     * because the flee detector already handles them (never bunker next to a creeper).
+     */
+    public static Threat overwhelmed(WorldSnapshot s, ReflexTuning t) {
+        if (!recentlyHurt(s, t) || canBrawl(s, t)) {
+            return null; // not hurt, or we're fit to brawl: handled elsewhere
+        }
+        MobInfo attacker = nearest(s, t.retreatSafeDistance, m -> m.hostile || m.skeleton);
+        return attacker != null ? new Threat(ThreatType.OVERWHELMED, SEV_OVERWHELMED, attacker) : null;
+    }
+
     public static Threat hunger(WorldSnapshot s, ReflexTuning t) {
         if (!t.autoEat || s.screenOpen || s.bestFoodSlot < 0) {
             return null;
         }
+        boolean calm = !anyWithin(s, t.swarmRadius, m -> m.hostile || m.creeper || m.skeleton);
         // urgent: always eat once hunger is low enough to threaten regen / sprint.
         boolean urgent = s.food <= t.eatAtHunger;
-        // proactive: top the bar up earlier during a calm lull so we never coast into starvation
-        // mid-mission — but only when nothing hostile is around (EAT is the lowest priority, so a
-        // real threat still preempts the moment one appears).
-        boolean lull = s.food <= t.proactiveEatHunger
-                && !anyWithin(s, t.swarmRadius, m -> m.hostile || m.creeper || m.skeleton);
-        return urgent || lull ? new Threat(ThreatType.HUNGER, SEV_HUNGER) : null;
+        // proactive: top the bar up earlier during a calm lull so we never coast into starvation.
+        boolean lull = s.food <= t.proactiveEatHunger && calm;
+        // heal: hurt and food below the regen floor (18) — eat to switch natural regen back on,
+        // but only when it's safe so we don't waste the meal getting interrupted.
+        boolean healEat = s.hp < s.maxHp && s.food < t.eatReleaseFood && calm;
+        return urgent || lull || healEat ? new Threat(ThreatType.HUNGER, SEV_HUNGER) : null;
     }
 
     /** On fire (and not in lava/water, which own their cases). Scarier the lower our hp. */

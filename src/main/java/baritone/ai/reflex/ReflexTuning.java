@@ -68,6 +68,7 @@ public final class ReflexTuning {
     public int swarmCount = 3;               // this many hostiles = a swarm, don't brawl
     public double swarmRadius = 6.0D;
     public int combatStrafeTicks = 12;       // flip the kite/strafe direction every this many ticks
+    public int fightMaxMobs = 2;             // more hostiles than this crowding us -> flee, don't trade
 
     // ---- flee + escalation (ports the FleeWatchdog values)
     public int maxFleeTicks = 200;           // ~10s unresolved -> escalate

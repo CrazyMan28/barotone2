@@ -89,4 +89,29 @@ public class RetreatAndHealBehaviorTest {
                 find(actions, ReflexAction.Kind.SET_GOAL));
         assertNull(find(actions, ReflexAction.Kind.SELECT_SLOT));
     }
+
+    @Test
+    public void bunkersWhenItCannotOutrunTheChaser() {
+        WorldSnapshot s = hurt();
+        s.blockSlot = 4; // we have blocks to wall with
+        MobInfo z = new MobInfo();
+        z.entityId = 1;
+        z.hostile = true;
+        z.distance = 2; // within reach: can still hit us
+        z.x = 2;
+        s.mobs.add(z);
+        b.enter(s, plan);
+        // first tick: still mobile -> try to run
+        s.gameTime = 0;
+        assertNotNull("first reaction is to run", find(b.tick(s, t, plan), ReflexAction.Kind.SET_GOAL));
+        // no ground gained after the watchdog window -> commit to bunkering
+        s.gameTime = 61;
+        List<ReflexAction> actions = b.tick(s, t, plan);
+        assertNull("cornered: stop running and wall up", find(actions, ReflexAction.Kind.SET_GOAL));
+        ReflexAction slot = find(actions, ReflexAction.Kind.SELECT_SLOT);
+        assertNotNull("selects the block slot to seal the corner", slot);
+        assertEquals(4, slot.slot);
+        assertTrue("places at least a feet+head wall toward the attacker",
+                actions.stream().filter(a -> a.kind == ReflexAction.Kind.PLACE_BLOCK).count() >= 2);
+    }
 }

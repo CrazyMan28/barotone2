@@ -1327,6 +1327,13 @@ public final class Settings {
     public final Setting<Integer> reflexProactiveEatHunger = new Setting<>(16);
 
     /**
+     * The bot will stand and fight at most this many hostiles crowding melee range. Beyond it (or
+     * when low on health) it breaks off and retreats to heal instead of trading blows it can't win
+     * — "know when to fight and when to get away".
+     */
+    public final Setting<Integer> reflexFightMaxMobs = new Setting<>(2);
+
+    /**
      * When true, lines written to {@code <gameDir>/baritone/remote_commands.txt} are executed as
      * Baritone chat commands once per second and the file is truncated. Used for unattended
      * training-data farming sessions driven from outside the game. Local filesystem only; no

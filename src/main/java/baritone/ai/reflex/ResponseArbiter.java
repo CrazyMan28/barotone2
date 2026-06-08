@@ -72,6 +72,7 @@ public final class ResponseArbiter {
         add(threats, fleeThreat);
         add(threats, meleeThreat);
         add(threats, Detectors.swarm(s, t));
+        add(threats, Detectors.overwhelmed(s, t));
         add(threats, Detectors.poison(s, t));
         add(threats, Detectors.hunger(s, t));
 
@@ -323,6 +324,7 @@ public final class ResponseArbiter {
                 return BehaviorId.FLEE;
             case MELEE_MOB:
                 return BehaviorId.COMBAT;
+            case OVERWHELMED:
             case POISON:
                 return BehaviorId.RETREAT_HEAL;
             case HUNGER:
