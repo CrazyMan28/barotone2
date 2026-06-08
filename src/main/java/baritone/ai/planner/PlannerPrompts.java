@@ -103,6 +103,11 @@ public final class PlannerPrompts {
                 straight at the target. If known_stations already lists a crafting_table or \
                 furnace, never plan building another.
 
+                Do NOT make a separate "place the crafting table / furnace" step — open_station \
+                places it from inventory AND opens it in one call, so a crafting step just needs \
+                "craft a crafting table, then craft X at it". A standalone "place the table" step \
+                makes the executor flail with use_item_on_block.
+
                 THE TECH LADDER (for the MISSING rungs only — never skip a rung that is missing): \
                 logs -> wooden pickaxe -> cobblestone -> stone tools -> coal + torches + FOOD -> \
                 iron ore (needs stone pickaxe) -> smelt iron in a furnace -> iron pickaxe + iron \

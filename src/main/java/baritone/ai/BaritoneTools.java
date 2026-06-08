@@ -272,9 +272,11 @@ public final class BaritoneTools {
                         param("max_items", "integer", "Max food items to eat (default 8). It stops early once food is full.", false)
                 )));
         arr.add(fn("use_item_on_block",
-                "Equip an optional item, then use the held item on the nearest matching block within a small radius.",
+                "Equip an optional item, then use the held item on an EXISTING block already in the world within a small "
+                        + "radius (e.g. flint_and_steel on a block, bonemeal on crops). NOT for placing/opening a "
+                        + "crafting_table/furnace from your inventory — use open_station for that (it places AND opens it).",
                 params(
-                        param("block_id", "string", "Block id to use the held item on.", true),
+                        param("block_id", "string", "Block id of a block already placed in the world.", true),
                         param("item_id", "string", "Optional item id to equip before using.", false),
                         param("max_radius", "integer", "Search radius in blocks (default 6, max 32).", false)
                 )));
@@ -570,6 +572,20 @@ public final class BaritoneTools {
                 case "eat":
                     return ok(eat(args));
                 case "use_item_on_block": {
+                    // Redirect station placement: agents wrongly try use_item_on_block to "place" a
+                    // crafting_table/furnace from inventory, but that tool only acts on a block ALREADY
+                    // in the world (so it loops "no crafting_table found"). open_station places it from
+                    // inventory AND opens it — do that instead so the call just works.
+                    String blkId = args.has("block_id") && !args.get("block_id").isJsonNull()
+                            ? args.get("block_id").getAsString() : "";
+                    String itmId = args.has("item_id") && !args.get("item_id").isJsonNull()
+                            ? args.get("item_id").getAsString() : "";
+                    String station = stationTypeFromId(blkId.isEmpty() ? itmId : blkId);
+                    if (station != null) {
+                        JsonObject so = new JsonObject();
+                        so.addProperty("station", station);
+                        return ok("(use_item_on_block on a station -> using open_station) " + openStation(so));
+                    }
                     if (args.has("item_id") && !args.get("item_id").isJsonNull()
                             && !args.get("item_id").getAsString().isBlank()) {
                         String equip = AiCrafting.equipItem(ctx, args.get("item_id").getAsString());
@@ -2162,6 +2178,30 @@ public final class BaritoneTools {
             return SettingsUtil.settingDefaultToString(setting);
         } catch (RuntimeException e) {
             return String.valueOf(setting.defaultValue);
+        }
+    }
+
+    /** If an item/block id names a station open_station supports, return its type; else null. */
+    private static String stationTypeFromId(String id) {
+        if (id == null) {
+            return null;
+        }
+        String p = id.contains(":") ? id.substring(id.indexOf(':') + 1) : id;
+        p = p.trim().toLowerCase(Locale.ROOT);
+        switch (p) {
+            case "crafting_table":
+            case "furnace":
+            case "blast_furnace":
+            case "smoker":
+            case "brewing_stand":
+            case "stonecutter":
+            case "smithing_table":
+            case "anvil":
+            case "chipped_anvil":
+            case "damaged_anvil":
+                return p.endsWith("anvil") ? "anvil" : p;
+            default:
+                return null;
         }
     }
 
