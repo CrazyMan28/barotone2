@@ -121,6 +121,22 @@ public final class ReflexProcess extends BaritoneProcessHelper {
             }
             DeathWatch.onClientTick(player.isDeadOrDying(),
                     player.getX(), player.getY(), player.getZ(), dim, ctx.world().getGameTime());
+            // Auto-respawn: a dead bot is stuck on the death screen and can't move, so NONE of the
+            // planner's death recovery (re-verify plan, go get drops, re-gear) can run. Respawn it
+            // right away so the planner takes over a LIVING bot.
+            if (player.isDeadOrDying() && Baritone.settings().aiAutoRespawn.value) {
+                try {
+                    net.minecraft.client.Minecraft mc = ctx.minecraft();
+                    if (mc.player != null) {
+                        mc.player.respawn();
+                        if (mc.screen instanceof net.minecraft.client.gui.screens.DeathScreen) {
+                            mc.setScreen(null);
+                        }
+                    }
+                } catch (RuntimeException ignored) {
+                    // never let respawn bookkeeping break the tick
+                }
+            }
         }
         if (player == null || ctx.world() == null || !Baritone.settings().reflexesEnabled.value) {
             if (engine.active() != BehaviorId.NONE) {

@@ -1424,6 +1424,13 @@ public final class Settings {
     public final Setting<Boolean> aiHierarchicalPlanner = new Setting<>(true);
 
     /**
+     * Auto-respawn the bot the moment it dies, instead of leaving it stuck on the death screen
+     * (a corpse can't move, so the planner's death recovery can never run). After respawn the
+     * planner re-verifies the plan, un-checks the gear that dropped, and recovers/re-gears.
+     */
+    public final Setting<Boolean> aiAutoRespawn = new Setting<>(true);
+
+    /**
      * Model used ONLY for the planner's decompose/replan calls (the "main agent" that breaks the
      * goal into sub-goals). Defaults to {@code mistral-large-latest} so planning is done by a strong
      * model that traces the full tech ladder, even when the per-sub-goal executor runs a cheaper or
