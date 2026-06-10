@@ -298,8 +298,10 @@ public final class ResponseArbiter {
                     return true;
                 }
                 if (activeCause != null && activeCause.type == ThreatType.RANGED) {
-                    // sheltering from a shooter: out when it leaves (hysteresis) or we can take it
-                    return !Detectors.anyWithin(s, Detectors.fleeEngageRadius(t) + 4D, m -> m.skeleton)
+                    // sheltering from a shooter: hold until it has fully left our perception, not
+                    // just stepped past melee range — a kiting skeleton backs off to ~14 blocks and
+                    // keeps shooting, and resuming into that (the live death loop) is fatal
+                    return !Detectors.anyWithin(s, t.perceptionRadius, m -> m.skeleton)
                             || Detectors.combatReady(s, t);
                 }
                 // night turtle: out at dawn, once geared, or once nobody is visible any more

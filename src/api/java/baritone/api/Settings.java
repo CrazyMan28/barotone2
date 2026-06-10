@@ -1527,6 +1527,13 @@ public final class Settings {
     public final Setting<Integer> aiPlannerMaxDeathsPerSubGoal = new Setting<>(5);
 
     /**
+     * Total deaths a mission tolerates before the planner gives up. Deaths are now cheap (no replan
+     * burned per death) and a camped spot is abandoned rather than revisited, so a rough night no
+     * longer fails the mission after a handful of deaths — this is the real backstop instead.
+     */
+    public final Setting<Integer> aiPlannerMaxMissionDeaths = new Setting<>(12);
+
+    /**
      * Every death triggers an LLM replan with a full DEATH REPORT (cause, killer, drop location,
      * despawn countdown, drops-destroyed) so the planner explicitly decides "recover the drops"
      * (as the new first sub-goal) vs "write them off and re-gear". When false — or whenever the

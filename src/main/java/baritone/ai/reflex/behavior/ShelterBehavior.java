@@ -115,7 +115,10 @@ public final class ShelterBehavior implements ReflexBehavior {
         if (s.bedSlot >= 0 && !Detectors.anyWithin(s, BED_CALM_RADIUS, ShelterBehavior::hostile)) {
             return Mode.BED;
         }
-        if (s.digDownSafe && s.blockSlot >= 0) {
+        // Digging needs NO items — bare hands carve dirt/stone. A 2-deep hole drops the bot below
+        // a skeleton's arrow line even unsealed (sealing is a bonus when we DO have blocks). This is
+        // the universal answer a freshly-respawned, empty-handed bot has against a shooter in the open.
+        if (s.digDownSafe) {
             return Mode.DIG_IN;
         }
         if (s.blockSlot >= 0 && s.blockCount >= 4) {
@@ -125,7 +128,7 @@ public final class ShelterBehavior implements ReflexBehavior {
     }
 
     private Mode pickFallback(WorldSnapshot s) {
-        if (s.digDownSafe && s.blockSlot >= 0) {
+        if (s.digDownSafe) {
             return Mode.DIG_IN;
         }
         if (s.blockSlot >= 0 && s.blockCount >= 2) {
@@ -248,11 +251,17 @@ public final class ShelterBehavior implements ReflexBehavior {
         float awayYaw = ReflexMath.yawAway(s.posX, s.posZ, menace.x, menace.z);
         int cover = bestCoverOctant(s, awayYaw);
         if (cover < 0) {
+            // no terrain cover to duck behind. Dig DOWN (no blocks needed) to drop below the arrow
+            // line — far better than running in a straight line and getting shot in the back...
+            if (s.digDownSafe) {
+                mode = Mode.DIG_IN;
+                return tickDig(s, t);
+            }
+            // ...else wall it off if we have blocks, else just keep distance along a safe direction
             if (s.blockSlot >= 0 && s.blockCount >= 2) {
                 mode = Mode.WALL_IN;
                 return tickWall(s, t);
             }
-            // no cover, nothing to build with: at least keep distance along a safe direction
             return run(Moves.safeFleeYaw(s, awayYaw));
         }
         return run(ReflexMath.octantYaw(cover));

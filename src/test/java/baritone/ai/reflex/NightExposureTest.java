@@ -163,6 +163,31 @@ public class NightExposureTest {
     }
 
     @Test
+    public void shelterHoldsWhileAKitingSkeletonStillThreatensFromRange() {
+        // the live death loop: SHELTER released after ~1s when the skeleton kited past 11 blocks,
+        // the goto resumed, and the bot walked into the next arrow. Hold until it's truly gone.
+        ResponseArbiter a = new ResponseArbiter();
+        WorldSnapshot s = new WorldSnapshot();
+        s.mobs.add(mob(1, "skeleton", 5));
+        assertEquals(BehaviorId.SHELTER, decide(a, s));
+        // it backs off to 14 blocks (past the old 11-block release radius) but keeps shooting —
+        // hold the shelter the whole time, well past the anti-flap debounce window
+        s.mobs.clear();
+        s.mobs.add(mob(1, "skeleton", 14));
+        for (long g = 4; g <= 80; g += 4) {
+            s.gameTime = g;
+            assertEquals("don't resume into the arrows just because it stepped back to 14 blocks",
+                    BehaviorId.SHELTER, decide(a, s));
+        }
+        // only once it has actually left perception does the shelter end (debounced)
+        s.mobs.clear();
+        s.gameTime = 84;
+        assertEquals(BehaviorId.SHELTER, decide(a, s));
+        s.gameTime = 110;
+        assertEquals(BehaviorId.NONE, decide(a, s));
+    }
+
+    @Test
     public void shelterEventuallyTimesOut() {
         t.shelterMaxTicks = 5;
         ResponseArbiter a = new ResponseArbiter();

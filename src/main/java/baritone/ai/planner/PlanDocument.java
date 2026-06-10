@@ -49,8 +49,36 @@ public final class PlanDocument {
     /** Replans spent (capped by aiPlannerMaxReplans). */
     public int replans;
 
+    /** Total deaths this mission — persists across replans (sub-goals get rebuilt, this does NOT). */
+    public int deathsTotal;
+    /** Consecutive deaths within the kill-zone radius of each other — a camped spot. */
+    public int deathsNearLast;
+    public boolean hasLastDeath;
+    public int lastDeathX, lastDeathY, lastDeathZ;
+
     public long createdAt;
     public long updatedAt;
+
+    /**
+     * Record a death at the given block. Returns true when it is in the same area as the previous
+     * death (within {@code killZoneRadius}) — a sign something is camping the spot. Lives on the
+     * PLAN, not the sub-goal, so the count survives the sub-goal rebuild a replan does.
+     */
+    public boolean recordDeath(int x, int y, int z, double killZoneRadius) {
+        deathsTotal++;
+        boolean near = hasLastDeath && distanceTo(x, y, z) <= killZoneRadius;
+        deathsNearLast = near ? deathsNearLast + 1 : 1;
+        lastDeathX = x;
+        lastDeathY = y;
+        lastDeathZ = z;
+        hasLastDeath = true;
+        return near;
+    }
+
+    private double distanceTo(int x, int y, int z) {
+        double dx = x - lastDeathX, dy = y - lastDeathY, dz = z - lastDeathZ;
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
 
     /** The sub-goal in progress, or null when the plan is exhausted. */
     public SubGoal currentSubGoal() {

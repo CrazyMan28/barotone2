@@ -285,30 +285,46 @@ public final class PlannerAgent implements Helper {
 
     // ──────────────────────────────────────────────────────────────────── deaths
 
+    /** Deaths within this distance of each other are treated as the same (camped) area. */
+    static final double KILL_ZONE_RADIUS = 24D;
+    /** How far the escape-the-trap step sends the bot away from a camped death spot. */
+    private static final int TRAP_FLEE_DISTANCE = 48;
+
     /**
-     * Apply the death policy: stop, re-verify what the death invalidated, then REPLAN via the LLM
-     * with a full DEATH REPORT — recovering the drops becomes the first sub-goal of the new plan
-     * when it's worth the trip, re-gear steps otherwise. Returns the new plan, or null to stop.
+     * Apply the anti-spiral death policy. A routine death is CHEAP — re-verify the dropped gear,
+     * optionally splice a recovery trip, and carry on without burning a replan or calling the LLM.
+     * A spot that keeps killing the bot (a camped mob) is ABANDONED — pending recovery steps for it
+     * are purged and an "escape + wait for dawn" step is spliced in, so the bot stops marching back
+     * into the arrows. The mission only gives up once it has died many times overall (not after 5
+     * replans, the old bug). Returns the plan to keep going, or null to stop.
      */
     private PlanDocument handleDeath(PlanDocument plan, SubGoal g, DeathEvent death,
                                      String mainGoal, Settings settings) {
+        boolean diedDuringRecovery = isRecoveryStep(g);
+        boolean near = plan.recordDeath((int) death.x, (int) death.y, (int) death.z, KILL_ZONE_RADIUS);
+
         StateSnapshot here = tools.snapshotForPlanner();
         double distance = Math.sqrt(Math.pow(here.x - death.x, 2)
                 + Math.pow(here.y - death.y, 2) + Math.pow(here.z - death.z, 2));
         double secondsSince = Math.max(0, (DeathWatch.currentGameTime() - death.gameTime) / 20.0);
-        DeathPolicy.Verdict verdict = DeathPolicy.decide(distance, secondsSince, g.deaths,
+        DeathPolicy.Verdict verdict = DeathPolicy.decide(distance, secondsSince, plan.deathsNearLast,
                 Math.max(0, settings.aiPlannerMaxDeathsPerSubGoal.value),
                 settings.aiPlannerWalkSpeedBlocksPerSec.value,
                 settings.aiPlannerDespawnSeconds.value);
         int secondsLeft = (int) Math.max(0, settings.aiPlannerDespawnSeconds.value - secondsSince);
+        int maxMissionDeaths = Math.max(1, settings.aiPlannerMaxMissionDeaths.value);
+
+        DeathLoopPolicy.Action action = DeathLoopPolicy.decide(plan.deathsTotal, plan.deathsNearLast,
+                maxMissionDeaths, verdict.recoverable, death.dropsLikelyDestroyed, diedDuringRecovery);
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("x", (int) death.x);
         data.put("y", (int) death.y);
         data.put("z", (int) death.z);
         data.put("recoverable", verdict.recoverable);
-        data.put("decision", verdict.decision.name());
-        data.put("deaths", g.deaths);
+        data.put("decision", action.name());
+        data.put("deaths", plan.deathsTotal);
+        data.put("deaths_near", plan.deathsNearLast);
         data.put("cause", death.cause);
         data.put("killer", death.killer);
         data.put("drops_destroyed", death.dropsLikelyDestroyed);
@@ -317,9 +333,10 @@ public final class PlannerAgent implements Helper {
             MissionMemory.rememberLocation("death_drops", "items dropped here after death", "death",
                     death.dimension, (int) death.x, (int) death.y, (int) death.z, "planner");
         } catch (RuntimeException ignored) {}
-        logDirect("[AI:planner] death #" + g.deaths + " on '" + g.title + "' ("
-                + death.cause + (death.killer.isEmpty() ? "" : " by " + death.killer) + ") — "
-                + verdict.reason, ChatFormatting.YELLOW);
+        logDirect("[AI:planner] death #" + plan.deathsTotal + " (" + plan.deathsNearLast
+                + " near) on '" + g.title + "' (" + death.cause
+                + (death.killer.isEmpty() ? "" : " by " + death.killer) + ") -> " + action,
+                ChatFormatting.YELLOW);
 
         // Death dropped everything carried — re-verify the steps we'd checked off and UN-check the
         // ones whose gear is now gone, rewinding the cursor. Without this the bot keeps "stone
@@ -328,34 +345,101 @@ public final class PlannerAgent implements Helper {
         if (unchecked > 0) {
             logDirect("[AI:planner] death invalidated " + unchecked + " completed step(s) — re-doing them",
                     ChatFormatting.YELLOW);
-            PlannerStore.save(plan);
-            publishPlan(plan);
         }
 
-        boolean recoverWorthIt = verdict.recoverable && !death.dropsLikelyDestroyed && !cancelled;
-        SubGoal recoveryFallback = recoverWorthIt ? recoverySubGoal(death, secondsLeft) : null;
-        String reason = "the bot DIED (death " + g.deaths + " on '" + g.title + "'): " + verdict.reason;
-
-        if (!settings.aiDeathReplanLlm.value) {
-            // heuristic mode (LLM replan disabled): splice the recovery trip when worth it,
-            // otherwise fall back to a plain re-gear replan
-            if (recoveryFallback != null) {
-                spliceRecoveryStep(plan, recoveryFallback);
+        switch (action) {
+            case GIVE_UP:
+                GoalTracker.fail("Died " + plan.deathsTotal + " times — giving up: " + death.cause
+                        + (death.killer.isEmpty() ? "" : " (" + death.killer + ")"));
                 PlannerStore.save(plan);
-                publishPlan(plan);
-                logDirect("[AI:planner] recovery step spliced in (aiDeathReplanLlm=false)",
-                        ChatFormatting.YELLOW);
-                return plan;
+                return null;
+
+            case ESCAPE_TRAP: {
+                // a mob is camping here. Stop going back for the drops — purge any pending recovery
+                // steps and send the bot well clear, waiting for dawn if it's a night massacre.
+                int purged = removeIncompleteRecoverySteps(plan);
+                int[] flee = fleePoint(here, death);
+                spliceRecoveryStep(plan, escapeTrapSubGoal(death, flee[0], flee[1], flee[2]));
+                logDirect("[AI:planner] " + (int) death.x + "," + (int) death.y + "," + (int) death.z
+                        + " is a death trap — abandoning " + purged + " recovery step(s), fleeing to "
+                        + flee[0] + "," + flee[2], ChatFormatting.GOLD);
+                break;
             }
-            return replanOrGiveUp(plan, mainGoal, settings,
-                    reason + " RE-GEAR before retrying: food, armor, torches, safer route.");
+
+            case CONTINUE_RECOVER:
+                if (!isRecoveryStep(g)) { // don't stack a recovery on a recovery
+                    spliceRecoveryStep(plan, recoverySubGoal(death, secondsLeft));
+                }
+                break;
+
+            case CONTINUE_NO_RECOVER:
+            default:
+                // drops gone/unreachable: nothing to splice, just carry on with the rewound plan
+                break;
         }
 
-        // the user's policy: EVERY death goes through an LLM replan that explicitly decides
-        // "recover the drops" vs "re-gear and update the goals" (DEATH REPORT + directives)
-        String context = deathContext(death, verdict, distance, secondsLeft, g.deaths,
-                Math.max(0, settings.aiPlannerMaxDeathsPerSubGoal.value));
-        return replanOrGiveUp(plan, mainGoal, settings, reason, context, recoveryFallback);
+        plan.updatedAt = System.currentTimeMillis();
+        PlannerStore.save(plan);
+        publishPlan(plan);
+        return plan;
+    }
+
+    /** A point ~{@value #TRAP_FLEE_DISTANCE} blocks from the death spot, AWAY from it. */
+    private static int[] fleePoint(StateSnapshot here, DeathEvent death) {
+        double dx = here.x - death.x, dz = here.z - death.z;
+        double len = Math.sqrt(dx * dx + dz * dz);
+        if (len < 1D) { // died basically where we are: pick an arbitrary bearing
+            dx = 1D;
+            dz = 0D;
+            len = 1D;
+        }
+        int fx = (int) Math.round(here.x + dx / len * TRAP_FLEE_DISTANCE);
+        int fz = (int) Math.round(here.z + dz / len * TRAP_FLEE_DISTANCE);
+        return new int[]{fx, (int) Math.round(here.y), fz};
+    }
+
+    /** True when a sub-goal is one of the synthetic "go pick up your dropped items" steps. */
+    static boolean isRecoveryStep(SubGoal g) {
+        return g != null && g.title != null && g.title.startsWith("Recover drops");
+    }
+
+    /**
+     * Strip every NOT-yet-completed recovery step from the plan (a camped spot makes them all
+     * suspect) and clamp the cursor onto the surviving work. Completed recovery steps stay as
+     * history. Returns how many were removed.
+     */
+    static int removeIncompleteRecoverySteps(PlanDocument plan) {
+        int removed = 0;
+        for (int i = plan.subGoals.size() - 1; i >= 0; i--) {
+            SubGoal s = plan.subGoals.get(i);
+            if (isRecoveryStep(s) && !s.complete) {
+                plan.subGoals.remove(i);
+                if (i < plan.cursor) {
+                    plan.cursor--;
+                }
+                removed++;
+            }
+        }
+        if (plan.cursor > plan.subGoals.size()) {
+            plan.cursor = plan.subGoals.size();
+        }
+        return removed;
+    }
+
+    /**
+     * The "get away from the camped spot" step: flee well clear, wait for dawn if it's night, then
+     * resume — explicitly do NOT return for the dropped items (they're a baited trap). Empty
+     * criteria so it completes when the sub-agent calls done.
+     */
+    static SubGoal escapeTrapSubGoal(DeathEvent death, int fleeX, int fleeY, int fleeZ) {
+        SubGoal g = new SubGoal();
+        g.title = String.format("Escape the danger at %d, %d, %d", (int) death.x, (int) death.y, (int) death.z);
+        g.instruction = "A hostile is camping " + (int) death.x + ", " + (int) death.y + ", " + (int) death.z
+                + " and has killed you repeatedly there. Do NOT go back for any dropped items — write "
+                + "them off. goto_coords " + fleeX + " " + fleeY + " " + fleeZ + " to get well clear "
+                + "(~" + TRAP_FLEE_DISTANCE + " blocks away). If it is night, then call wait_for_dawn. "
+                + "Then call done — the mission continues from the safer area.";
+        return g;
     }
 
     /**

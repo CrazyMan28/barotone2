@@ -134,6 +134,42 @@ public class ShelterBehaviorTest {
     }
 
     @Test
+    public void digsInWithBareHandsWhenThereAreNoBlocksToPlace() {
+        // the live death loop: a freshly-respawned bot has NO blocks, a skeleton shoots it in the
+        // open, BREAK_LOS just runs and it dies. Digging needs no items — drop below the arrows.
+        ShelterBehavior b = new ShelterBehavior();
+        WorldSnapshot s = new WorldSnapshot();
+        s.digDownSafe = true;
+        s.blockSlot = -1; // nothing to place
+        ResponsePlan plan = nightExposure();
+        b.enter(s, plan);
+        List<ReflexAction> actions = b.tick(s, t, plan);
+        ReflexAction lookDown = find(actions, ReflexAction.Kind.SNAP_LOOK);
+        assertNotNull("aim down to dig even with no blocks", lookDown);
+        assertEquals(90F, lookDown.pitch, 0.01F);
+        assertTrue("dig the floor with bare hands", holds(actions, Input.CLICK_LEFT));
+    }
+
+    @Test
+    public void corneredByAShooterWithNoBlocksDigsBelowTheArrows() {
+        ShelterBehavior b = new ShelterBehavior();
+        WorldSnapshot s = new WorldSnapshot();
+        s.digDownSafe = true;
+        s.blockSlot = -1; // no blocks to wall with
+        // open ground: no cover in any octant
+        MobInfo sk = skeleton(7, 6, true);
+        s.mobs.add(sk);
+        ResponsePlan plan = ranged(sk);
+        b.enter(s, plan);
+        // a couple of ticks to fall through BREAK_LOS's no-cover branch into digging
+        List<ReflexAction> actions = List.of();
+        for (int i = 0; i < 3; i++) {
+            actions = b.tick(s, t, plan);
+        }
+        assertTrue("dig down instead of running in the open", holds(actions, Input.CLICK_LEFT));
+    }
+
+    @Test
     public void deepEnoughSealsTheHoleOverhead() {
         ShelterBehavior b = new ShelterBehavior();
         WorldSnapshot s = new WorldSnapshot();
