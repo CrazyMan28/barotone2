@@ -42,6 +42,12 @@ public final class ReflexTuning {
     public double approachSpeedThreshold = 0.06D;
     /** Extra engage distance granted to a mob that is approaching (or aggroed on us). */
     public double predictiveFleeBonus = 4.0D;
+    /**
+     * Meet/flee a hostile that is already committed to us (aggroed or closing fast) THIS far out,
+     * before it lands a blow — proactive, not reactive. Wider than the normal engage radius so the
+     * bot fights or runs with a head start instead of waiting to get hit.
+     */
+    public double proactiveEngageRadius = 14.0D;
 
     // ---- anti-flap (committed mob episodes)
     /** A freshly engaged mob behavior won't release for at least this many ticks. */

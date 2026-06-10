@@ -152,6 +152,23 @@ public final class Detectors {
     }
 
     /**
+     * Nearest mob that is actually COMMITTED to us — aggroed or closing fast ({@link #approaching})
+     * — within {@code radius}. This is what lets the bot react to a charging mob BEFORE it reaches
+     * melee range, instead of waiting to be hit; idle/wandering mobs are ignored by it.
+     */
+    public static MobInfo nearestCommitted(WorldSnapshot s, ReflexTuning t, double radius,
+                                           Predicate<MobInfo> filter) {
+        MobInfo best = null;
+        for (MobInfo m : s.mobs) {
+            if (filter.test(m) && approaching(m, t) && m.distance <= radius
+                    && (best == null || m.distance < best.distance)) {
+                best = m;
+            }
+        }
+        return best;
+    }
+
+    /**
      * True if a mob we must FLEE is within radius: any creeper, any skeleton when not combat-ready,
      * or any plain hostile while the fight is unfavorable (gear-aware). The flee release check uses
      * this with radius+4 (hysteresis).
@@ -201,7 +218,13 @@ public final class Detectors {
             }
         }
         if (t.gearAwareCombat && !CombatPower.fightFavorable(s, t)) {
-            MobInfo hostile = nearestFlee(s, t, m -> m.hostile && !m.creeper && !m.skeleton);
+            // a committed (charging) hostile gets the full proactive radius — a real head start to
+            // run; a merely nearby idle one only the normal flee radius
+            MobInfo hostile = nearestCommitted(s, t, t.proactiveEngageRadius,
+                    m -> m.hostile && !m.creeper && !m.skeleton);
+            if (hostile == null) {
+                hostile = nearestFlee(s, t, m -> m.hostile && !m.creeper && !m.skeleton);
+            }
             if (hostile != null) {
                 return new Threat(ThreatType.OUTMATCHED, SEV_OUTMATCHED, hostile);
             }
@@ -209,14 +232,23 @@ public final class Detectors {
         return null;
     }
 
-    /** A mob we stand and fight: a skeleton we're geared for, or a melee mob that just hit us. */
+    /**
+     * A mob we stand and fight: a skeleton we're geared for, a hostile bearing down on us
+     * (proactive — meet it before it lands a hit), or one that just hit us (reactive fallback).
+     */
     public static Threat meleeFight(WorldSnapshot s, ReflexTuning t) {
         MobInfo skeleton = skeletonToFight(s, t);
         if (skeleton != null) {
             return new Threat(ThreatType.MELEE_MOB, SEV_MELEE, skeleton);
         }
-        if (canBrawl(s, t) && recentlyHurt(s, t)) {
-            MobInfo target = nearest(s, t.meleeEngageRadius, m -> m.hostile && !m.creeper && !m.skeleton);
+        if (canBrawl(s, t)) {
+            // proactive: meet a hostile that's committed to us BEFORE it reaches melee range...
+            MobInfo target = nearestCommitted(s, t, t.proactiveEngageRadius,
+                    m -> m.hostile && !m.creeper && !m.skeleton);
+            // ...or one that already hit us but isn't flagged as approaching (reactive fallback)
+            if (target == null && recentlyHurt(s, t)) {
+                target = nearest(s, t.meleeEngageRadius, m -> m.hostile && !m.creeper && !m.skeleton);
+            }
             if (target != null) {
                 return new Threat(ThreatType.MELEE_MOB, SEV_MELEE, target);
             }

@@ -84,18 +84,36 @@ public class OutmatchedFleeTest {
     }
 
     @Test
-    public void gettingGearMidFleeEndsTheEpisode() {
+    public void gettingGearMidFleeTurnsTheFlightIntoAFight() {
         ResponseArbiter a = new ResponseArbiter();
         WorldSnapshot s = new WorldSnapshot();
         s.mobs.add(zombieAt(1, 4, true));
         assertEquals(BehaviorId.FLEE, decide(a, s));
-        // suddenly favorable (e.g. recovered gear): the zombie is no longer flee-required
+        // suddenly favorable (e.g. recovered gear): the zombie is no longer flee-required,
+        // and since it's aggro and right there, the bot turns and fights it proactively
         s.bestWeaponSlot = 0;
         s.bestWeaponTier = 2; // iron sword
         s.armorValue = 10;
         s.gameTime = 10;
-        assertEquals(BehaviorId.FLEE, decide(a, s)); // debounced...
+        assertEquals(BehaviorId.FLEE, decide(a, s)); // debounced release...
         s.gameTime = 30;
-        assertEquals(BehaviorId.NONE, decide(a, s)); // ...then over
+        assertEquals(BehaviorId.COMBAT, decide(a, s)); // ...then meets the now-winnable zombie
+    }
+
+    @Test
+    public void gettingGearWithNoMobLeftEndsTheEpisode() {
+        ResponseArbiter a = new ResponseArbiter();
+        WorldSnapshot s = new WorldSnapshot();
+        s.mobs.add(zombieAt(1, 4, true));
+        assertEquals(BehaviorId.FLEE, decide(a, s));
+        // geared up AND the zombie wandered off: nothing left to do (no fight to turn to)
+        s.bestWeaponSlot = 0;
+        s.bestWeaponTier = 2;
+        s.armorValue = 10;
+        s.mobs.clear();
+        s.gameTime = 10;
+        assertEquals(BehaviorId.FLEE, decide(a, s)); // debounced release...
+        s.gameTime = 30;
+        assertEquals(BehaviorId.NONE, decide(a, s)); // ...then idle, nothing to fight
     }
 }

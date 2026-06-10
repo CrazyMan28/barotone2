@@ -319,6 +319,7 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         tuning.fightMaxMobs = s.reflexFightMaxMobs.value;
         tuning.defendIdle = s.aiReflexDefendIdle.value;
         tuning.gearAwareCombat = s.reflexGearAwareCombat.value;
+        tuning.proactiveEngageRadius = s.reflexProactiveEngageRange.value;
         tuning.shelter = s.reflexShelter.value;
         tuning.shelterMaxTicks = Math.max(20, s.reflexShelterMaxSeconds.value * 20);
     }

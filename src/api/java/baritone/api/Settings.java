@@ -1341,6 +1341,14 @@ public final class Settings {
     public final Setting<Boolean> reflexGearAwareCombat = new Setting<>(true);
 
     /**
+     * How far out (blocks) the bot proactively meets or flees a hostile that is already committed
+     * to it (aggroed or closing fast), before that mob lands a blow. Larger = more proactive (more
+     * head start to fight or run), at the cost of reacting to threats farther away. The reactive
+     * fallback (respond once actually hit) always applies regardless.
+     */
+    public final Setting<Double> reflexProactiveEngageRange = new Setting<>(14.0);
+
+    /**
      * Defensive mob reflexes (flee/fight/retreat/shelter) engage even when no mission or pathing is
      * active — idle at spawn, between missions, or while the LLM is thinking. The live telemetry
      * showed bots beaten to death standing around after a mission verified done. Set false to

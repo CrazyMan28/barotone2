@@ -66,7 +66,12 @@ public final class CombatPower {
             if (m.creeper || !(m.hostile || m.skeleton)) {
                 continue;
             }
-            if (m.distance > Detectors.effFleeRadius(m, t)) {
+            // count a mob within normal engage range, OR one already charging us (committed) inside
+            // the wider proactive radius — otherwise an unarmed bot reads a zombie sprinting in from
+            // 13 blocks as "no threat in range, safe to fight" and never flees.
+            boolean inRange = m.distance <= Detectors.effFleeRadius(m, t)
+                    || (Detectors.approaching(m, t) && m.distance <= t.proactiveEngageRadius);
+            if (!inRange) {
                 continue;
             }
             sum += m.skeleton ? SKELETON_POWER : HOSTILE_POWER;
