@@ -52,6 +52,8 @@ public final class ReflexAction {
          * the sky alongside it so {@code startUseItem} eats instead of interacting with a block.
          */
         USE_ITEM,
+        /** Right-click (use) the block in this cell with a hand-built hit — sleeping in a placed bed. */
+        USE_BLOCK,
         /** Hand Baritone a pathing goal (FORCE_REVALIDATE). Without one, an active behavior pauses pathing. */
         SET_GOAL
     }
@@ -109,6 +111,11 @@ public final class ReflexAction {
     /** Hold the real use key this tick to drive vanilla item-use (eating). */
     public static ReflexAction useItem() {
         return new ReflexAction(Kind.USE_ITEM, null, true, 0, 0, -1, -1, null, null);
+    }
+
+    /** Right-click the block in this cell (hand-built hit) — e.g. sleep in a placed bed. */
+    public static ReflexAction useBlock(BlockPosSpec cell) {
+        return new ReflexAction(Kind.USE_BLOCK, null, false, 0, 0, -1, -1, cell, null);
     }
 
     public static ReflexAction setGoal(GoalSpec goal) {

@@ -17,6 +17,8 @@
 
 package baritone.ai;
 
+import baritone.ai.planner.DeathWatch;
+import baritone.ai.planner.PlannerPrompts;
 import baritone.ai.planner.PlannerStore;
 import baritone.ai.planner.StateSnapshot;
 import baritone.ai.planner.ToolTiers;
@@ -161,6 +163,11 @@ public final class BaritoneTools {
         arr.add(fn("explore",
                 "Wander outward from current position, discovering chunks. Do not use unless the player explicitly asks to explore. "
                         + "If the player says not to explore, this tool is blocked for that goal.",
+                params()));
+        arr.add(fn("wait_for_dawn",
+                "Stand by safely until morning. Use when it is NIGHT and you are undergeared (no armor/weapon): "
+                        + "the survival reflexes shelter you automatically; this just waits out the dark instead of "
+                        + "fighting it. Returns as soon as it is day.",
                 params()));
         arr.add(fn("build_schematic",
                 "Build a schematic from the schematics folder, optionally at given coords.",
@@ -543,6 +550,8 @@ public final class BaritoneTools {
                         return ok("ERROR: This goal explicitly says not to explore. Use mine/goto/farm/open_station/craft tools instead.");
                     }
                     return ok(runRaw("explore"));
+                case "wait_for_dawn":
+                    return ok(waitForDawn());
                 case "build_schematic":
                     return ok(buildSchematic(args));
                 case "tune":
@@ -858,6 +867,59 @@ public final class BaritoneTools {
         });
     }
 
+    /**
+     * Non-null when the agent running this tool has DIED since its run started: cancels the
+     * in-flight Baritone work and returns the message the tool must return immediately. Every
+     * blocking loop polls this next to isCancelled() — without it, a mine/goto keeps grinding
+     * bare-fisted for minutes after the respawn while the planner waits to replan.
+     */
+    private String deathAbort() {
+        if (!MistralAgent.diedSinceRunStart()) {
+            return null;
+        }
+        try {
+            cancelBaritoneWork();
+        } catch (RuntimeException ignored) {
+            // the abort message must reach the agent even if the cancel hop fails
+        }
+        return PlannerPrompts.deathAbortMessage(DeathWatch.pollNewDeath(0));
+    }
+
+    /**
+     * Stand by until morning. The reflexes own physical safety overnight (shelter/turtle); this
+     * just parks the agent loop so the mission doesn't fight the dark. Returns immediately when
+     * it is already day; caps at ~12 minutes (a full night is 10) and honors cancel + death.
+     */
+    private String waitForDawn() {
+        long start = System.currentTimeMillis();
+        long deadline = start + 720_000L;
+        try {
+            while (System.currentTimeMillis() < deadline) {
+                if (MistralAgent.isCancelled()) {
+                    return "wait_for_dawn cancelled.";
+                }
+                String diedWaitingDawn = deathAbort();
+                if (diedWaitingDawn != null) {
+                    return diedWaitingDawn;
+                }
+                Long dayTime = AiCrafting.onClient(ctx, () ->
+                        ctx.world() == null ? null : ctx.world().getDayTime() % 24000L);
+                if (dayTime == null) {
+                    return "ERROR: no world loaded.";
+                }
+                if (dayTime < 12500L) {
+                    return "It is day now (waited " + ((System.currentTimeMillis() - start) / 1000)
+                            + "s). Safe to continue the mission.";
+                }
+                Thread.sleep(2000);
+            }
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            return "wait_for_dawn interrupted.";
+        }
+        return "Timed out waiting for dawn — continue carefully.";
+    }
+
     private String gotoCoords(JsonObject a) {
         int x = a.get("x").getAsInt();
         int y = a.get("y").getAsInt();
@@ -996,6 +1058,10 @@ public final class BaritoneTools {
                 if (MistralAgent.isCancelled()) {
                     return "interact_entity to " + label + " cancelled.";
                 }
+                String diedInteract = deathAbort();
+                if (diedInteract != null) {
+                    return diedInteract;
+                }
                 Double dist = AiCrafting.onClient(ctx, () -> {
                     LocalPlayer p = ctx.player();
                     if (p == null || !tgt.isAlive()) {
@@ -1074,6 +1140,10 @@ public final class BaritoneTools {
             if (MistralAgent.isCancelled()) {
                 return "hunt cancelled after " + killed + " kill(s).";
             }
+            String diedHunt = deathAbort();
+            if (diedHunt != null) {
+                return diedHunt;
+            }
             // nearest matching live food animal within 48 blocks
             net.minecraft.world.entity.LivingEntity target = AiCrafting.onClient(ctx, () -> {
                 LocalPlayer p = ctx.player();
@@ -1103,6 +1173,10 @@ public final class BaritoneTools {
                 while (System.currentTimeMillis() < apprDeadline) {
                     if (MistralAgent.isCancelled()) {
                         return "hunt cancelled after " + killed + " kill(s).";
+                    }
+                    String diedApproach = deathAbort();
+                    if (diedApproach != null) {
+                        return diedApproach;
                     }
                     Double dist = AiCrafting.onClient(ctx, () -> {
                         LocalPlayer p = ctx.player();
@@ -1138,6 +1212,10 @@ public final class BaritoneTools {
                 while (System.currentTimeMillis() < killDeadline) {
                     if (MistralAgent.isCancelled()) {
                         return "hunt cancelled after " + killed + " kill(s).";
+                    }
+                    String diedKill = deathAbort();
+                    if (diedKill != null) {
+                        return diedKill;
                     }
                     Boolean stillAlive = AiCrafting.onClient(ctx, () -> {
                         LocalPlayer p = ctx.player();
@@ -1252,7 +1330,7 @@ public final class BaritoneTools {
 
         try {
             for (int i = 0; i < maxItems; i++) {
-                if (MistralAgent.isCancelled()) {
+                if (MistralAgent.isCancelled() || deathAbort() != null) {
                     break;
                 }
                 // select the best safe food into the held hotbar slot
@@ -1590,7 +1668,7 @@ public final class BaritoneTools {
         IPathingBehavior pb = baritone.getPathingBehavior();
         try {
             while (System.currentTimeMillis() < relDeadline) {
-                if (MistralAgent.isCancelled()) {
+                if (MistralAgent.isCancelled() || deathAbort() != null) {
                     break;
                 }
                 BetterBlockPos cur = feetSafe();
@@ -1676,6 +1754,10 @@ public final class BaritoneTools {
                     cancelBaritoneWork();
                     return rep + "Cancelled during mining.";
                 }
+                String diedMining = deathAbort();
+                if (diedMining != null) {
+                    return diedMining;
+                }
                 if (!baritone.getMineProcess().isActive()) {
                     break;
                 }
@@ -1705,6 +1787,10 @@ public final class BaritoneTools {
             while (System.currentTimeMillis() < pathDeadline) {
                 if (MistralAgent.isCancelled()) {
                     return rep + "Cancelled.";
+                }
+                String diedPathing = deathAbort();
+                if (diedPathing != null) {
+                    return diedPathing;
                 }
                 if (!pb.isPathing() && !pb.getInProgress().isPresent()) {
                     break;
@@ -1886,6 +1972,10 @@ public final class BaritoneTools {
             if (MistralAgent.isCancelled()) {
                 cancelBaritoneWork();
                 return "Cancelled mining at " + countLogsInInventory() + " logs.";
+            }
+            String diedLogs = deathAbort();
+            if (diedLogs != null) {
+                return diedLogs;
             }
             if (!baritone.getMineProcess().isActive() || countLogsInInventory() >= target) {
                 break;
@@ -2338,6 +2428,10 @@ public final class BaritoneTools {
                 if (MistralAgent.isCancelled()) {
                     return "Cancelled while opening " + station.displayName + ".";
                 }
+                String diedOpening = deathAbort();
+                if (diedOpening != null) {
+                    return diedOpening;
+                }
                 if (menuMatchesOnClient(station)) {
                     return "Opened " + station.displayName + " (" + station.blockId + ").";
                 }
@@ -2398,15 +2492,26 @@ public final class BaritoneTools {
         // Stuck-mining watchdog: if a mine is active but the player neither moves nor gains items for
         // MINE_STUCK_MS, it can't reach any target (classic ice/ocean biome: cobblestone is all under
         // water/ice, so Baritone just blacklists "unreachable" forever). Relocate and retry the mine.
+        // Both the deadline and the stuck window PAUSE while a reflex owns the bot (WatchdogClock):
+        // a shelter waiting out the night must not read as "mining stuck" or burn the wait budget.
         int relocations = 0;
         BetterBlockPos anchor = feetSafe();
         int anchorItems = countAllInventoryItems();
-        long anchorTime = System.currentTimeMillis();
+        WatchdogClock clock = new WatchdogClock(System.currentTimeMillis(), deadline);
         try {
             Thread.sleep(300);
-            while (System.currentTimeMillis() < deadline) {
+            while (true) {
+                long now = System.currentTimeMillis();
+                clock.onTick(ReflexProcess.ENGAGED, now);
+                if (clock.expired(now)) {
+                    break;
+                }
                 if (MistralAgent.isCancelled()) {
                     return "Wait cancelled (ai stop).";
+                }
+                String diedWaiting = deathAbort();
+                if (diedWaiting != null) {
+                    return diedWaiting;
                 }
                 if (!pb.isPathing() && !pb.getInProgress().isPresent() && pb.getGoal() == null
                         && !baritoneProcessesBusy()) {
@@ -2421,10 +2526,11 @@ public final class BaritoneTools {
                 if (moved || items > anchorItems) {
                     anchor = cur;
                     anchorItems = items;
-                    anchorTime = System.currentTimeMillis();
+                    clock.progress(now);
                 }
                 if (lastMineCommand != null && baritone.getMineProcess().isActive()
-                        && System.currentTimeMillis() - anchorTime > MINE_STUCK_MS) {
+                        && !ReflexProcess.ENGAGED
+                        && clock.stuckFor(now, MINE_STUCK_MS)) {
                     if (relocations >= MINE_MAX_RELOCATES) {
                         cancelBaritoneWork();
                         lastMineCommand = null;
@@ -2440,10 +2546,14 @@ public final class BaritoneTools {
                     if (MistralAgent.isCancelled()) {
                         return "Wait cancelled (ai stop).";
                     }
+                    String diedRelocating = deathAbort();
+                    if (diedRelocating != null) {
+                        return diedRelocating;
+                    }
                     executeCommand(resume);   // start mining again from the new spot
                     anchor = feetSafe();
                     anchorItems = countAllInventoryItems();
-                    anchorTime = System.currentTimeMillis();
+                    clock.progress(System.currentTimeMillis());
                 }
                 Thread.sleep(400);
             }

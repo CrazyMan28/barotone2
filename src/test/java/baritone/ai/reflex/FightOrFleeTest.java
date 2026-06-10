@@ -50,9 +50,21 @@ public class FightOrFleeTest {
     }
 
     @Test
-    public void healthyBotBrawlsALoneZombieEvenBareHanded() {
+    public void unarmedBotFleesALoneZombie() {
+        // the old "brawl it bare-handed" policy was the #1 recorded death cause (59% zombies):
+        // with no weapon and no armor the power score says we lose the trade — run instead
         WorldSnapshot s = working();
         s.ticksSinceHurt = 3; // it just hit us
+        s.mobs.add(zombieAt(1, 3));
+        assertEquals(BehaviorId.FLEE, decide(s));
+    }
+
+    @Test
+    public void swordedBotBrawlsALoneZombie() {
+        WorldSnapshot s = working();
+        s.bestWeaponSlot = 0;
+        s.bestWeaponTier = 3; // stone sword
+        s.ticksSinceHurt = 3;
         s.mobs.add(zombieAt(1, 3));
         assertEquals(BehaviorId.COMBAT, decide(s));
     }
@@ -60,7 +72,9 @@ public class FightOrFleeTest {
     @Test
     public void lowHealthBreaksOffToHealInsteadOfTrading() {
         WorldSnapshot s = working();
-        s.hp = 5; // below combatMinHealth (8): can't win the trade
+        s.bestWeaponSlot = 0;
+        s.bestWeaponTier = 2; // armed and otherwise winning, but...
+        s.hp = 5; // ...below combatMinHealth (8): can't win the trade
         s.ticksSinceHurt = 3;
         s.mobs.add(zombieAt(1, 3));
         assertEquals(BehaviorId.RETREAT_HEAL, decide(s));

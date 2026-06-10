@@ -39,7 +39,9 @@ public class EscalationLadderTest {
         MobInfo m = new MobInfo();
         m.entityId = 1;
         m.creeper = creeper;
-        m.skeleton = !creeper;
+        // non-creeper chases use a zombie vs an unarmed bot (OUTMATCHED): skeletons now route
+        // to SHELTER instead of FLEE, so they never reach the flee-escalation ladder
+        m.hostile = !creeper;
         m.distance = 5;
         m.x = 5;
         m.y = 64;
@@ -65,7 +67,7 @@ public class EscalationLadderTest {
     }
 
     @Test
-    public void skeletonChaseResolvesToWall() {
+    public void unwinnableZombieChaseResolvesToWall() {
         assertEquals(FleeMode.WALL, resolveAfterLongChase(chasedBy(false, 30)));
     }
 

@@ -142,8 +142,10 @@ public final class FleeBehavior implements ReflexBehavior {
     /** The classic run — optionally with the flee sources rotated 90° (NEW_DIRECTION). */
     private List<ReflexAction> tickRun(WorldSnapshot s, ReflexTuning t, ResponsePlan plan, boolean rotated) {
         double radius = Math.max(2D, t.creeperRadius) + 4D;
-        // engaged by a SWARM: every hostile is a pursuer, not just the creeper/skeleton set
-        boolean fleeAll = plan != null && plan.cause != null && plan.cause.type == ThreatType.SWARM;
+        // engaged by a SWARM or OUTMATCHED: every hostile is a pursuer (zombies count), not just
+        // the creeper/skeleton set
+        boolean fleeAll = plan != null && plan.cause != null
+                && (plan.cause.type == ThreatType.SWARM || plan.cause.type == ThreatType.OUTMATCHED);
         List<MobInfo> mobs = new ArrayList<>();
         MobInfo nearest = null;
         for (MobInfo m : s.mobs) {

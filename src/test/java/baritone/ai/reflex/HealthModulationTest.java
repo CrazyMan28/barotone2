@@ -76,6 +76,7 @@ public class HealthModulationTest {
         ResponseArbiter a = new ResponseArbiter();
         WorldSnapshot s = working();
         s.bestWeaponSlot = 0;
+        s.bestWeaponTier = 2;
         s.mobs.add(skeletonAt(5));
         assertEquals(BehaviorId.COMBAT, a.decide(s, t).behavior);
         // the trade goes badly
@@ -89,6 +90,7 @@ public class HealthModulationTest {
         ResponseArbiter a = new ResponseArbiter();
         WorldSnapshot s = working();
         s.bestWeaponSlot = 0;
+        s.bestWeaponTier = 2;
         s.mobs.add(skeletonAt(5));
         assertEquals(BehaviorId.COMBAT, a.decide(s, t).behavior);
         // hp 20 -> 14 within the loss window while the target still lives: stop trading
@@ -102,6 +104,7 @@ public class HealthModulationTest {
         ResponseArbiter a = new ResponseArbiter();
         WorldSnapshot s = working();
         s.bestWeaponSlot = 0;
+        s.bestWeaponTier = 2;
         s.ticksSinceHurt = 5;
         MobInfo z = new MobInfo();
         z.entityId = 1;
@@ -148,6 +151,7 @@ public class HealthModulationTest {
         ResponseArbiter a = new ResponseArbiter();
         WorldSnapshot s = working();
         s.bestWeaponSlot = 0;
+        s.bestWeaponTier = 2;
         s.mobs.add(skeletonAt(5));
         assertEquals(BehaviorId.COMBAT, a.decide(s, t).behavior);
         s.hp = 5;

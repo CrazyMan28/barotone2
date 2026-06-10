@@ -50,6 +50,7 @@ import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.food.FoodProperties;
+import net.minecraft.world.item.BedItem;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -90,6 +91,16 @@ public final class ReflexProcess extends BaritoneProcessHelper {
      */
     public static volatile String ACTIVE_STATUS = "idle";
 
+    /**
+     * A reflex behavior currently owns the bot. Tool watchdogs/deadlines (WatchdogClock) pause
+     * while this is true — a shelter waiting out the night must not read as "mining stuck".
+     */
+    public static volatile boolean ENGAGED;
+
+    /** Total milliseconds spent reflex-engaged since launch (50 per engaged tick) — pauses the mission clock. */
+    public static final java.util.concurrent.atomic.AtomicLong ENGAGED_MILLIS =
+            new java.util.concurrent.atomic.AtomicLong();
+
     private final ReflexEngine engine = new ReflexEngine();
     private final ReflexTuning tuning = new ReflexTuning();
     private final ReflexExecutor executor;
@@ -97,6 +108,8 @@ public final class ReflexProcess extends BaritoneProcessHelper {
     private long lastHurtAt = Long.MIN_VALUE;
     private long lastWorkingAt = Long.MIN_VALUE;
     private ReflexEngine.Output lastOutput;
+    /** Death seq we've already cancelled Baritone work for (once per death). */
+    private long lastCanceledDeathSeq;
 
     /** Per-entity distance last tick, so we can derive each mob's closing speed. */
     private Map<Integer, Double> prevMobDist = new HashMap<>();
@@ -119,8 +132,44 @@ public final class ReflexProcess extends BaritoneProcessHelper {
             } catch (RuntimeException e) {
                 dim = "unknown";
             }
-            DeathWatch.onClientTick(player.isDeadOrDying(),
-                    player.getX(), player.getY(), player.getZ(), dim, ctx.world().getGameTime());
+            // Capture the death CAUSE on the same edge: it drives the planner's recover-vs-regear
+            // replan (a lava/fire/void death has no drops left to recover).
+            boolean dead = player.isDeadOrDying();
+            String cause = "unknown";
+            String killer = "";
+            boolean dropsDestroyed = false;
+            if (dead) {
+                try {
+                    net.minecraft.world.damagesource.DamageSource src = player.getLastDamageSource();
+                    if (src != null) {
+                        cause = src.getMsgId();
+                        dropsDestroyed = src.is(net.minecraft.tags.DamageTypeTags.IS_FIRE);
+                    }
+                    LivingEntity credit = player.getKillCredit();
+                    if (credit != null) {
+                        killer = EntityType.getKey(credit.getType()).getPath();
+                    }
+                    dropsDestroyed = dropsDestroyed || "lava".equals(cause) || "inFire".equals(cause)
+                            || "onFire".equals(cause) || "outOfWorld".equals(cause)
+                            || player.getY() < ctx.world().getMinY() - 2;
+                } catch (RuntimeException ignored) {
+                    // cause capture is best-effort; position + seq must never be lost to it
+                }
+            }
+            DeathWatch.onClientTick(dead, player.getX(), player.getY(), player.getZ(), dim,
+                    ctx.world().getGameTime(), cause, killer, dropsDestroyed);
+            // Cancel in-flight Baritone work ONCE per death, so a mine/goto never resumes
+            // bare-fisted after the auto-respawn while the agent is still inside a blocking tool.
+            long seq = DeathWatch.currentSeq();
+            if (seq > lastCanceledDeathSeq) {
+                lastCanceledDeathSeq = seq;
+                try {
+                    baritone.getMineProcess().cancel();
+                    baritone.getPathingBehavior().cancelEverything();
+                } catch (RuntimeException ignored) {
+                    // cancel is best-effort; the respawn below must still run
+                }
+            }
             // Auto-respawn: a dead bot is stuck on the death screen and can't move, so NONE of the
             // planner's death recovery (re-verify plan, go get drops, re-gear) can run. Respawn it
             // right away so the planner takes over a LIVING bot.
@@ -146,6 +195,7 @@ public final class ReflexProcess extends BaritoneProcessHelper {
             }
             lastOutput = null;
             ACTIVE_STATUS = "idle";
+            ENGAGED = false;
             return false;
         }
         long now = ctx.world().getGameTime();
@@ -159,6 +209,10 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         refreshTuning();
         ReflexEngine.Output out = engine.tick(snapshot(player, now), tuning);
         lastOutput = out;
+        ENGAGED = out.plan.behavior != BehaviorId.NONE;
+        if (ENGAGED) {
+            ENGAGED_MILLIS.addAndGet(50);
+        }
         if (out.plan.behavior == BehaviorId.NONE) {
             ACTIVE_STATUS = "idle";
         } else if (out.plan.cause != null) {
@@ -222,6 +276,7 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         }
         lastOutput = null;
         ACTIVE_STATUS = "idle";
+        ENGAGED = false;
     }
 
     @Override
@@ -262,6 +317,10 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         tuning.mobReleaseGraceTicks = s.reflexReleaseGraceTicks.value;
         tuning.proactiveEatHunger = s.reflexProactiveEatHunger.value;
         tuning.fightMaxMobs = s.reflexFightMaxMobs.value;
+        tuning.defendIdle = s.aiReflexDefendIdle.value;
+        tuning.gearAwareCombat = s.reflexGearAwareCombat.value;
+        tuning.shelter = s.reflexShelter.value;
+        tuning.shelterMaxTicks = Math.max(20, s.reflexShelterMaxSeconds.value * 20);
     }
 
     private WorldSnapshot snapshot(LocalPlayer player, long now) {
@@ -300,6 +359,7 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         s.selectedSlot = player.getInventory().getSelectedSlot();
         sampleHotbar(player, s);
         s.hasShieldOffhand = player.getOffhandItem().is(Items.SHIELD);
+        s.armorValue = player.getArmorValue();
         // world scans the pure core can't do itself
         if (s.inLava) {
             s.lavaEscape = findLavaEscape(player);
@@ -374,6 +434,9 @@ public final class ReflexProcess extends BaritoneProcessHelper {
             if (item == Items.WATER_BUCKET && s.waterBucketSlot < 0) {
                 s.waterBucketSlot = slot;
             }
+            if (item instanceof BedItem && s.bedSlot < 0) {
+                s.bedSlot = slot;
+            }
             if (item instanceof BlockItem) {
                 s.blockCount += stack.getCount();
                 if (s.blockSlot < 0) {
@@ -409,7 +472,15 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         for (int i = 0; i < ReflexMath.OCTANTS; i++) {
             BlockPos step = feet.offset(ReflexMath.OCTANT_DX[i], 0, ReflexMath.OCTANT_DZ[i]);
             s.octantSafe[i] = isStepSafe(step);
+            // a 2-high solid column within a few blocks that way = cover that breaks arrow LOS
+            for (int d = 1; d <= 4 && !s.octantCover[i]; d++) {
+                BlockPos col = feet.offset(ReflexMath.OCTANT_DX[i] * d, 0, ReflexMath.OCTANT_DZ[i] * d);
+                if (isSolid(col) && isSolid(col.above())) {
+                    s.octantCover[i] = true;
+                }
+            }
         }
+        sampleShelterGround(player, s);
         int forward = ReflexMath.nearestOctant(s.yaw);
         int dx = ReflexMath.OCTANT_DX[forward];
         int dz = ReflexMath.OCTANT_DZ[forward];
@@ -422,6 +493,24 @@ public final class ReflexProcess extends BaritoneProcessHelper {
                 s.dropAhead = true;
             }
         }
+    }
+
+    /** Turtle-hole safety: solid non-gravity dry ground under the feet, sealed-state overhead. */
+    private void sampleShelterGround(LocalPlayer player, WorldSnapshot s) {
+        BlockPos feet = player.blockPosition();
+        boolean safe = true;
+        for (int i = 1; i <= 3 && safe; i++) {
+            BlockPos p = feet.below(i);
+            BlockState st = ctx.world().getBlockState(p);
+            if (st.isAir() || st.getBlock() instanceof FallingBlock || !st.getFluidState().isEmpty()) {
+                safe = false; // a cave, sand/gravel, or fluid underfoot — never dig into that
+            }
+        }
+        if (safe && isLavaAt(feet.below(4))) {
+            safe = false;
+        }
+        s.digDownSafe = safe;
+        s.sealedOverhead = isSolid(feet.above(2));
     }
 
     /** A neighbor cell the bot could move into without lava, a wall, or a killing drop. */
@@ -461,6 +550,7 @@ public final class ReflexProcess extends BaritoneProcessHelper {
     private void sampleAmbient(LocalPlayer player, WorldSnapshot s) {
         s.lightLevel = ctx.world().getBrightness(LightLayer.BLOCK, player.blockPosition());
         long dayTime = ctx.world().getDayTime() % 24000L;
+        s.dayTime = dayTime;
         s.night = dayTime >= 13000L && dayTime <= 23000L;
     }
 

@@ -117,6 +117,9 @@ final class ReflexExecutor {
                 case PLACE_BLOCK:
                     placeBlock(player, a.pos);
                     break;
+                case USE_BLOCK:
+                    useBlock(player, a.pos);
+                    break;
                 case SET_GOAL:
                     goal = toGoal(a.goal);
                     break;
@@ -183,6 +186,24 @@ final class ReflexExecutor {
                 player.swing(InteractionHand.MAIN_HAND);
                 return;
             }
+        }
+    }
+
+    /**
+     * Right-click the block IN this cell with a hand-built top-face hit — how the shelter sleeps
+     * in the bed it just placed. Best-effort: the behavior's own timeout covers failures.
+     */
+    private void useBlock(LocalPlayer player, BlockPosSpec spec) {
+        BlockPos cell = toPos(spec);
+        BlockState state = ctx.world().getBlockState(cell);
+        if (state.isAir() || state.canBeReplaced()) {
+            return; // nothing there (yet) — the placement may still be in flight
+        }
+        Vec3 hit = Vec3.atCenterOf(cell).add(0, 0.5D, 0);
+        BlockHitResult bhr = new BlockHitResult(hit, Direction.UP, cell, false);
+        InteractionResult res = ctx.minecraft().gameMode.useItemOn(player, InteractionHand.MAIN_HAND, bhr);
+        if (res.consumesAction()) {
+            player.swing(InteractionHand.MAIN_HAND);
         }
     }
 

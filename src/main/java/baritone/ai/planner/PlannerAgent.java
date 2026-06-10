@@ -64,9 +64,6 @@ public final class PlannerAgent implements Helper {
     /** The planner currently running a mission, for `ai stop` / busy checks. */
     public static final AtomicReference<PlannerAgent> ACTIVE = new AtomicReference<>();
 
-    /** Iteration budget for a death-recovery interlude (sprint there, pick up, done). */
-    private static final int RECOVERY_ITERATIONS = 20;
-
     private final IBaritone baritone;
     private final BaritoneTools tools;
     private volatile boolean cancelled;
@@ -125,6 +122,30 @@ public final class PlannerAgent implements Helper {
             // ── main loop ────────────────────────────────────────────────────────────
             String bounceNote = null;
             while (!cancelled) {
+                // Deaths can land OUTSIDE a sub-agent run too (verify gaps, replan gaps, the
+                // recovery step's own death) — poll at the loop top so none are mis-attributed
+                // or silently dropped.
+                DeathEvent gapDeath = DeathWatch.pollNewDeath(handledDeathSeq);
+                if (gapDeath != null) {
+                    handledDeathSeq = DeathWatch.currentSeq();
+                    if (!plan.isComplete()) {
+                        SubGoal cur = plan.currentSubGoal();
+                        cur.deaths++;
+                        PlannerStore.save(plan);
+                        plan = handleDeath(plan, cur, gapDeath, mainGoal, settings);
+                        if (plan == null) {
+                            return;
+                        }
+                        continue;
+                    }
+                    // the plan looks complete: at least un-check whatever the death invalidated
+                    // before the final verification below re-judges it
+                    int lost = PlanReverify.afterDeath(plan, tools.snapshotForPlanner());
+                    if (lost > 0) {
+                        PlannerStore.save(plan);
+                        publishPlan(plan);
+                    }
+                }
                 if (plan.isComplete()) {
                     StateSnapshot snap = tools.snapshotForPlanner();
                     CriteriaEvaluator.Result fin = CriteriaEvaluator.evaluate(plan.finalCriteria, snap);
@@ -264,7 +285,11 @@ public final class PlannerAgent implements Helper {
 
     // ──────────────────────────────────────────────────────────────────── deaths
 
-    /** Apply the user's death policy. Returns the (possibly replanned) plan, or null to stop. */
+    /**
+     * Apply the death policy: stop, re-verify what the death invalidated, then REPLAN via the LLM
+     * with a full DEATH REPORT — recovering the drops becomes the first sub-goal of the new plan
+     * when it's worth the trip, re-gear steps otherwise. Returns the new plan, or null to stop.
+     */
     private PlanDocument handleDeath(PlanDocument plan, SubGoal g, DeathEvent death,
                                      String mainGoal, Settings settings) {
         StateSnapshot here = tools.snapshotForPlanner();
@@ -275,6 +300,7 @@ public final class PlannerAgent implements Helper {
                 Math.max(0, settings.aiPlannerMaxDeathsPerSubGoal.value),
                 settings.aiPlannerWalkSpeedBlocksPerSec.value,
                 settings.aiPlannerDespawnSeconds.value);
+        int secondsLeft = (int) Math.max(0, settings.aiPlannerDespawnSeconds.value - secondsSince);
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("x", (int) death.x);
@@ -283,13 +309,17 @@ public final class PlannerAgent implements Helper {
         data.put("recoverable", verdict.recoverable);
         data.put("decision", verdict.decision.name());
         data.put("deaths", g.deaths);
+        data.put("cause", death.cause);
+        data.put("killer", death.killer);
+        data.put("drops_destroyed", death.dropsLikelyDestroyed);
         AgentTelemetry.emit("death", data);
         try {
             MissionMemory.rememberLocation("death_drops", "items dropped here after death", "death",
                     death.dimension, (int) death.x, (int) death.y, (int) death.z, "planner");
         } catch (RuntimeException ignored) {}
-        logDirect("[AI:planner] death #" + g.deaths + " on '" + g.title + "' — " + verdict.reason,
-                ChatFormatting.YELLOW);
+        logDirect("[AI:planner] death #" + g.deaths + " on '" + g.title + "' ("
+                + death.cause + (death.killer.isEmpty() ? "" : " by " + death.killer) + ") — "
+                + verdict.reason, ChatFormatting.YELLOW);
 
         // Death dropped everything carried — re-verify the steps we'd checked off and UN-check the
         // ones whose gear is now gone, rewinding the cursor. Without this the bot keeps "stone
@@ -302,35 +332,89 @@ public final class PlannerAgent implements Helper {
             publishPlan(plan);
         }
 
-        if (verdict.decision == DeathPolicy.Decision.RECOVER_THEN_CONTINUE && !cancelled) {
-            GoalTracker.setStatus("Recovering dropped items (death #" + g.deaths + ")");
-            int secondsLeft = (int) Math.max(0, settings.aiPlannerDespawnSeconds.value - secondsSince);
-            MistralAgent recovery = new MistralAgent(baritone,
-                    PlannerPrompts.recoveryPreamble((int) death.x, (int) death.y, (int) death.z, secondsLeft));
-            currentSubAgent = recovery;
-            MistralAgent.ACTIVE.set(recovery);
-            try {
-                recovery.runGoalWithOutcome("Recover your dropped items, then call done.", RECOVERY_ITERATIONS);
-            } finally {
-                MistralAgent.ACTIVE.compareAndSet(recovery, null);
-                currentSubAgent = null;
+        boolean recoverWorthIt = verdict.recoverable && !death.dropsLikelyDestroyed && !cancelled;
+        SubGoal recoveryFallback = recoverWorthIt ? recoverySubGoal(death, secondsLeft) : null;
+        String reason = "the bot DIED (death " + g.deaths + " on '" + g.title + "'): " + verdict.reason;
+
+        if (!settings.aiDeathReplanLlm.value) {
+            // heuristic mode (LLM replan disabled): splice the recovery trip when worth it,
+            // otherwise fall back to a plain re-gear replan
+            if (recoveryFallback != null) {
+                spliceRecoveryStep(plan, recoveryFallback);
+                PlannerStore.save(plan);
+                publishPlan(plan);
+                logDirect("[AI:planner] recovery step spliced in (aiDeathReplanLlm=false)",
+                        ChatFormatting.YELLOW);
+                return plan;
             }
-            // recovery may have brought gear back — re-check so still-satisfied steps stay done
-            PlanReverify.afterDeath(plan, tools.snapshotForPlanner());
-            PlannerStore.save(plan);
-            publishPlan(plan);
-            return plan; // retry from the rewound cursor with whatever was recovered
+            return replanOrGiveUp(plan, mainGoal, settings,
+                    reason + " RE-GEAR before retrying: food, armor, torches, safer route.");
         }
 
-        return replanOrGiveUp(plan, mainGoal, settings,
-                "died " + g.deaths + " time(s) pursuing '" + g.title + "' (" + verdict.reason
-                        + "). RE-GEAR before retrying: food, armor, torches, safer route.");
+        // the user's policy: EVERY death goes through an LLM replan that explicitly decides
+        // "recover the drops" vs "re-gear and update the goals" (DEATH REPORT + directives)
+        String context = deathContext(death, verdict, distance, secondsLeft, g.deaths,
+                Math.max(0, settings.aiPlannerMaxDeathsPerSubGoal.value));
+        return replanOrGiveUp(plan, mainGoal, settings, reason, context, recoveryFallback);
+    }
+
+    /**
+     * The DEATH REPORT block a death-replan reads: everything the LLM needs to choose between
+     * "recover the drops" and "write them off, re-gear". Pure and unit-tested.
+     */
+    static String deathContext(DeathEvent death, DeathPolicy.Verdict verdict, double distanceBlocks,
+                               int secondsLeft, int deathsThisStep, int maxDeaths) {
+        StringBuilder sb = new StringBuilder(320);
+        sb.append("DEATH REPORT:\n");
+        sb.append("- cause: ").append(death.cause);
+        if (!death.killer.isEmpty()) {
+            sb.append(" (killed by ").append(death.killer).append(')');
+        }
+        sb.append('\n');
+        sb.append(String.format("- died at: %d, %d, %d (%s), now ~%.0f blocks away%n",
+                (int) death.x, (int) death.y, (int) death.z, death.dimension, distanceBlocks));
+        sb.append("- despawn window left: ~").append(secondsLeft).append("s\n");
+        sb.append("- drops likely destroyed: ").append(death.dropsLikelyDestroyed ? "yes" : "no").append('\n');
+        sb.append("- recoverable hint: ").append(verdict.reason).append('\n');
+        sb.append("- deaths on this step: ").append(deathsThisStep).append(" of max ").append(maxDeaths).append('\n');
+        if (deathsThisStep > maxDeaths) {
+            sb.append("MANDATORY: do NOT retry the same approach for this step — change strategy "
+                    + "(different route, better gear, or wait for day).\n");
+        }
+        return sb.toString();
+    }
+
+    /** The synthetic "go get the drops" step (empty criteria — completes when the run returns). */
+    static SubGoal recoverySubGoal(DeathEvent death, int secondsLeft) {
+        SubGoal g = new SubGoal();
+        g.title = String.format("Recover drops at %d, %d, %d", (int) death.x, (int) death.y, (int) death.z);
+        g.instruction = PlannerPrompts.recoveryPreamble((int) death.x, (int) death.y, (int) death.z, secondsLeft);
+        return g;
+    }
+
+    /** Insert {@code recovery} at the cursor so it runs FIRST, as a normal telemetry-visible step. */
+    static void spliceRecoveryStep(PlanDocument plan, SubGoal recovery) {
+        int at = Math.max(0, Math.min(plan.cursor, plan.subGoals.size()));
+        plan.subGoals.add(at, recovery);
+        plan.updatedAt = System.currentTimeMillis();
     }
 
     // ─────────────────────────────────────────────────────────────────── replan
 
     /** One replan round, budget permitting. Returns the updated plan, or null when giving up. */
     private PlanDocument replanOrGiveUp(PlanDocument plan, String mainGoal, Settings settings, String reason) {
+        return replanOrGiveUp(plan, mainGoal, settings, reason, null, null);
+    }
+
+    /**
+     * Like {@link #replanOrGiveUp(PlanDocument, String, Settings, String)}, with the death policy
+     * wired in: a non-null {@code deathContext} appends the DEATH REPORT + the recover-vs-regear
+     * directives to the prompts, and a non-null {@code recoveryFallback} is spliced in locally when
+     * the LLM is unavailable (instead of wholesale-replacing the remaining ladder with the parser's
+     * single-goal fallback).
+     */
+    private PlanDocument replanOrGiveUp(PlanDocument plan, String mainGoal, Settings settings, String reason,
+                                        String deathContext, SubGoal recoveryFallback) {
         plan.replans++;
         if (plan.replans > Math.max(0, settings.aiPlannerMaxReplans.value) || cancelled) {
             GoalTracker.fail(cancelled ? "Cancelled"
@@ -346,8 +430,23 @@ public final class PlannerAgent implements Helper {
         AgentTelemetry.emit("replan", data);
         logDirect("[AI:planner] replanning (" + plan.replans + "): " + truncate(reason, 200), ChatFormatting.YELLOW);
 
-        JsonObject args = callPlannerLlm(settings, PlannerPrompts.replanSystemPrompt(),
-                PlannerPrompts.replanUserPrompt(mainGoal, plan, reason, stateJson()));
+        String systemPrompt = PlannerPrompts.replanSystemPrompt();
+        String fullReason = reason;
+        if (deathContext != null) {
+            systemPrompt = systemPrompt + "\n" + PlannerPrompts.deathReplanDirectives();
+            fullReason = deathContext + "\n" + reason;
+        }
+        JsonObject args = callPlannerLlm(settings, systemPrompt,
+                PlannerPrompts.replanUserPrompt(mainGoal, plan, fullReason, stateJson()));
+        if (args == null && recoveryFallback != null) {
+            // LLM unavailable mid-death: keep the existing ladder and just splice the recovery
+            // trip in front of it — far better than the parser's single-goal fallback here.
+            spliceRecoveryStep(plan, recoveryFallback);
+            PlannerStore.save(plan);
+            publishPlan(plan);
+            logDirect("[AI:planner] LLM unavailable — spliced a recovery step instead", ChatFormatting.YELLOW);
+            return plan;
+        }
         PlanDocument remaining = PlanParser.parse(mainGoal, args, System.currentTimeMillis());
 
         // splice: verified-complete steps stay; the remaining work is replaced wholesale

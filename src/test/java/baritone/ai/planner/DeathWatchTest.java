@@ -72,4 +72,38 @@ public class DeathWatchTest {
         long seen = DeathWatch.currentSeq();
         assertNull(DeathWatch.pollNewDeath(seen));
     }
+
+    @Test
+    public void capturesTheDeathCauseOnTheRisingEdge() {
+        DeathWatch.onClientTick(true, 10, -58, 20, "minecraft:overworld", 200,
+                "lava", "", true);
+        DeathEvent death = DeathWatch.pollNewDeath(0);
+        assertNotNull(death);
+        assertEquals("lava", death.cause);
+        assertEquals("", death.killer);
+        assertEquals(true, death.dropsLikelyDestroyed);
+    }
+
+    @Test
+    public void legacyOverloadDefaultsToAnUnknownCause() {
+        DeathWatch.onClientTick(true, 10, -58, 20, "minecraft:overworld", 200);
+        DeathEvent death = DeathWatch.pollNewDeath(0);
+        assertNotNull(death);
+        assertEquals("unknown", death.cause);
+        assertEquals("", death.killer);
+        assertEquals(false, death.dropsLikelyDestroyed);
+    }
+
+    @Test
+    public void aSecondDeathOverwritesTheCause() {
+        DeathWatch.onClientTick(true, 10, -58, 20, "minecraft:overworld", 200,
+                "mob", "zombie", false);
+        DeathWatch.onClientTick(false, 0, 70, 0, "minecraft:overworld", 300); // respawned
+        DeathWatch.onClientTick(true, 50, 12, 60, "minecraft:overworld", 400,
+                "arrow", "skeleton", false);
+        DeathEvent death = DeathWatch.pollNewDeath(1);
+        assertNotNull(death);
+        assertEquals("arrow", death.cause);
+        assertEquals("skeleton", death.killer);
+    }
 }

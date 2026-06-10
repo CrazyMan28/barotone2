@@ -1334,6 +1334,37 @@ public final class Settings {
     public final Setting<Integer> reflexFightMaxMobs = new Setting<>(2);
 
     /**
+     * Weigh weapon tier + armor + health + shield against the local mob threat (count, type, night)
+     * before standing to fight: an unarmed, unarmored bot now flees a zombie it used to brawl
+     * bare-handed to death. Set false to restore the old "any weapon and 4 hearts" judgment.
+     */
+    public final Setting<Boolean> reflexGearAwareCombat = new Setting<>(true);
+
+    /**
+     * Defensive mob reflexes (flee/fight/retreat/shelter) engage even when no mission or pathing is
+     * active — idle at spawn, between missions, or while the LLM is thinking. The live telemetry
+     * showed bots beaten to death standing around after a mission verified done. Set false to
+     * restore the old behavior where mob defense only engaged while "working" (useful when a human
+     * is playing manually and doesn't want their movement hijacked).
+     */
+    public final Setting<Boolean> aiReflexDefendIdle = new Setting<>(true);
+
+    /**
+     * Turtle-when-weak: at night, undergeared, with hostiles visible, the bot proactively shelters
+     * (sleep in a bed, dig a sealed 1x2 hole, wall in, or break line-of-sight behind cover) and
+     * waits for dawn or gear instead of working until something kills it. Skeleton shooters are
+     * also answered with cover instead of an open-field flee.
+     */
+    public final Setting<Boolean> reflexShelter = new Setting<>(true);
+
+    /**
+     * Failsafe for {@code reflexShelter}: stop sheltering after this many seconds even if the
+     * night/threat hasn't resolved, and get back to work for a while. A full Minecraft night is
+     * 600 seconds.
+     */
+    public final Setting<Integer> reflexShelterMaxSeconds = new Setting<>(700);
+
+    /**
      * When true, lines written to {@code <gameDir>/baritone/remote_commands.txt} are executed as
      * Baritone chat commands once per second and the file is truncated. Used for unattended
      * training-data farming sessions driven from outside the game. Local filesystem only; no
@@ -1481,11 +1512,20 @@ public final class Settings {
     public final Setting<Integer> aiPlannerMaxReplans = new Setting<>(5);
 
     /**
-     * Deaths tolerated on a single sub-goal. Up to this many, the planner recovers the dropped
-     * items (when reachable before despawn) and retries; strictly MORE forces a replan with a
-     * re-gear directive instead of repeating the fatal approach.
+     * Deaths tolerated on a single sub-goal. Up to this many, the death replan may still choose
+     * to recover the drops and retry; strictly MORE adds a MANDATORY change-strategy directive
+     * so the planner never repeats the fatal approach.
      */
     public final Setting<Integer> aiPlannerMaxDeathsPerSubGoal = new Setting<>(5);
+
+    /**
+     * Every death triggers an LLM replan with a full DEATH REPORT (cause, killer, drop location,
+     * despawn countdown, drops-destroyed) so the planner explicitly decides "recover the drops"
+     * (as the new first sub-goal) vs "write them off and re-gear". When false — or whenever the
+     * LLM is unreachable — a heuristic fallback splices a recovery step in when the drops look
+     * reachable, and replans only when they don't.
+     */
+    public final Setting<Boolean> aiDeathReplanLlm = new Setting<>(true);
 
     /**
      * Travel-speed estimate (blocks/second) for the death-recovery feasibility check: dropped items

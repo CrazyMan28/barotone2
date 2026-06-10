@@ -24,6 +24,7 @@ import baritone.ai.reflex.behavior.EscapeLavaBehavior;
 import baritone.ai.reflex.behavior.ExtinguishFireBehavior;
 import baritone.ai.reflex.behavior.FleeBehavior;
 import baritone.ai.reflex.behavior.RetreatAndHealBehavior;
+import baritone.ai.reflex.behavior.ShelterBehavior;
 import baritone.ai.reflex.behavior.SuffocationBehavior;
 import baritone.ai.reflex.behavior.SurfaceBehavior;
 
@@ -71,6 +72,7 @@ public final class ReflexEngine {
         register(new CombatBehavior());
         register(new RetreatAndHealBehavior());
         register(new EatBehavior());
+        register(new ShelterBehavior());
     }
 
     private void register(ReflexBehavior b) {

@@ -35,5 +35,9 @@ public enum ThreatType {
     /** Being beaten by mob(s) we can't/shouldn't trade with (low hp or outnumbered) — retreat+heal. */
     OVERWHELMED,
     POISON,
-    HUNGER
+    HUNGER,
+    /** A plain hostile (zombie etc.) the gear-aware judgment says we'd lose to — flee, don't brawl. */
+    OUTMATCHED,
+    /** Night + undergeared + hostiles visible: proactively turtle up instead of working until dead. */
+    NIGHT_EXPOSURE
 }

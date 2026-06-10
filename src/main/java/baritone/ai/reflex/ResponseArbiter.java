@@ -30,9 +30,10 @@ import java.util.List;
  *     reflex;</li>
  * <li>a running behavior is sticky until its release condition fires (hysteresis — release radii
  *     are wider than engage radii), and only a strictly more severe threat preempts it;</li>
- * <li>FLEE/COMBAT/RETREAT engage only while {@code working} so manual play is never hijacked —
- *     but once engaged they stay through a mission's end, and a mob behavior may escalate to
- *     another mob behavior regardless of {@code working} (already mid-episode);</li>
+ * <li>mob defense (FLEE/COMBAT/RETREAT) engages even when idle by default ({@code defendIdle} —
+ *     the live logs showed bots beaten to death standing around post-mission); with
+ *     {@code defendIdle=false} it engages only while {@code working} so manual play is never
+ *     hijacked, though an engaged mob behavior may still escalate mid-episode;</li>
  * <li>low hp scales mob-flee severities up ({@code lowHpFleeBias}) and a losing fight disengages
  *     into RETREAT_HEAL instead of trading to death;</li>
  * <li>the flee-episode clock ({@link FleeEscalation}) stops "fleeing forever".</li>
@@ -52,6 +53,9 @@ public final class ResponseArbiter {
     // hp-loss window for losingTrade()
     private long hpWindowStart = Long.MIN_VALUE;
     private float hpAtWindowStart;
+
+    /** NIGHT_EXPOSURE is suppressed until this game time after a shelter timeout. */
+    private long shelterCooldownUntil = Long.MIN_VALUE;
 
     public ResponsePlan decide(WorldSnapshot s, ReflexTuning t) {
         if (flee == null) {
@@ -74,6 +78,10 @@ public final class ResponseArbiter {
         add(threats, Detectors.swarm(s, t));
         add(threats, Detectors.overwhelmed(s, t));
         add(threats, Detectors.poison(s, t));
+        // a shelter that timed out must not re-trigger immediately — back to work for a while
+        if (s.gameTime >= shelterCooldownUntil) {
+            add(threats, Detectors.nightExposure(s, t));
+        }
         add(threats, Detectors.hunger(s, t));
 
         // 2. the flee-episode clock runs EVERY tick (episodes span engage gaps)
@@ -102,15 +110,20 @@ public final class ResponseArbiter {
         // 5. running behavior: preemption, escalation, stickiness, release
         if (active != BehaviorId.NONE) {
             activeTicks++;
-            Threat top = best(threats, s, true);
+            Threat top = best(threats, s, t, true);
             if (top != null && activeCause != null && top.severity > activeCause.severity
                     && behaviorFor(top.type) != active) {
                 BehaviorId wanted = behaviorFor(top.type);
                 if (!isMobBehavior(wanted)) {
                     return engage(wanted, top, now); // lethal terrain always preempts
                 }
-                // healing already breaks contact — don't let a mere flee threat cancel it
-                if (active != BehaviorId.RETREAT_HEAL) {
+                // a sheltered bot stays sheltered: the zombie crowd outside the wall must not
+                // pull it into the open night — unless it is being hit right now (breached)
+                boolean breached = s.ticksSinceHurt <= 5;
+                if (active == BehaviorId.SHELTER && !breached) {
+                    // hold the shelter
+                } else if (active != BehaviorId.RETREAT_HEAL) {
+                    // (healing already breaks contact — don't let a mere flee threat cancel it)
                     if (active == BehaviorId.COMBAT && losingTrade(s, t)) {
                         return engage(BehaviorId.RETREAT_HEAL, activeCause, now);
                     }
@@ -144,7 +157,7 @@ public final class ResponseArbiter {
 
         // 6. fresh engagement (working-gated)
         activeTicks = 0;
-        Threat top = best(threats, s, false);
+        Threat top = best(threats, s, t, false);
         if (top == null) {
             return ResponsePlan.NONE;
         }
@@ -186,11 +199,11 @@ public final class ResponseArbiter {
      * behavior needs the working gate are skipped when not working — unless the bot is already
      * mid mob-episode ({@code escalating}), where escalation must stay armed.
      */
-    private Threat best(List<Threat> threats, WorldSnapshot s, boolean escalating) {
+    private Threat best(List<Threat> threats, WorldSnapshot s, ReflexTuning t, boolean escalating) {
         boolean workingOk = s.working || (escalating && isMobBehavior(active));
         Threat best = null;
         for (Threat th : threats) {
-            if (requiresWorking(behaviorFor(th.type)) && !workingOk) {
+            if (requiresWorking(behaviorFor(th.type), t) && !workingOk) {
                 continue;
             }
             if (best == null || th.severity > best.severity
@@ -278,6 +291,20 @@ public final class ResponseArbiter {
             case EAT:
                 return s.food >= t.eatReleaseFood || s.screenOpen || s.bestFoodSlot < 0
                         || activeTicks > t.eatTimeoutTicks;
+            case SHELTER: {
+                if (activeTicks > t.shelterMaxTicks) {
+                    // failsafe: don't cower forever — and don't re-trigger right away either
+                    shelterCooldownUntil = s.gameTime + t.shelterRetryCooldownTicks;
+                    return true;
+                }
+                if (activeCause != null && activeCause.type == ThreatType.RANGED) {
+                    // sheltering from a shooter: out when it leaves (hysteresis) or we can take it
+                    return !Detectors.anyWithin(s, Detectors.fleeEngageRadius(t) + 4D, m -> m.skeleton)
+                            || Detectors.combatReady(s, t);
+                }
+                // night turtle: out at dawn, once geared, or once nobody is visible any more
+                return Detectors.nightExposure(s, t) == null;
+            }
             default:
                 return true;
         }
@@ -319,9 +346,14 @@ public final class ResponseArbiter {
             case FIRE:
                 return BehaviorId.EXTINGUISH_FIRE;
             case CREEPER:
-            case RANGED:
             case SWARM:
+            case OUTMATCHED:
                 return BehaviorId.FLEE;
+            case RANGED:
+            case NIGHT_EXPOSURE:
+                // shooters are answered with cover (open-field fleeing just eats arrows in the
+                // back — 31% of the analyzed deaths), night exposure with a proactive turtle
+                return BehaviorId.SHELTER;
             case MELEE_MOB:
                 return BehaviorId.COMBAT;
             case OVERWHELMED:
@@ -334,11 +366,12 @@ public final class ResponseArbiter {
         }
     }
 
-    private static boolean requiresWorking(BehaviorId b) {
-        return isMobBehavior(b);
+    private static boolean requiresWorking(BehaviorId b, ReflexTuning t) {
+        return !t.defendIdle && isMobBehavior(b);
     }
 
     private static boolean isMobBehavior(BehaviorId b) {
-        return b == BehaviorId.FLEE || b == BehaviorId.COMBAT || b == BehaviorId.RETREAT_HEAL;
+        return b == BehaviorId.FLEE || b == BehaviorId.COMBAT || b == BehaviorId.RETREAT_HEAL
+                || b == BehaviorId.SHELTER;
     }
 }

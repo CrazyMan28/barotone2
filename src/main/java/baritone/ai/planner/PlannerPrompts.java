@@ -210,6 +210,42 @@ public final class PlannerPrompts {
         return sb.toString();
     }
 
+    /**
+     * Extra system directives for a replan triggered by a DEATH — the LLM must explicitly choose
+     * between recovering the drops and writing them off to re-gear (the user's death policy).
+     */
+    public static String deathReplanDirectives() {
+        return """
+                THE BOT JUST DIED — read the DEATH REPORT in the user message and decide explicitly: \
+                recover the drops, or write them off and re-gear.
+                - Drops reachable before despawn AND not destroyed -> make the FIRST sub-goal exactly: \
+                title "Recover drops at <x>,<y>,<z>", instruction "goto_coords <x> <y> <z> at top speed, \
+                pick up every item there (they despawn in ~<N>s), then call done — nothing else", with \
+                NO criteria (an empty criteria list).
+                - The report says drops likely destroyed (lava/fire/void) or out of reach in time -> do \
+                NOT plan a recovery trip. Plan re-gear steps instead (food, weapon, armor, torches).
+                - If it is NIGHT and the bot is undergeared, sequence SAFETY FIRST: gather gear near \
+                spawn or use the wait_for_dawn tool BEFORE any long trek. The reflex layer shelters \
+                the bot automatically at night — plan around that, don't fight it.
+                - NEVER repeat the exact approach that caused this death (see deaths-so-far in the \
+                report); change route, gear or timing.
+                """;
+    }
+
+    /**
+     * Tool-abort text when the bot dies mid-action: every blocking tool loop returns this
+     * immediately so the (sub-)agent stops at once instead of grinding on bare-fisted for
+     * minutes after respawn while the planner waits.
+     */
+    public static String deathAbortMessage(DeathEvent death) {
+        String at = death == null ? ""
+                : String.format(" at %d, %d, %d", (int) death.x, (int) death.y, (int) death.z);
+        String by = death == null || death.killer.isEmpty() ? "" : " (killed by " + death.killer + ")";
+        return "YOU DIED" + at + by + " — action aborted; everything you carried dropped there. "
+                + "Do NOT keep working with empty hands. Call done() NOW and report the death; "
+                + "the planner will recover the drops or replan.";
+    }
+
     /** Preamble for the death-recovery interlude: sprint to the drops before they despawn. */
     public static String recoveryPreamble(int x, int y, int z, int secondsLeft) {
         return "EMERGENCY: you just died and respawned. ALL your items dropped at "

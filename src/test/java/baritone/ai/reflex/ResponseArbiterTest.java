@@ -121,6 +121,7 @@ public class ResponseArbiterTest {
     @Test
     public void priorityOrderOnFreshEngagement() {
         WorldSnapshot s = calm();
+        armed(s); // geared so the zombie is a winnable COMBAT, not an OUTMATCHED flee
         s.underWater = true;
         s.air = 50;
         s.mobs.add(creeperAt(5));
@@ -138,14 +139,15 @@ public class ResponseArbiterTest {
     }
 
     @Test
-    public void fleeAndFightRequireWorkingButEatDoesNot() {
+    public void withDefendIdleOffFleeAndFightRequireWorkingButEatDoesNot() {
+        t.defendIdle = false; // opt-out for manual play: never hijack movement for combat...
         WorldSnapshot s = calm();
-        s.working = false; // manual play: never hijack movement for combat, but keep the player fed
+        s.working = false;
         s.mobs.add(creeperAt(5));
         s.mobs.add(zombieAt(3));
         recentlyHurt(s);
         hungry(s);
-        assertEquals(BehaviorId.EAT, decide(new ResponseArbiter(), s));
+        assertEquals(BehaviorId.EAT, decide(new ResponseArbiter(), s)); // ...but keep the player fed
     }
 
     @Test
@@ -200,6 +202,7 @@ public class ResponseArbiterTest {
     public void eatingIsInterruptedByDanger() {
         ResponseArbiter a = new ResponseArbiter();
         WorldSnapshot s = calm();
+        armed(s); // geared so the zombie interrupts as COMBAT, not an OUTMATCHED flee
         hungry(s);
         assertEquals(BehaviorId.EAT, decide(a, s));
         // a zombie lands a hit mid-meal
@@ -221,10 +224,11 @@ public class ResponseArbiterTest {
     // ---------------------------------------------------------------- redesign-specific
 
     @Test
-    public void unarmedSkeletonIsFledArmedSkeletonIsFought() {
+    public void unarmedSkeletonIsShelteredArmedSkeletonIsFought() {
         WorldSnapshot unarmed = calm();
         unarmed.mobs.add(skeletonAt(5));
-        assertEquals(BehaviorId.FLEE, decide(new ResponseArbiter(), unarmed));
+        // open-field fleeing a shooter just eats arrows in the back — get behind cover instead
+        assertEquals(BehaviorId.SHELTER, decide(new ResponseArbiter(), unarmed));
 
         WorldSnapshot armed = calm();
         armed(armed);
@@ -238,7 +242,7 @@ public class ResponseArbiterTest {
         armed(s);
         s.hp = 6; // below combatMinHealth (8)
         s.mobs.add(skeletonAt(5));
-        assertEquals(BehaviorId.FLEE, decide(new ResponseArbiter(), s));
+        assertEquals(BehaviorId.SHELTER, decide(new ResponseArbiter(), s));
     }
 
     @Test

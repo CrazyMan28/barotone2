@@ -35,12 +35,22 @@ public final class DeathWatch {
     private static volatile long lastGameTime;
     private static final AtomicLong SEQ = new AtomicLong();
 
-    /** Feed from the game tick. Captures the death position on the alive→dead edge only. */
+    /** Legacy feed without cause info — captures with cause "unknown". */
     public static void onClientTick(boolean isDeadOrDying, double x, double y, double z,
                                     String dimension, long gameTime) {
+        onClientTick(isDeadOrDying, x, y, z, dimension, gameTime, "unknown", "", false);
+    }
+
+    /**
+     * Feed from the game tick. Captures position AND cause on the alive→dead edge only — the
+     * cause drives the planner's recover-vs-regear replan (a lava death has no drops to recover).
+     */
+    public static void onClientTick(boolean isDeadOrDying, double x, double y, double z,
+                                    String dimension, long gameTime,
+                                    String cause, String killer, boolean dropsLikelyDestroyed) {
         lastGameTime = gameTime;
         if (isDeadOrDying && !wasDead) {
-            lastDeath = new DeathEvent(x, y, z, dimension, gameTime);
+            lastDeath = new DeathEvent(x, y, z, dimension, gameTime, cause, killer, dropsLikelyDestroyed);
             SEQ.incrementAndGet();
         }
         wasDead = isDeadOrDying;

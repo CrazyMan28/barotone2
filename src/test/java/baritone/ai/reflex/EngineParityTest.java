@@ -169,6 +169,7 @@ public class EngineParityTest {
         ReflexEngine e = new ReflexEngine();
         WorldSnapshot s = working();
         s.bestWeaponSlot = 1;
+        s.bestWeaponTier = 2;
         s.attackStrengthScale = 0.4F; // mid-swing recovery
         MobInfo sk = new MobInfo();
         sk.entityId = 7;
@@ -187,6 +188,7 @@ public class EngineParityTest {
         ReflexEngine e = new ReflexEngine();
         WorldSnapshot mid = working();
         mid.bestWeaponSlot = 0;
+        mid.bestWeaponTier = 2;
         MobInfo sk = new MobInfo();
         sk.entityId = 7;
         sk.skeleton = true;
@@ -201,6 +203,7 @@ public class EngineParityTest {
         ReflexEngine e2 = new ReflexEngine();
         WorldSnapshot far = working();
         far.bestWeaponSlot = 0;
+        far.bestWeaponTier = 2;
         MobInfo sk2 = new MobInfo();
         sk2.entityId = 7;
         sk2.skeleton = true;

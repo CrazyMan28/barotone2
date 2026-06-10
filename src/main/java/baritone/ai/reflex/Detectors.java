@@ -37,10 +37,14 @@ public final class Detectors {
     public static final int SEV_FLEE_MOB = 80;
     /** A hissing creeper gets this on top of {@link #SEV_FLEE_MOB}. */
     public static final int SEV_IGNITED_BONUS = 15;
+    /** A plain hostile the gear-aware power score says we'd lose to. Below creeper, above overwhelmed. */
+    public static final int SEV_OUTMATCHED = 78;
     /** Getting beaten and can't win the trade — break off and heal. Above melee, below mob-flee. */
     public static final int SEV_OVERWHELMED = 75;
     public static final int SEV_MELEE = 60;
     public static final int SEV_POISON = 50;
+    /** Proactive night turtling — every real emergency must outrank it. Above hunger, below poison. */
+    public static final int SEV_NIGHT_EXPOSURE = 40;
     public static final int SEV_HUNGER = 30;
 
     /** Foods the auto-eat reflex refuses (poison, effects, or too valuable to waste on hunger). */
@@ -72,16 +76,19 @@ public final class Detectors {
 
     /** Geared, healthy AND not outnumbered enough to stand and trade with a skeleton. */
     public static boolean combatReady(WorldSnapshot s, ReflexTuning t) {
-        return t.fightBack && s.hp >= t.combatMinHealth && s.bestWeaponSlot >= 0 && !outnumbered(s, t);
+        return t.fightBack && s.hp >= t.combatMinHealth && s.bestWeaponSlot >= 0 && !outnumbered(s, t)
+                && CombatPower.fightFavorable(s, t);
     }
 
     /**
-     * Healthy and not outnumbered enough to brawl a melee mob (fists are fine for a lone zombie).
-     * The difference from {@link #combatReady} is that brawling doesn't require a weapon — but the
-     * moment we're outnumbered or low on hp we'd rather run than trade.
+     * Healthy, not outnumbered AND winning the gear-aware power comparison — only then do we trade
+     * blows with a melee mob. The difference from {@link #combatReady} is that brawling doesn't
+     * require a weapon slot, but {@link CombatPower} makes bare fists lose to even a single zombie,
+     * so in practice an ungeared bot flees where it used to brawl to death.
      */
     public static boolean canBrawl(WorldSnapshot s, ReflexTuning t) {
-        return t.fightBack && s.hp >= t.combatMinHealth && !outnumbered(s, t);
+        return t.fightBack && s.hp >= t.combatMinHealth && !outnumbered(s, t)
+                && CombatPower.fightFavorable(s, t);
     }
 
     /** Count of hostiles (any kind) within {@code radius}. */
@@ -145,12 +152,15 @@ public final class Detectors {
     }
 
     /**
-     * True if a mob we must FLEE is within radius: any creeper, or — when not combat-ready — any
-     * skeleton. The flee release check uses this with radius+4 (hysteresis).
+     * True if a mob we must FLEE is within radius: any creeper, any skeleton when not combat-ready,
+     * or any plain hostile while the fight is unfavorable (gear-aware). The flee release check uses
+     * this with radius+4 (hysteresis).
      */
     public static boolean fleeRequiredWithin(WorldSnapshot s, ReflexTuning t, double radius) {
         boolean ready = combatReady(s, t);
-        return anyWithin(s, radius, m -> m.creeper || (m.skeleton && !ready));
+        boolean outmatched = t.gearAwareCombat && !CombatPower.fightFavorable(s, t);
+        return anyWithin(s, radius, m -> m.creeper || (m.skeleton && !ready)
+                || (outmatched && m.hostile && !m.creeper && !m.skeleton));
     }
 
     /** A skeleton we choose to stand and fight: geared, healthy, and no creeper to flee first. */
@@ -175,21 +185,26 @@ public final class Detectors {
 
     /**
      * The mobs answered by FLEE: creepers always (they explode — never melee one), skeletons when
-     * we aren't geared to take them (closing on a skeleton unarmed just eats arrows).
+     * we aren't geared to take them (closing on a skeleton unarmed just eats arrows), and any plain
+     * hostile while the gear-aware power comparison says we'd lose the trade (OUTMATCHED).
      */
     public static Threat fleeMob(WorldSnapshot s, ReflexTuning t) {
-        if (!t.fleeCreepers) {
-            return null;
+        if (t.fleeCreepers) {
+            MobInfo creeper = nearestFlee(s, t, m -> m.creeper);
+            if (creeper != null) {
+                int sev = SEV_FLEE_MOB + (creeper.ignited ? SEV_IGNITED_BONUS : 0);
+                return new Threat(ThreatType.CREEPER, sev, creeper);
+            }
+            MobInfo skeleton = nearestFlee(s, t, m -> m.skeleton);
+            if (skeleton != null && skeletonToFight(s, t) == null) {
+                return new Threat(ThreatType.RANGED, SEV_FLEE_MOB, skeleton);
+            }
         }
-        MobInfo creeper = nearestFlee(s, t, m -> m.creeper);
-        MobInfo skeleton = nearestFlee(s, t, m -> m.skeleton);
-        boolean fightSkeleton = skeleton != null && skeletonToFight(s, t) != null;
-        if (creeper != null) {
-            int sev = SEV_FLEE_MOB + (creeper.ignited ? SEV_IGNITED_BONUS : 0);
-            return new Threat(ThreatType.CREEPER, sev, creeper);
-        }
-        if (skeleton != null && !fightSkeleton) {
-            return new Threat(ThreatType.RANGED, SEV_FLEE_MOB, skeleton);
+        if (t.gearAwareCombat && !CombatPower.fightFavorable(s, t)) {
+            MobInfo hostile = nearestFlee(s, t, m -> m.hostile && !m.creeper && !m.skeleton);
+            if (hostile != null) {
+                return new Threat(ThreatType.OUTMATCHED, SEV_OUTMATCHED, hostile);
+            }
         }
         return null;
     }
@@ -287,5 +302,25 @@ public final class Detectors {
     public static Threat poison(WorldSnapshot s, ReflexTuning t) {
         return s.poisoned && s.hp <= t.poisonTreatHp && s.bestFoodSlot >= 0
                 ? new Threat(ThreatType.POISON, SEV_POISON) : null;
+    }
+
+    /**
+     * Night, undergeared, hostiles visible: don't keep working until one of them kills you —
+     * turtle up (SHELTER) until dawn, gear, or the threats wander off. The judgment asks "if every
+     * visible non-creeper hostile came at me, would I win?" so a geared bot keeps mining through
+     * the night while a fresh-spawn hides from a single distant zombie.
+     */
+    public static Threat nightExposure(WorldSnapshot s, ReflexTuning t) {
+        if (!t.shelter || !s.night) {
+            return null;
+        }
+        double threat = CombatPower.threatPowerWithin(s, t, t.perceptionRadius);
+        if (threat <= 0D) {
+            return null; // nobody visible — the night itself is not a threat
+        }
+        if (CombatPower.playerPower(s) > threat * t.powerMargin) {
+            return null; // geared enough to keep working
+        }
+        return new Threat(ThreatType.NIGHT_EXPOSURE, SEV_NIGHT_EXPOSURE);
     }
 }

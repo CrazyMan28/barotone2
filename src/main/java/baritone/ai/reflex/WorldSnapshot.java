@@ -72,11 +72,15 @@ public final class WorldSnapshot {
     /** Rank in the melee-weapon table, lower = better (-1 = none). */
     public int bestWeaponTier = -1;
     public boolean hasShieldOffhand;
+    /** Worn armor points, 0-20+ ({@code player.getArmorValue()}). */
+    public int armorValue;
     public int bestFoodSlot = -1;
     public int bestFoodNutrition = -1;
     public int waterBucketSlot = -1;
     public int blockSlot = -1;
     public int blockCount;
+    /** Hotbar slot holding a bed (-1 = none) — sleeping skips the night entirely. */
+    public int bedSlot = -1;
 
     // ---- precomputed world scans (adapter-side, since the core can't read block states)
     /** Nearest stand-able non-lava column when in lava, else null. */
@@ -96,12 +100,23 @@ public final class WorldSnapshot {
      * blocks that direction. All-true by default so unscanned tests treat every way as open.
      */
     public boolean[] octantSafe = {true, true, true, true, true, true, true, true};
+    /**
+     * Per-octant "is there a 2-high solid column within a few blocks that way" — cover that breaks
+     * a skeleton's arrow line-of-sight. All-false by default (open field).
+     */
+    public boolean[] octantCover = new boolean[8];
+    /** The 3 blocks under the feet are solid, non-gravity, with no lava below — safe to dig a turtle hole. */
+    public boolean digDownSafe;
+    /** A solid block sits within 2 above the head — the turtle hole is already sealed. */
+    public boolean sealedOverhead;
 
     // ---- ambient (spawn / night awareness)
     /** Block-light at the feet (0-15); low light at night is where hostiles spawn on top of you. */
     public int lightLevel = 15;
     /** Derived from the world day-time: night is when new hostiles spawn. */
     public boolean night;
+    /** World day-time, 0..23999 (dawn = 0/24000, night ~13000-23000). */
+    public long dayTime;
 
     // ---- entities & damage
     public List<MobInfo> mobs = new ArrayList<>();

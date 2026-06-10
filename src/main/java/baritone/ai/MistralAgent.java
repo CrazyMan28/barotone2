@@ -18,6 +18,7 @@
 package baritone.ai;
 
 import baritone.ai.planner.DeathWatch;
+import baritone.process.ReflexProcess;
 import baritone.api.BaritoneAPI;
 import baritone.api.IBaritone;
 import baritone.api.Settings;
@@ -176,6 +177,8 @@ public final class MistralAgent implements Helper {
     private volatile boolean cancelled = false;
     private volatile Thread worker;
     private volatile String lastOutcomeDetail = "";
+    /** DeathWatch seq when this run started (-1 until a run begins) — see diedSinceRunStart(). */
+    private volatile long deathSeqAtStart = -1L;
 
     public MistralAgent(IBaritone baritone) {
         this(baritone, false);
@@ -215,6 +218,16 @@ public final class MistralAgent implements Helper {
     public static boolean isCancelled() {
         MistralAgent a = RUNNING.get();
         return a != null && a.cancelled;
+    }
+
+    /**
+     * True when the agent running on THIS thread has died since its run started. Blocking tool
+     * loops poll it (next to {@link #isCancelled()}) so a death aborts the tool within one poll
+     * interval instead of grinding on bare-fisted until the tool's own deadline.
+     */
+    public static boolean diedSinceRunStart() {
+        MistralAgent a = RUNNING.get();
+        return a != null && a.deathSeqAtStart >= 0 && DeathWatch.currentSeq() > a.deathSeqAtStart;
     }
 
     public void cancel() {
@@ -275,10 +288,11 @@ public final class MistralAgent implements Helper {
         }
         worker = Thread.currentThread();
         RUNNING.set(this);
-        // A sub-agent that dies mid-step has just lost all its gear (it would keep mining cobblestone
-        // with its fist). Snapshot the death counter so the loop can bail the instant a new death
-        // happens and hand control back to the planner, which re-verifies/recovers.
-        long deathSeqAtStart = subAgentMode ? DeathWatch.currentSeq() : -1L;
+        // An agent that dies mid-step has just lost all its gear (it would keep mining cobblestone
+        // with its fist). Snapshot the death counter so blocking tools (via diedSinceRunStart) and
+        // the sub-agent loop can bail the instant a new death happens; the planner re-verifies,
+        // recovers or replans.
+        deathSeqAtStart = DeathWatch.currentSeq();
         tools.setForbidExplore(goalForbidsExplore(userGoal));
         GoalTracker.setStatus(planMode ? "Planning" : "Starting");
         MissionMemory.recordCheckpointQuietly(userGoal, "agent_started", provider + ":" + model, "running");
@@ -342,6 +356,8 @@ public final class MistralAgent implements Helper {
         int maxMissionSeconds = settings.mistralMaxMissionSeconds.value;
         long missionDeadline = maxMissionSeconds > 0
                 ? System.currentTimeMillis() + maxMissionSeconds * 1000L : 0L;
+        // reflex-owned time (sheltering through a night) must not burn the mission budget
+        long reflexMillisAtStart = ReflexProcess.ENGAGED_MILLIS.get();
 
         // Bug #3: keep inventory access for the mission, then restore the player's setting afterward.
         boolean prevAllowInventory = settings.allowInventory.value;
@@ -365,7 +381,9 @@ public final class MistralAgent implements Helper {
                     return failOutcome("Reached max iterations");
                 }
                 // Feature 5: wall-clock watchdog so an unlimited-rounds mission cannot run forever.
-                if (missionDeadline > 0L && System.currentTimeMillis() > missionDeadline) {
+                // Extended by however long the reflexes owned the bot (e.g. an overnight shelter).
+                long reflexPause = ReflexProcess.ENGAGED_MILLIS.get() - reflexMillisAtStart;
+                if (missionDeadline > 0L && System.currentTimeMillis() > missionDeadline + reflexPause) {
                     logDirect("[AI] reached time budget (" + maxMissionSeconds + "s). Use set mistralMaxMissionSeconds 0 to disable.",
                             ChatFormatting.YELLOW);
                     return failOutcome("Reached time budget");
@@ -375,7 +393,11 @@ public final class MistralAgent implements Helper {
                     return cancelOutcome("Cancelled");
                 }
                 // Died mid-step: stop now (don't mine with a fist after respawn) and hand back to
-                // the planner, which un-checks the gear we lost and recovers/replans.
+                // the planner, which un-checks the gear we lost and recovers/replans. Blocking tools
+                // poll diedSinceRunStart() themselves and return early, so this fires within one
+                // round of the death. (The in-flight LLM HTTP call is deliberately NOT interrupted:
+                // it is bounded by mistralRequestTimeoutSeconds and aborting it mid-stream would
+                // complicate the client's retry handling for at most one round of latency.)
                 if (subAgentMode && DeathWatch.currentSeq() > deathSeqAtStart) {
                     logDirect("[AI] died mid-step — handing back to the planner.", ChatFormatting.YELLOW);
                     return failOutcome("died mid-step (lost gear; planner will recover/re-gear)");

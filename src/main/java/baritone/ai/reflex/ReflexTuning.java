@@ -32,6 +32,8 @@ public final class ReflexTuning {
     public boolean autoEat = true;
     public int eatAtHunger = 13;
     public double creeperRadius = 7.0D;
+    /** Mob defense engages even when idle (no mission/pathing); false = old working-only gate. */
+    public boolean defendIdle = true;
 
     // ---- perception ("vision")
     /** How far the adapter scans for mobs (>= engage radius so we see threats coming). */
@@ -56,6 +58,12 @@ public final class ReflexTuning {
     public int eatTimeoutTicks = 400;
 
     // ---- combat
+    /** Weigh weapon+armor+hp against the local threat before standing to fight (see CombatPower). */
+    public boolean gearAwareCombat = true;
+    /** fightFavorable: playerPower must strictly exceed threatPower * this. */
+    public double powerMargin = 1.0D;
+    /** Night multiplies threat power (reinforcements keep spawning in the dark). */
+    public double nightThreatMultiplier = 1.25D;
     public float combatMinHealth = 8.0F;     // below this, flee skeletons instead of trading
     public int fightDisengageTicks = 100;    // "recently hurt" window for melee fight-back
     public double fightReleaseDistance = 8.0D;
@@ -94,4 +102,16 @@ public final class ReflexTuning {
 
     // ---- watchdog
     public int behaviorStuckTicks = 60;      // generic no-progress window
+
+    // ---- shelter (turtle-when-weak)
+    /** Proactively shelter at night when undergeared with hostiles visible (NIGHT_EXPOSURE). */
+    public boolean shelter = true;
+    /** Failsafe: stop sheltering after this long even if the night/threat hasn't resolved. */
+    public int shelterMaxTicks = 14000;      // a full Minecraft night is 10 min = 12000 ticks
+    /** Ticks a shooter must stay without line-of-sight before BREAK_LOS settles into waiting. */
+    public int shelterLosGraceTicks = 40;
+    /** How deep the dig-in turtle hole goes before sealing overhead. */
+    public int shelterDigDepth = 2;
+    /** After a shelter timeout, don't re-trigger NIGHT_EXPOSURE for this long (get back to work). */
+    public int shelterRetryCooldownTicks = 1200;
 }
