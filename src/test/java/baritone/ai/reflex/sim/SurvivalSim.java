@@ -119,6 +119,11 @@ public final class SurvivalSim {
      */
     private double lavaOceanEdge = -1;
     private double lavaSwum;
+    /** Edge distance of the plain lava pool (for the safe-octant swim fallback when the column is blocked). */
+    private double lavaEscapeDist = -1;
+    /** Faithful EscapeLavaBehavior stall tracking: distance to the chosen column last tick + stall count. */
+    private double lavaLastDistToColumn = Double.MAX_VALUE;
+    private int lavaStalledTicks;
     public BlockPosSpec nearestWater;
     public BlockPosSpec surfaceEscape;
     public boolean surfaceSealed;
@@ -252,9 +257,24 @@ public final class SurvivalSim {
         return this;
     }
 
+    /**
+     * In a lava pool with stand-able non-lava columns at the pool edge {@code escapeDist} blocks away
+     * in EVERY direction (a faithful "fell in the middle of a pool" — the real {@code findLavaEscape}
+     * ring-scans 8 directions). The candidates are re-picked mob-aware each tick via the real
+     * {@link EscapeColumns} (exactly like the adapter), and the sim's escape routes through the same
+     * mob-blocked / stalled → safe-octant fallback the real {@link baritone.ai.reflex.behavior.EscapeLavaBehavior}
+     * uses — so the plain-lava outcome is not a simplified shortcut but the shipped behavior under test.
+     */
     public SurvivalSim inLava(double escapeDist) {
         this.inLava = true;
-        this.lavaEscape = new BlockPosSpec((int) (x + escapeDist), (int) y, (int) z);
+        this.lavaCandidates = new ArrayList<>();
+        for (int dir = 0; dir < 8; dir++) {
+            double angle = dir * Math.PI / 4D;
+            int cx = (int) Math.round(x + Math.cos(angle) * escapeDist);
+            int cz = (int) Math.round(z + Math.sin(angle) * escapeDist);
+            this.lavaCandidates.add(new BlockPosSpec(cx, (int) y, cz));
+        }
+        this.lavaEscapeDist = escapeDist;
         return this;
     }
 
@@ -625,32 +645,7 @@ public final class SurvivalSim {
 
         switch (behavior) {
             case ESCAPE_LAVA:
-                if (lavaEscape != null) {
-                    moveToward(lavaEscape.x, lavaEscape.z, BOT_SPEED);
-                    if (dist2D(lavaEscape.x, lavaEscape.z) < 1.0D) {
-                        inLava = false;
-                        onFire = true; // singed climbing out, but extinguish/regen handles it
-                    }
-                } else if (lavaOceanEdge > 0) {
-                    // no escape column: the behavior swims along the first safe octant. Credit that as
-                    // real progress toward the ocean edge — reaching it gets us onto solid ground.
-                    int octant = -1;
-                    for (int i = 0; i < octantSafe.length; i++) {
-                        if (octantSafe[i]) {
-                            octant = i;
-                            break;
-                        }
-                    }
-                    if (octant >= 0) {
-                        double ang = Math.toRadians(octant * 45);
-                        moveAlongSafe(Math.sin(ang), Math.cos(ang), BOT_SPEED);
-                        lavaSwum += BOT_SPEED;
-                        if (lavaSwum >= lavaOceanEdge) {
-                            inLava = false;
-                            onFire = true;
-                        }
-                    }
-                }
+                escapeLava();
                 break;
             case SURFACE:
                 if (surfaceSealed && surfaceEscape == null) {
@@ -748,6 +743,113 @@ public final class SurvivalSim {
     }
 
     // ---- behavior outcomes
+
+    /**
+     * Faithful model of {@link baritone.ai.reflex.behavior.EscapeLavaBehavior}: prefer the mob-aware
+     * escape column ({@code lavaEscape}, re-picked each tick by the real {@link EscapeColumns}), UNLESS
+     * a hostile is parked on/near it or we've made no headway toward it for a while — in which case swim
+     * out along the safest octant AWAY from the mobs, exactly like the shipped behavior. This routes the
+     * plain-lava outcome through the same logic as the lava+mob case (which previously was the ONLY one
+     * that used the real selection), so the lava cluster is measured against the real rules, not a
+     * single fixed column the bot walked straight onto even when a mob was on it.
+     */
+    private void escapeLava() {
+        // The real EscapeLavaBehavior ALWAYS holds JUMP (float up) every tick, on TOP of pushing toward
+        // the column. That vertical float is what gets a bot out of a pool even when boxed in horizontally
+        // (you bob to the lava surface and step onto the rim). Model it as steady progress toward escape;
+        // a reachable mob-clear column just gets there faster. Without this the sim's horizontal-only
+        // model cooked any boxed/cornered lava spawn that real MC would float out of — punitive, not fair.
+        boolean horizontalEscaped = false;
+        if (lavaEscape != null && !lavaColumnMobBlocked() && !lavaStalledTowardColumn()) {
+            moveToward(lavaEscape.x, lavaEscape.z, BOT_SPEED);
+            if (dist2D(lavaEscape.x, lavaEscape.z) < 1.0D) {
+                horizontalEscaped = true;
+            }
+        } else {
+            // no usable column (mob-blocked / stalled / lava ocean): swim out along the safest octant
+            // AWAY from hostiles — any direction off the fire beats swimming at the blocking mob.
+            int octant = safestLavaOctantAwayFromMobs();
+            if (octant >= 0) {
+                double ang = Math.toRadians(octant * 45);
+                moveAlongSafe(Math.sin(ang), Math.cos(ang), BOT_SPEED);
+            }
+        }
+        lavaSwum += BOT_SPEED;
+        // vertical float-up (JUMP) escape — ONLY for a plain lava pool (lavaEscapeDist set). It bounds
+        // the escape at ~crossing the pool radius, so a boxed/cornered pool spawn that real MC would
+        // bob out of (you float to the lava surface and step onto the rim) survives instead of cooking
+        // in place — the horizontal-only model was punitive there. A lava OCEAN (no surface to bob to)
+        // and the mob-blocked TWO-column setup keep their own horizontal-swim escapes (no free float).
+        boolean floatedOut = lavaEscapeDist > 0 && lavaSwum >= lavaEscapeDist;
+        boolean swamOut = lavaOceanEdge > 0 && lavaSwum >= lavaOceanEdge;
+        if (horizontalEscaped || floatedOut || swamOut) {
+            inLava = false;
+            onFire = true; // singed climbing out, but extinguish/regen handles it
+        }
+    }
+
+    /** A hostile standing within {@link EscapeColumns#MOB_BLOCK_RADIUS} of the chosen lava escape column. */
+    private boolean lavaColumnMobBlocked() {
+        if (lavaEscape == null) {
+            return false;
+        }
+        double cx = lavaEscape.x + 0.5D;
+        double cz = lavaEscape.z + 0.5D;
+        for (SimMob m : mobs) {
+            if (!(m.hostile || m.creeper || m.skeleton)) {
+                continue;
+            }
+            if (Math.hypot(cx - m.x, cz - m.z) <= EscapeColumns.MOB_BLOCK_RADIUS) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** EscapeLavaBehavior's no-progress watchdog: 12 ticks not getting closer to the column → give up on it. */
+    private boolean lavaStalledTowardColumn() {
+        double d = dist2D(lavaEscape.x, lavaEscape.z);
+        if (d < lavaLastDistToColumn - 0.05D) {
+            lavaStalledTicks = 0;
+        } else {
+            lavaStalledTicks++;
+        }
+        lavaLastDistToColumn = d;
+        return lavaStalledTicks >= 12;
+    }
+
+    /** Among the safe octants, the one pointing most away from the nearest hostile (mirrors the behavior). */
+    private int safestLavaOctantAwayFromMobs() {
+        int best = -1;
+        double bestScore = Double.NEGATIVE_INFINITY;
+        for (int o = 0; o < octantSafe.length; o++) {
+            if (!octantSafe[o]) {
+                continue;
+            }
+            double ang = Math.toRadians(o * 45);
+            double ux = Math.sin(ang);
+            double uz = Math.cos(ang);
+            double worstAhead = Double.NEGATIVE_INFINITY;
+            for (SimMob m : mobs) {
+                if (!(m.hostile || m.creeper || m.skeleton)) {
+                    continue;
+                }
+                double mdx = m.x - x;
+                double mdz = m.z - z;
+                double len = Math.hypot(mdx, mdz);
+                if (len < 1e-6) {
+                    continue;
+                }
+                worstAhead = Math.max(worstAhead, (ux * mdx + uz * mdz) / len);
+            }
+            double score = worstAhead == Double.NEGATIVE_INFINITY ? 0D : -worstAhead;
+            if (best < 0 || score > bestScore) {
+                bestScore = score;
+                best = o;
+            }
+        }
+        return best;
+    }
 
     private void doFlee(FleeMode mode) {
         if (mode == FleeMode.PILLAR) {
