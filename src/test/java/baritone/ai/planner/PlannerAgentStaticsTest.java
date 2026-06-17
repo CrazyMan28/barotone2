@@ -119,6 +119,51 @@ public class PlannerAgentStaticsTest {
     }
 
     @Test
+    public void authErrorsAreDetectedSoThePlannerStopsInsteadOfBurningRetries() {
+        // OpenAiChatClient throws "<provider> API HTTP <code>: <body>" on a non-2xx response.
+        // 401/403 are auth failures (bad key / no model access) — NON-transient. The planner must
+        // recognize them and abort the mission, not waste its 3-attempt retry budget.
+        assertTrue(PlannerAgent.isAuthError(
+                new java.io.IOException("mistral API HTTP 401: {\"message\":\"Unauthorized\"}")));
+        assertTrue(PlannerAgent.isAuthError(
+                new java.io.IOException("mistral API HTTP 403: no access to model")));
+        assertTrue("textual Unauthorized (no numeric code) still counts",
+                PlannerAgent.isAuthError(new java.io.IOException("Request Unauthorized")));
+        assertTrue("textual Forbidden still counts",
+                PlannerAgent.isAuthError(new java.io.IOException("Forbidden")));
+        // wrapped cause is unwrapped
+        assertTrue(PlannerAgent.isAuthError(new RuntimeException("wrapper",
+                new java.io.IOException("mistral API HTTP 401: bad key"))));
+    }
+
+    @Test
+    public void transientAndParseFailuresAreNotTreatedAsAuthErrors() {
+        // these must keep the 3-attempt retry (429/5xx are retried inside the client; here they've
+        // bubbled out after exhausting retries, and parse/no-choices failures are genuinely retryable)
+        assertFalse(PlannerAgent.isAuthError(
+                new java.io.IOException("mistral API HTTP 429: rate limited")));
+        assertFalse(PlannerAgent.isAuthError(
+                new java.io.IOException("mistral API HTTP 500: server error")));
+        assertFalse(PlannerAgent.isAuthError(
+                new java.io.IOException("Could not parse mistral response as JSON")));
+        assertFalse(PlannerAgent.isAuthError(new RuntimeException("plan reply had no usable submit_plan call")));
+        assertFalse(PlannerAgent.isAuthError(null));
+        // a 404 (e.g. wrong endpoint path) is not an auth error
+        assertFalse(PlannerAgent.isAuthError(new java.io.IOException("mistral API HTTP 404: not found")));
+    }
+
+    @Test
+    public void authHttpCodeMapsTheMessageToTheRightStatus() {
+        assertEquals("401", PlannerAgent.authHttpCode(
+                new java.io.IOException("mistral API HTTP 401: Unauthorized")));
+        assertEquals("403", PlannerAgent.authHttpCode(
+                new java.io.IOException("mistral API HTTP 403: Forbidden")));
+        assertEquals("403", PlannerAgent.authHttpCode(new java.io.IOException("Forbidden")));
+        assertEquals("401", PlannerAgent.authHttpCode(new java.io.IOException("Unauthorized")));
+        assertEquals("401", PlannerAgent.authHttpCode(new java.io.IOException("no code here")));
+    }
+
+    @Test
     public void ignoresOtherToolCallsAndProse() {
         OpenAiChatClient.AssistantMessage prose = new OpenAiChatClient.AssistantMessage();
         prose.content = "here is my plan: ...";

@@ -1133,16 +1133,27 @@ public final class BaritoneTools {
                 ? Math.min(300, Math.max(10, a.get("max_wait_seconds").getAsInt())) : 120;
         BaritoneAPI.getSettings().allowInventory.value = true;
         final String wanted = animal;
+        // WatchdogClock so a reflex shelter mid-hunt doesn't time-out the budget on wall-clock time.
         long deadline = System.currentTimeMillis() + maxWait * 1000L;
+        WatchdogClock huntClock = new WatchdogClock(System.currentTimeMillis(), deadline);
         int killed = 0;
 
-        while (killed < quantity && System.currentTimeMillis() < deadline) {
+        while (killed < quantity) {
+            long now = System.currentTimeMillis();
+            huntClock.onTick(ReflexProcess.ENGAGED, now);
+            if (huntClock.expired(now)) {
+                break;
+            }
             if (MistralAgent.isCancelled()) {
                 return "hunt cancelled after " + killed + " kill(s).";
             }
             String diedHunt = deathAbort();
             if (diedHunt != null) {
                 return diedHunt;
+            }
+            if (ReflexProcess.ENGAGED) {
+                return "hunt paused after " + killed + " kill(s) — reflex took control (threat). "
+                        + "Call hunt again after danger passes.";
             }
             // nearest matching live food animal within 48 blocks
             net.minecraft.world.entity.LivingEntity target = AiCrafting.onClient(ctx, () -> {
@@ -1177,6 +1188,14 @@ public final class BaritoneTools {
                     String diedApproach = deathAbort();
                     if (diedApproach != null) {
                         return diedApproach;
+                    }
+                    if (ReflexProcess.ENGAGED) {
+                        AiCrafting.onClient(ctx, () -> {
+                            baritone.getCustomGoalProcess().onLostControl();
+                            return null;
+                        });
+                        return "hunt paused after " + killed + " kill(s) — reflex took control (threat). "
+                                + "Call hunt again after danger passes.";
                     }
                     Double dist = AiCrafting.onClient(ctx, () -> {
                         LocalPlayer p = ctx.player();
@@ -1216,6 +1235,14 @@ public final class BaritoneTools {
                     String diedKill = deathAbort();
                     if (diedKill != null) {
                         return diedKill;
+                    }
+                    if (ReflexProcess.ENGAGED) {
+                        AiCrafting.onClient(ctx, () -> {
+                            baritone.getCustomGoalProcess().onLostControl();
+                            return null;
+                        });
+                        return "hunt paused after " + killed + " kill(s) — reflex took control (threat). "
+                                + "Call hunt again after danger passes.";
                     }
                     Boolean stillAlive = AiCrafting.onClient(ctx, () -> {
                         LocalPlayer p = ctx.player();
@@ -2423,14 +2450,35 @@ public final class BaritoneTools {
             if (!started) {
                 return "ERROR: Could not start goto for " + station.blockId + ".";
             }
+            // WatchdogClock so a legitimate multi-minute reflex shelter does NOT time out the open:
+            // its onTick slides the deadline forward for every reflex-owned tick. The ENGAGED bail
+            // is separate from the clock: the reflex closes the container GUI, so once it takes over
+            // this loop can never observe an open menu — yield promptly instead of spinning.
             long deadline = System.currentTimeMillis() + seconds * 1000L;
-            while (System.currentTimeMillis() < deadline) {
-                if (MistralAgent.isCancelled()) {
-                    return "Cancelled while opening " + station.displayName + ".";
-                }
-                String diedOpening = deathAbort();
-                if (diedOpening != null) {
-                    return diedOpening;
+            WatchdogClock clock = new WatchdogClock(System.currentTimeMillis(), deadline);
+            while (true) {
+                long now = System.currentTimeMillis();
+                clock.onTick(ReflexProcess.ENGAGED, now);
+                switch (BlockingToolGuard.evaluate(MistralAgent.isCancelled(),
+                        MistralAgent.diedSinceRunStart(), ReflexProcess.ENGAGED, clock.expired(now))) {
+                    case CANCELLED:
+                        return "Cancelled while opening " + station.displayName + ".";
+                    case DIED:
+                        // deathAbort() cancels in-flight Baritone work AND builds the replan message
+                        String diedOpening = deathAbort();
+                        if (diedOpening != null) {
+                            return diedOpening;
+                        }
+                        break;
+                    case REFLEX:
+                        return "Reflex took control while opening " + station.displayName
+                                + " (threat detected) — call open_station again after danger passes.";
+                    case TIMEOUT:
+                        return "TIMEOUT: Could not reach a " + station.displayName + " within " + seconds + "s "
+                                + "(none nearby). Don't keep retrying open_station — craft and place a fresh "
+                                + station.displayName + " here instead (you likely have the materials).";
+                    default:
+                        break;
                 }
                 if (menuMatchesOnClient(station)) {
                     return "Opened " + station.displayName + " (" + station.blockId + ").";
@@ -2442,9 +2490,6 @@ public final class BaritoneTools {
                     return "Interrupted while opening " + station.displayName + ".";
                 }
             }
-            return "TIMEOUT: Could not reach a " + station.displayName + " within " + seconds + "s "
-                    + "(none nearby). Don't keep retrying open_station — craft and place a fresh "
-                    + station.displayName + " here instead (you likely have the materials).";
         } finally {
             settings.rightClickContainerOnArrival.value = prevRightClick;
             // Always stop the goto: a finished OR abandoned far-path must not keep dragging the agent

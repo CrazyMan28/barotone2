@@ -627,11 +627,64 @@ public final class PlannerAgent implements Helper {
                 logDirect("[AI:planner] plan reply had no usable submit_plan call"
                         + (attempt < 2 ? " — retrying" : " — falling back"), ChatFormatting.YELLOW);
             } catch (Exception e) {
+                // Auth failures (401/403 — bad key or no access to the model) are NOT transient:
+                // retrying just burns three slow round-trips and then silently falls back. Stop the
+                // whole mission immediately with one clear message — do NOT downgrade the model.
+                if (isAuthError(e)) {
+                    cancelled = true;
+                    String httpCode = authHttpCode(e);
+                    String msg = "[AI:planner] " + provider + " API key unauthorized (HTTP " + httpCode
+                            + ") — replace the key or check model access; mission aborted";
+                    logDirect(msg, ChatFormatting.RED);
+                    GoalTracker.fail(provider + " API key unauthorized (HTTP " + httpCode + ")");
+                    return null;
+                }
                 logDirect("[AI:planner] plan call failed (" + truncate(String.valueOf(e.getMessage()), 120)
                         + ")" + (attempt < 2 ? " — retrying" : " — falling back"), ChatFormatting.YELLOW);
             }
         }
         return null;
+    }
+
+    /**
+     * True when a chat-call failure is an authentication / authorization error (HTTP 401 or 403:
+     * bad API key, or the key has no access to the requested model). These are NON-transient — the
+     * planner must stop the mission rather than burn its 3-attempt retry budget and silently fall
+     * back. Detected from the {@link OpenAiChatClient} IOException message
+     * ("<provider> API HTTP 401: ..." / "Unauthorized" / "Forbidden").
+     */
+    static boolean isAuthError(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            String m = t.getMessage();
+            if (m == null) {
+                continue;
+            }
+            if (m.contains(" 401") || m.contains(" 403")) {
+                return true;
+            }
+            String low = m.toLowerCase(java.util.Locale.ROOT);
+            if (low.contains("unauthorized") || low.contains("forbidden")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** "401" or "403" for an auth error message (Forbidden -> 403, otherwise default to 401). */
+    static String authHttpCode(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            String m = t.getMessage();
+            if (m == null) {
+                continue;
+            }
+            if (m.contains(" 403") || m.toLowerCase(java.util.Locale.ROOT).contains("forbidden")) {
+                return "403";
+            }
+            if (m.contains(" 401") || m.toLowerCase(java.util.Locale.ROOT).contains("unauthorized")) {
+                return "401";
+            }
+        }
+        return "401";
     }
 
     /**

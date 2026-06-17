@@ -20,6 +20,7 @@ package baritone.ai;
 import baritone.api.BaritoneAPI;
 import baritone.api.IBaritone;
 import baritone.api.utils.IPlayerContext;
+import baritone.process.ReflexProcess;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -1052,6 +1053,13 @@ public final class AiCrafting {
             if (MistralAgent.isCancelled()) {
                 return out.append("Cancelled after ").append(done).append(" item(s).").toString();
             }
+            if (MistralAgent.diedSinceRunStart()) {
+                return out.append("ABORTED (died) after ").append(done).append(" item(s).").toString();
+            }
+            if (ReflexProcess.ENGAGED) {
+                return out.append("PAUSED (reflex took control) after ").append(done)
+                        .append(" item(s) — call furnace_smelt again after danger passes.").toString();
+            }
             String r = furnaceSmelt(ctx, inputItemIdRaw, fuelItemIdRawOptional, recipeIdRawOptional, maxWaitSeconds);
             out.append(r);
             if (!r.startsWith("Furnace output collected.")) {
@@ -1071,10 +1079,26 @@ public final class AiCrafting {
             return loaded;
         }
         int capWait = Math.min(600, Math.max(1, maxWaitSeconds));
+        // WatchdogClock pauses the deadline while the reflex owns the bot; ENGAGED bails promptly
+        // because the reflex closes the brewing-stand GUI (otherwise this loop spins on "GUI closed").
         long deadline = System.currentTimeMillis() + capWait * 1000L;
-        while (System.currentTimeMillis() < deadline) {
-            if (MistralAgent.isCancelled()) {
-                return "Cancelled waiting for brew.";
+        WatchdogClock clock = new WatchdogClock(System.currentTimeMillis(), deadline);
+        while (true) {
+            long now = System.currentTimeMillis();
+            clock.onTick(ReflexProcess.ENGAGED, now);
+            switch (BlockingToolGuard.evaluate(MistralAgent.isCancelled(),
+                    MistralAgent.diedSinceRunStart(), ReflexProcess.ENGAGED, clock.expired(now))) {
+                case CANCELLED:
+                    return "Cancelled waiting for brew.";
+                case DIED:
+                    return loaded + " ABORTED: died during brewing — recover, then retry.";
+                case REFLEX:
+                    return loaded + " PAUSED: reflex took control (threat) during brewing — "
+                            + "call brewing_brew again after danger passes.";
+                case TIMEOUT:
+                    return loaded + " TIMEOUT: Brew did not finish after " + capWait + "s.";
+                default:
+                    break;
             }
             String state = onClient(ctx, () -> {
                 if (!(ctx.player().containerMenu instanceof BrewingStandMenu menu)) {
@@ -1106,7 +1130,6 @@ public final class AiCrafting {
             }
             sleepAi(250);
         }
-        return loaded + " TIMEOUT: Brew did not finish after " + capWait + "s.";
     }
 
     private static void finishCraftingTableTakeResult(IPlayerContext ctx, CraftingMenu menu) {
@@ -2077,10 +2100,27 @@ public final class AiCrafting {
         if (!"READY".equals(setup)) {
             return setup;
         }
+        // WatchdogClock pauses the deadline while the reflex owns the bot (a night-shelter must not
+        // time out the smelt on wall-clock); ENGAGED bails promptly because the reflex closes the
+        // furnace GUI, so this loop could otherwise only ever see "GUI closed" and spin.
         long deadline = System.currentTimeMillis() + capWait * 1000L;
-        while (System.currentTimeMillis() < deadline) {
-            if (MistralAgent.isCancelled()) {
-                return "Cancelled waiting for furnace result.";
+        WatchdogClock clock = new WatchdogClock(System.currentTimeMillis(), deadline);
+        while (true) {
+            long now = System.currentTimeMillis();
+            clock.onTick(ReflexProcess.ENGAGED, now);
+            switch (BlockingToolGuard.evaluate(MistralAgent.isCancelled(),
+                    MistralAgent.diedSinceRunStart(), ReflexProcess.ENGAGED, clock.expired(now))) {
+                case CANCELLED:
+                    return "Cancelled waiting for furnace result.";
+                case DIED:
+                    return "ABORTED: died during furnace_smelt — recover, then retry.";
+                case REFLEX:
+                    return "PAUSED: reflex took control (threat) during furnace_smelt — "
+                            + "call furnace_smelt again after danger passes.";
+                case TIMEOUT:
+                    return "TIMEOUT: No output after " + capWait + "s (add fuel, valid recipe, or wait longer).";
+                default:
+                    break;
             }
             String poll = onClient(ctx, () -> {
                 if (!(ctx.player().containerMenu instanceof AbstractFurnaceMenu menu)) {
@@ -2102,7 +2142,6 @@ public final class AiCrafting {
             }
             sleepAi(200);
         }
-        return "TIMEOUT: No output after " + capWait + "s (add fuel, valid recipe, or wait longer).";
     }
 
     /** Smithing table: place template/base/addition from a {@link RecipeType#SMITHING} recipe id and take the result. */

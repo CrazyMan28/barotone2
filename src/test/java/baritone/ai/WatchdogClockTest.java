@@ -89,4 +89,26 @@ public class WatchdogClockTest {
         c.onTick(false, 31_000); // 21s burned
         assertTrue(c.expired(31_000));
     }
+
+    /**
+     * Integration: the exact pattern the blocking tools (open_station / furnace_smelt /
+     * brewing_brew) now run — WatchdogClock + BlockingToolGuard. A legitimate multi-minute reflex
+     * shelter (longer than the tool's nominal deadline) must NOT time the tool out: it bails with
+     * REFLEX (so the agent retries after danger), and the deadline never expires during the shelter.
+     */
+    @Test
+    public void blockingToolDeadlinePausesAcrossALongReflexShelterAndBailsOnReflex() {
+        WatchdogClock clock = new WatchdogClock(0, 90_000); // 90s nominal tool deadline
+        // 5 minutes of reflex-owned shelter, polled every second
+        BlockingToolGuard.Bail bail = BlockingToolGuard.Bail.NONE;
+        long t = 0;
+        for (; t <= 300_000; t += 1_000) {
+            clock.onTick(true, t);
+            bail = BlockingToolGuard.evaluate(false, false, true, clock.expired(t));
+            // the reflex is engaged the whole time -> bail is always REFLEX, never TIMEOUT
+            assertTrue("never times out during a reflex shelter", bail == BlockingToolGuard.Bail.REFLEX);
+        }
+        // and the (reflex-paused) deadline is still alive after 5 minutes of wall-clock
+        assertFalse("90s budget survived a 5-minute shelter", clock.expired(t));
+    }
 }
