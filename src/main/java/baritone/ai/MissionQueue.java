@@ -124,6 +124,23 @@ public final class MissionQueue {
         }
     }
 
+    /**
+     * Requeue the active mission to the FRONT when it stops, WITHOUT pausing the queue — so it
+     * auto-resumes after the interrupting work (the cooperative survival agent) finishes. Unlike
+     * {@link #pauseAndRequeueActive} the queue stays running, so {@code tryStartNextMission} pulls the
+     * requeued mission back as soon as the survival agent is done. Returns the active mission to
+     * requeue, or null if nothing was running.
+     */
+    public static Mission requeueActiveForResume() {
+        synchronized (LOCK) {
+            if (active == null) {
+                return null;
+            }
+            requeueActiveOnFinish = true;
+            return active;
+        }
+    }
+
     public static boolean pause() {
         synchronized (LOCK) {
             boolean changed = !paused;

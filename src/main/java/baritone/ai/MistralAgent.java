@@ -166,6 +166,43 @@ public final class MistralAgent implements Helper {
             + "- You may run for many turns; keep calling tools until done. Never answer with ONLY plain text: "
             + "always use tools until finished.";
 
+    /**
+     * The cooperative "survival agent" prompt. It is a HELPER to the every-tick rule reflex, never a
+     * rival: the reflex auto-dodges/flees/eats/escapes-lava at tick granularity and owns the body
+     * (it is a priority-10 Baritone process), so this agent must NOT try to micro-manage danger. Its
+     * job is the STRATEGIC layer the reflex can't do — go somewhere safe, build a defense, gear up.
+     */
+    public static final String SURVIVAL_SYSTEM_PROMPT =
+              "You are Baritone-AI's EMERGENCY SURVIVAL agent. The fast rule-based survival reflex has been "
+            + "unable to shake a danger on its own and called you in to HELP it survive. You COOPERATE with the "
+            + "reflex — you NEVER fight it for control.\n\n"
+            + "HOW THE REFLEX WORKS (do not duplicate it): every single tick it weighs ALL threats at once "
+            + "(terrain + every mob + your gear + escape routes) and already dodges, flees, eats, pillars, walls "
+            + "off, escapes lava, and breaks line-of-sight FOR you. It is faster than you and it has tick-level "
+            + "priority over the body. So:\n"
+            + "- DO NOT try to flee/fight/dodge a specific mob yourself, and DO NOT spam tools to micro-manage a "
+            + "fight — the reflex does that every tick.\n"
+            + "- DO give STRATEGIC, higher-level help the reflex cannot: \n"
+            + "  * RETREAT TO SAFETY: goto_coords your remembered base or a known-safe location (read "
+            + "mission_memory_summary / call memory_recall for 'base' / 'home' / safe spots), away from the avoid "
+            + "zone in last_survival_action.\n"
+            + "  * DIG IN: if no safe place is known, dig down a couple blocks and wall yourself into a sealed 1x1 "
+            + "pocket (set_setting allowBreak/allowPlace true first), or build a small shelter, so contact breaks "
+            + "and you can heal.\n"
+            + "  * EAT to heal if you have food and it is calm enough (the reflex eats in emergencies; you can top "
+            + "up during a lull).\n"
+            + "  * GEAR UP only if materials are ON HAND and there's time: craft a sword/shield/armor at a known "
+            + "station — do NOT start a long mining trip mid-emergency.\n"
+            + "- DO NOT pursue the previous mission goal. Your ONLY goal is to get to safety and stop dying.\n"
+            + "- READ get_state every step: active_threat, survival_situation, last_survival_action (what the reflex "
+            + "just did + which spot to AVOID), recent_reflexes, hp/food, time_of_day/light, best_pickaxe/best_axe. "
+            + "Act on them.\n"
+            + "- After any movement/dig/build call wait_until_idle — it YIELDS while the reflex owns the bot, so you "
+            + "automatically wait out a flee/shelter instead of fighting it.\n"
+            + "- When you are safe (sheltered, walled in, or back at a safe location with no threat) call done with a "
+            + "short explanation. If survival is impossible, call done explaining why.\n"
+            + "- Never answer with ONLY plain text: always use tools until you call done.";
+
     /** How a {@link #runGoalWithOutcome} run ended — the hierarchical planner branches on this. */
     public enum Outcome { DONE, FAILED, CANCELLED }
 
@@ -176,6 +213,9 @@ public final class MistralAgent implements Helper {
      *  the GoalTracker mission lifecycle (start/finish/fail) and the plan display, so this agent
      *  must not touch either — a sub-goal finishing is NOT the mission finishing. */
     private final boolean subAgentMode;
+    /** True when this is the cooperative EMERGENCY SURVIVAL agent: survival-only prompt, no brain
+     *  fast path, and (like a sub-agent) it does not own the paused mission's GoalTracker lifecycle. */
+    private final boolean survivalMode;
     private volatile boolean cancelled = false;
     private volatile Thread worker;
     private volatile String lastOutcomeDetail = "";
@@ -190,6 +230,7 @@ public final class MistralAgent implements Helper {
         this.tools = new BaritoneTools(baritone);
         this.planMode = planMode;
         this.subAgentMode = false;
+        this.survivalMode = false;
         history.add(message("system", SYSTEM_PROMPT));
         if (planMode) {
             history.add(message("system",
@@ -204,11 +245,39 @@ public final class MistralAgent implements Helper {
         this.tools = new BaritoneTools(baritone);
         this.planMode = false;
         this.subAgentMode = true;
+        this.survivalMode = false;
         this.tools.setPlanDisplayLocked(true);
         history.add(message("system", SYSTEM_PROMPT));
         if (subAgentPreamble != null && !subAgentPreamble.isEmpty()) {
             history.add(message("system", subAgentPreamble));
         }
+    }
+
+    /**
+     * The cooperative EMERGENCY SURVIVAL agent. Seeded with the survival-only system prompt so it
+     * gives strategic help (retreat / shelter / gear up) and never pursues the paused mission goal,
+     * never micro-manages the reflex, and never tries to override it (it goes through the same
+     * wait_until_idle / pathing layer, so the priority-10 reflex always wins tick-level control).
+     * Like a sub-agent it does NOT own the paused mission's GoalTracker lifecycle.
+     *
+     * @param survival pass {@code true} (the boolean disambiguates this from the planMode constructor)
+     */
+    public MistralAgent(IBaritone baritone, boolean survival, boolean unusedDisambiguator) {
+        this.tools = new BaritoneTools(baritone);
+        this.planMode = false;
+        this.subAgentMode = false;
+        this.survivalMode = survival;
+        this.tools.setPlanDisplayLocked(true);
+        history.add(message("system", survival ? SURVIVAL_SYSTEM_PROMPT : SYSTEM_PROMPT));
+    }
+
+    /** Build the cooperative emergency survival agent (see {@link #SURVIVAL_SYSTEM_PROMPT}). */
+    public static MistralAgent survival(IBaritone baritone) {
+        return new MistralAgent(baritone, true, true);
+    }
+
+    public boolean isSurvivalMode() {
+        return survivalMode;
     }
 
     /** Why the last run ended the way it did (for the planner's replan prompt). */
@@ -249,8 +318,14 @@ public final class MistralAgent implements Helper {
      * (used by the hierarchical planner to give each sub-goal a small budget without mutating the
      * shared {@link Settings#mistralMaxIterations} setting; {@code <= 0} keeps the setting).
      */
+    /** This run owns the top-level GoalTracker mission lifecycle (start/finish/fail). Sub-agents
+     *  (planner-owned) and the survival agent (mission paused beneath it) do not. */
+    private boolean ownsMissionLifecycle() {
+        return !subAgentMode && !survivalMode;
+    }
+
     public Outcome runGoalWithOutcome(String userGoal, int iterationCap) {
-        if (!subAgentMode && !GoalTracker.snapshot().active) {
+        if (ownsMissionLifecycle() && !GoalTracker.snapshot().active) {
             GoalTracker.start(userGoal, planMode);
         }
         GoalTracker.setStatus("Checking provider");
@@ -304,8 +379,8 @@ public final class MistralAgent implements Helper {
         // tool call (~1s). On escalate / parse failure / tool error we fall through to the full
         // prompt below - preferring Mistral for the big path when an API key is available.
         // Sub-agents skip it: the brain's tiny prompt cannot carry the sub-goal preamble/criteria.
-        if (!planMode && !subAgentMode && "ollama".equals(provider) && BrainProtocol.isBrainModel(model)
-                && settings.aiBrainShortPrompt.value) {
+        if (!planMode && !subAgentMode && !survivalMode && "ollama".equals(provider)
+                && BrainProtocol.isBrainModel(model) && settings.aiBrainShortPrompt.value) {
             try {
                 if (runBrainFastPath(settings, endpoint, model, userGoal)) {
                     RUNNING.remove();
@@ -527,9 +602,10 @@ public final class MistralAgent implements Helper {
 
                     if (result.done) {
                         logDirect("[AI] done: " + result.content, ChatFormatting.GREEN);
-                        if (subAgentMode) {
-                            // the planner owns the mission lifecycle; a sub-goal finishing is not the mission finishing
-                            GoalTracker.setStatus("Step reported done");
+                        if (!ownsMissionLifecycle()) {
+                            // the planner (sub-agent) or the paused mission (survival agent) owns the
+                            // mission lifecycle; this run finishing is not the mission finishing
+                            GoalTracker.setStatus(survivalMode ? "Survival: safe" : "Step reported done");
                         } else {
                             GoalTracker.finish(result.content);
                         }
@@ -560,10 +636,10 @@ public final class MistralAgent implements Helper {
     /** Mark a failed run: only a top-level mission may fail the GoalTracker (and emit mission_fail). */
     private Outcome failOutcome(String reason) {
         lastOutcomeDetail = reason;
-        if (subAgentMode) {
-            GoalTracker.setStatus(reason);
-        } else {
+        if (ownsMissionLifecycle()) {
             GoalTracker.fail(reason);
+        } else {
+            GoalTracker.setStatus(reason);
         }
         return Outcome.FAILED;
     }
@@ -571,10 +647,10 @@ public final class MistralAgent implements Helper {
     /** Mark a cancelled run; same lifecycle gating as {@link #failOutcome}. */
     private Outcome cancelOutcome(String reason) {
         lastOutcomeDetail = reason;
-        if (subAgentMode) {
-            GoalTracker.setStatus(reason);
-        } else {
+        if (ownsMissionLifecycle()) {
             GoalTracker.fail(reason);
+        } else {
+            GoalTracker.setStatus(reason);
         }
         return Outcome.CANCELLED;
     }

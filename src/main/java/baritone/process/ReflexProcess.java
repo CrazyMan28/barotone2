@@ -21,8 +21,11 @@ import baritone.Baritone;
 import baritone.ai.AgentTelemetry;
 import baritone.ai.GoalTracker;
 import baritone.ai.MistralAgent;
+import baritone.ai.SurvivalAgentCoordinator;
 import baritone.ai.planner.DeathWatch;
 import baritone.ai.ReflexLog;
+import baritone.ai.reflex.SituationAssessment;
+import baritone.ai.reflex.SurvivalEscalation;
 import baritone.ai.reflex.BehaviorId;
 import baritone.ai.reflex.BlockPosSpec;
 import baritone.ai.reflex.Detectors;
@@ -124,6 +127,13 @@ public final class ReflexProcess extends BaritoneProcessHelper {
      */
     public static volatile baritone.ai.AvoidZone LAST_AVOID_ZONE;
 
+    /**
+     * The rule ladder is exhausted and the bot is STILL endangered — the reflex is "having a bad
+     * time". Set from {@code engine.inDistress()} each tick; the trigger for the cooperative LLM
+     * survival agent. Read from the agent thread (get_state); the escalation policy debounces it.
+     */
+    public static volatile boolean DISTRESS;
+
     private final ReflexEngine engine = new ReflexEngine();
     private final ReflexTuning tuning = new ReflexTuning();
     private final ReflexExecutor executor;
@@ -133,6 +143,16 @@ public final class ReflexProcess extends BaritoneProcessHelper {
     private ReflexEngine.Output lastOutput;
     /** Death seq we've already cancelled Baritone work for (once per death). */
     private long lastCanceledDeathSeq;
+
+    // ---- cooperative survival-agent escalation (the trigger + resolve bookkeeping)
+    /** Consecutive ticks distress has held (debounce before summoning the LLM survival agent). */
+    private int distressSustainedTicks;
+    /** True while a distress episode is ongoing — so the {phase:"distress"} event fires once per onset. */
+    private boolean distressEpisodeOpen;
+    /** Game tick of the last escalation, for the cooldown. */
+    private long lastEscalationTick = Long.MIN_VALUE;
+    /** Consecutive calm ticks (no distress, no hostile near) once a survival agent is running — resolve window. */
+    private int survivalClearTicks;
 
     /** Per-entity distance last tick, so we can derive each mob's closing speed. */
     private Map<Integer, Double> prevMobDist = new HashMap<>();
@@ -219,6 +239,9 @@ public final class ReflexProcess extends BaritoneProcessHelper {
             lastOutput = null;
             ACTIVE_STATUS = "idle";
             ENGAGED = false;
+            DISTRESS = false;
+            distressSustainedTicks = 0;
+            distressEpisodeOpen = false;
             return false;
         }
         long now = ctx.world().getGameTime();
@@ -248,6 +271,7 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         if (sit != null) {
             SITUATION = sit.describe();
         }
+        handleDistressEscalation(now, sit);
         if (out.released) {
             executor.cleanup();
             ReflexLog.record("[reflex] " + out.previous.describe + " ended after " + (out.previousTicks / 20) + "s");
@@ -325,6 +349,9 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         lastOutput = null;
         ACTIVE_STATUS = "idle";
         ENGAGED = false;
+        DISTRESS = false;
+        distressSustainedTicks = 0;
+        distressEpisodeOpen = false;
     }
 
     @Override
@@ -370,6 +397,7 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         tuning.proactiveEngageRadius = s.reflexProactiveEngageRange.value;
         tuning.shelter = s.reflexShelter.value;
         tuning.shelterMaxTicks = Math.max(20, s.reflexShelterMaxSeconds.value * 20);
+        tuning.distressTicks = Math.max(1, s.aiSurvivalDistressTicks.value);
     }
 
     private WorldSnapshot snapshot(LocalPlayer player, long now) {
@@ -755,7 +783,7 @@ public final class ReflexProcess extends BaritoneProcessHelper {
     }
 
     private boolean isWorking() {
-        if (MistralAgent.ACTIVE.get() != null) {
+        if (MistralAgent.ACTIVE.get() != null || SurvivalAgentCoordinator.isRunning()) {
             return true;
         }
         if (baritone.getPathingBehavior().isPathing()) {
@@ -764,6 +792,83 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         return baritone.getPathingControlManager().mostRecentInControl()
                 .map(p -> p != this)
                 .orElse(false);
+    }
+
+    // ---------------------------------------------------------------- survival escalation
+
+    /**
+     * The cooperative-survival-agent escalation policy, applied every tick off the pure
+     * {@link ReflexEngine#inDistress()} read. When distress holds continuously for a debounce window
+     * and the {@link baritone.ai.reflex.SurvivalEscalation} policy is satisfied (enabled, provider set,
+     * no survival agent already running, cooldown elapsed) we spin one up — pausing+requeuing any
+     * running mission. When the danger has resolved (distress clear + no hostile near for K ticks) and
+     * a survival agent is still grinding, we stand it down so the original mission resumes.
+     *
+     * <p>The decision is the pure policy; only the start/stop is done here, and the survival agent has
+     * NO path to override the reflex (it goes through the same tool/pathing layer — the reflex stays
+     * priority-10 and always wins tick-level control). That invariant lives in
+     * {@link baritone.ai.SurvivalAgentCoordinator}.
+     */
+    private void handleDistressEscalation(long now, SituationAssessment sit) {
+        boolean distress = engine.inDistress();
+        DISTRESS = distress;
+
+        // debounce: count consecutive distress ticks; emit the {phase:"distress"} event once per onset
+        if (distress) {
+            distressSustainedTicks++;
+            if (!distressEpisodeOpen) {
+                distressEpisodeOpen = true;
+                Map<String, Object> data = new HashMap<>();
+                data.put("phase", "distress");
+                if (sit != null) {
+                    data.put("situation", sit.describe());
+                }
+                AgentTelemetry.emit("reflex", data);
+                ReflexLog.record("[reflex] DISTRESS — rules exhausted, still endangered");
+            }
+        } else {
+            distressSustainedTicks = 0;
+            distressEpisodeOpen = false;
+        }
+
+        Settings s = Baritone.settings();
+        boolean enabled = s.aiSurvivalEscalation.value;
+        int sustainRequired = Math.max(1, s.aiSurvivalDistressTicks.value);
+        int cooldownTicks = Math.max(0, s.aiSurvivalEscalationCooldownTicks.value);
+        boolean cooldownOver = lastEscalationTick == Long.MIN_VALUE
+                || now - lastEscalationTick >= cooldownTicks;
+        boolean running = SurvivalAgentCoordinator.isRunning();
+
+        if (SurvivalEscalation.shouldEscalate(distress, distressSustainedTicks,
+                sustainRequired, running, SurvivalAgentCoordinator.providerConfigured(),
+                enabled, cooldownOver)) {
+            lastEscalationTick = now;
+            survivalClearTicks = 0;
+            // Off the game thread: launching the agent must never block the tick.
+            final baritone.api.IBaritone b = baritone;
+            new Thread(() -> SurvivalAgentCoordinator.escalate(b),
+                    "baritone-survival-escalate").start();
+            return;
+        }
+
+        // Resolve: while a survival agent runs, count calm ticks; once the danger has been gone long
+        // enough, stand the agent down so the original mission resumes (its own done is the other path).
+        if (running) {
+            boolean hostilesNear = sit != null && sit.hostilesNear > 0;
+            if (!distress && !hostilesNear) {
+                survivalClearTicks++;
+            } else {
+                survivalClearTicks = 0;
+            }
+            int requiredClear = Math.max(1, s.aiSurvivalDistressTicks.value);
+            if (SurvivalEscalation.isResolved(distress, hostilesNear,
+                    survivalClearTicks, requiredClear)) {
+                survivalClearTicks = 0;
+                SurvivalAgentCoordinator.resolve();
+            }
+        } else {
+            survivalClearTicks = 0;
+        }
     }
 
     // ---------------------------------------------------------------- telemetry

@@ -22,6 +22,7 @@ import baritone.ai.GoalTracker;
 import baritone.ai.MissionMemory;
 import baritone.ai.MissionQueue;
 import baritone.ai.MistralAgent;
+import baritone.ai.SurvivalAgentCoordinator;
 import baritone.ai.planner.PlannerAgent;
 import baritone.api.BaritoneAPI;
 import baritone.api.IBaritone;
@@ -200,9 +201,12 @@ public class AiCommand extends Command {
     }
 
     /** A mission is running when either a plain agent OR the hierarchical planner is active
-     *  (the planner has windows — verify/replan — where no sub-agent is registered). */
+     *  (the planner has windows — verify/replan — where no sub-agent is registered), OR the
+     *  cooperative survival agent is mid-emergency (the original mission is requeued beneath it and
+     *  must not be double-started while it runs). */
     private static boolean agentBusy() {
-        return MistralAgent.ACTIVE.get() != null || PlannerAgent.ACTIVE.get() != null;
+        return MistralAgent.ACTIVE.get() != null || PlannerAgent.ACTIVE.get() != null
+                || SurvivalAgentCoordinator.isRunning();
     }
 
     public static void tryStartNextMission(IBaritone baritone, Helper logger) {

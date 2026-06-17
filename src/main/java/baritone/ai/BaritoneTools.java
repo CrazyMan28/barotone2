@@ -2919,6 +2919,11 @@ public final class BaritoneTools {
                 s.addProperty("active_threat", liveThreat);
                 s.addProperty("survival_situation", ReflexProcess.SITUATION);
             }
+            if (ReflexProcess.DISTRESS) {
+                // the reflex's rule ladder is exhausted and the bot is still endangered — a cooperative
+                // survival agent may be helping. Give strategic help (retreat/shelter), not micro-management.
+                s.addProperty("survival_distress", true);
+            }
             // the survival brain leaves a report after it pauses us to handle a danger: what it did and
             // where NOT to walk back. Surface it ONCE (then clear) so a resumed mission has the truth.
             String report = ReflexProcess.LAST_REPORT;
