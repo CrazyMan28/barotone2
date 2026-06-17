@@ -54,6 +54,11 @@ public final class ReflexAction {
         USE_ITEM,
         /** Right-click (use) the block in this cell with a hand-built hit — sleeping in a placed bed. */
         USE_BLOCK,
+        /**
+         * Drop the ENTIRE stack in this hotbar slot ({@code player.drop(slotStack, true)}) — used to
+         * jettison gold that's aggroing piglins. The executor selects the slot first, then drops it.
+         */
+        DROP_SLOT,
         /** Hand Baritone a pathing goal (FORCE_REVALIDATE). Without one, an active behavior pauses pathing. */
         SET_GOAL
     }
@@ -118,6 +123,11 @@ public final class ReflexAction {
         return new ReflexAction(Kind.USE_BLOCK, null, false, 0, 0, -1, -1, cell, null);
     }
 
+    /** Drop the whole stack in this hotbar slot (jettison piglin-aggroing gold). */
+    public static ReflexAction dropSlot(int slot) {
+        return new ReflexAction(Kind.DROP_SLOT, null, false, 0, 0, slot, -1, null, null);
+    }
+
     public static ReflexAction setGoal(GoalSpec goal) {
         return new ReflexAction(Kind.SET_GOAL, null, false, 0, 0, -1, -1, null, goal);
     }
@@ -139,6 +149,8 @@ public final class ReflexAction {
                 return "place" + pos;
             case USE_ITEM:
                 return "useItem()";
+            case DROP_SLOT:
+                return "dropSlot(" + slot + ")";
             case SET_GOAL:
                 return "goal(" + goal.kind + ")";
             default:

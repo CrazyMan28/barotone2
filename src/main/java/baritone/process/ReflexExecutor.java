@@ -120,6 +120,9 @@ final class ReflexExecutor {
                 case USE_BLOCK:
                     useBlock(player, a.pos);
                     break;
+                case DROP_SLOT:
+                    dropSlot(player, a.slot);
+                    break;
                 case SET_GOAL:
                     goal = toGoal(a.goal);
                     break;
@@ -187,6 +190,32 @@ final class ReflexExecutor {
                 return;
             }
         }
+    }
+
+    /**
+     * Drop the whole stack in a hotbar slot — how the piglin-gold de-aggro jettisons the gold that's
+     * aggroing the pack. Selects the slot (the SELECT_SLOT action usually already did, but be safe),
+     * then drops the held stack via vanilla {@code Player.drop(true)} (which sends the server packet).
+     *
+     * <p>NOTE: this is the one reflex executor path the Minecraft-free survival sim cannot exercise —
+     * it touches live inventory + networking. It needs in-game verification (drop a gold pickaxe near a
+     * piglin and confirm the pack reverts to neutral). The decision to drop is unit-/sim-tested; the
+     * physical drop is here and untested by the sim.
+     */
+    private void dropSlot(LocalPlayer player, int slot) {
+        if (slot < 0 || slot > 8) {
+            return;
+        }
+        if (prevHotbarSlot < 0) {
+            prevHotbarSlot = player.getInventory().getSelectedSlot();
+        }
+        if (player.getInventory().getSelectedSlot() != slot) {
+            player.getInventory().setSelectedSlot(slot);
+        }
+        if (player.getInventory().getSelectedItem().isEmpty()) {
+            return; // nothing to drop (already gone)
+        }
+        player.drop(true); // drop the ENTIRE selected stack; vanilla sends the DROP_ALL_ITEMS packet
     }
 
     /**

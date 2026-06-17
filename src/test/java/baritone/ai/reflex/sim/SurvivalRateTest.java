@@ -331,6 +331,12 @@ public class SurvivalRateTest {
         all.add(new Scenario("knockback ledge lowhp", () -> kitted().armor(10).hp(10).knockbackLedge(3)));
         all.add(new Scenario("knockback ledge heavy", () -> heavy().knockbackLedge(3)));
 
+        // AK5. PIGLIN GOLD AGGRO: holding gold aggros the pack — must drop the gold (de-trigger) + back
+        // off, not brawl the swarm gold summons. Single + pack, geared + fresh.
+        all.add(new Scenario("piglin gold aggro", () -> kitted().armor(12).goldItem().piglin(6)));
+        all.add(new Scenario("piglin gold pack", () -> kitted().armor(12).goldItem().piglin(6, 0).piglin(7, 60)));
+        all.add(new Scenario("piglin gold fresh", () -> new SurvivalSim().food(20, 2, 6).goldItem().piglin(7)));
+
         // AK2. special mobs you can't out-DPS in melee: a witch heals through hits, a cave spider
         // out-speeds + poisons, a phantom flies out of reach — all must be fled/sheltered, never brawled
         all.add(new Scenario("witch armed", () -> kitted().armor(10).witch(6, 0)));
@@ -529,6 +535,25 @@ public class SurvivalRateTest {
     public void controlReflexesOffDiesToKnockbackLedge() {
         SurvivalSim.Outcome o = kitted().armor(12).knockbackLedge(3).disableReflexes().run(TICKS);
         assertFalse("with no reflexes a knockback shove off a ledge must kill the bot", o.survived);
+    }
+
+    @Test
+    public void piglinGoldAggroIsDeTriggeredByDroppingGold() {
+        // a piglin pack aggros on the gold we hold — the bot must DROP the gold (de-trigger) and back
+        // off, not brawl the swarm. After dropping, the gold is gone and the pack reverts to neutral.
+        SurvivalSim sim = kitted().armor(12).goldItem().piglin(6, 0).piglin(7, 60);
+        SurvivalSim.Outcome o = sim.run(TICKS);
+        assertTrue("must drop gold and survive the piglin aggro: " + o.cause, o.survived);
+        assertTrue("must have dropped the gold", sim.behaviorsSeen.contains(BehaviorId.DROP_GOLD));
+        assertTrue("the gold trigger must be gone after the drop", sim.goldSlot < 0);
+        assertFalse("must not brawl the piglin pack", sim.behaviorsSeen.contains(BehaviorId.COMBAT));
+    }
+
+    @Test
+    public void controlReflexesOffDiesToPiglinGoldPack() {
+        SurvivalSim.Outcome o = kitted().armor(12).goldItem().piglin(6, 0).piglin(7, 60)
+                .disableReflexes().run(TICKS);
+        assertFalse("with no reflexes a gold-aggroed piglin pack must kill the bot", o.survived);
     }
 
     @Test

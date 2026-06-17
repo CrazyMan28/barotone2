@@ -115,6 +115,9 @@ public final class SurvivalSim {
     public int foodSlot = -1, foodNutrition = -1;
     public int bucketSlot = -1;
     public int bedSlot = -1;
+    /** Hotbar slot holding gold (aggros piglins). -1 = none. Dropped (set to -1) by the DROP_GOLD behavior. */
+    public int goldSlot = -1;
+    public boolean wearingGold;
 
     // terrain
     public boolean[] octantSafe = {true, true, true, true, true, true, true, true};
@@ -171,6 +174,7 @@ public final class SurvivalSim {
         boolean creeper, skeleton, hostile;
         boolean ranged;      // blaze/ghast/trident-drowned: shoots from range (treated like a skeleton)
         boolean longRange;   // ghast: shoots from FAR past normal perception (24+) — cover before the hit
+        boolean piglin;      // neutral until we hold/wear gold, then aggros — drop the gold to de-aggro
         boolean unkillable;  // warden: never winnable — must always flee
         double x, y, z;
         double hp = 20;
@@ -531,6 +535,29 @@ public final class SurvivalSim {
         return s;
     }
 
+    /** Put a gold item in the hotbar (the piglin aggro trigger the reflex can drop). */
+    public SurvivalSim goldItem() {
+        this.goldSlot = 5;
+        return this;
+    }
+
+    /**
+     * A piglin: aggros (and brings the pack) the moment we hold/wear gold. Modeled as a melee hostile
+     * that ONLY engages while we still carry gold — once the reflex drops the gold, it reverts to
+     * neutral and wanders off (the de-aggro the DROP_GOLD behavior earns).
+     */
+    public SurvivalSim piglin(double dist) {
+        return piglin(dist, 0);
+    }
+
+    public SurvivalSim piglin(double dist, double angleDeg) {
+        SurvivalSim s = addMob("piglin", dist, angleDeg, false, false, true, 0.23D, 4.0D, 1.8D);
+        SimMob m = mobs.get(mobs.size() - 1);
+        m.piglin = true;
+        m.hp = 16;
+        return s;
+    }
+
     private SurvivalSim addMob(String type, double dist, double angleDeg, boolean cr, boolean sk,
                                boolean ho, double speed, double meleeDmg, double shootRange) {
         SimMob m = new SimMob();
@@ -768,6 +795,9 @@ public final class SurvivalSim {
                 break;
             case SHELTER:
                 doShelter();
+                break;
+            case DROP_GOLD:
+                doDropGold();
                 break;
             default:
                 // NONE: stand still. If a hazard or mob is on us, this is how the bot dies.
@@ -1024,6 +1054,22 @@ public final class SurvivalSim {
         }
     }
 
+    /**
+     * Drop the held gold (the piglin aggro trigger) and back off. Modeling the DROP_GOLD behavior's
+     * outcome: the held gold leaves our hand (goldSlot -> -1), which de-aggros piglins (handled in
+     * stepMobs), while we sprint along a safe direction away from the nearest piglin. (The real
+     * player.drop executor wiring is unit-tested separately; here we model its effect.)
+     */
+    private void doDropGold() {
+        if (goldSlot >= 0) {
+            goldSlot = -1; // dropped — piglins no longer have the gold trigger to aggro on
+        }
+        double[] away = awayVector(true);
+        if (away != null) {
+            moveAlongSafe(away[0], away[1], BOT_SPEED);
+        }
+    }
+
     private void healTick() {
         if (food >= 18 && hp < maxHp) {
             hp = Math.min(maxHp, hp + 0.1D);
@@ -1084,7 +1130,11 @@ public final class SurvivalSim {
             if (m.selfHeal > 0) {
                 m.hp = Math.min(26, m.hp + m.selfHeal); // witch out-heals our chip damage
             }
-            boolean blocked = enclosed || walledOff.contains(m) || botOutOfReach(m);
+            // a piglin with no gold trigger left (we dropped the gold, not wearing any) reverts to
+            // neutral: it stops attacking and wanders off. Model that as "can't reach us" so it neither
+            // hits nor closes, and is removed after the de-aggro window.
+            boolean piglinNeutral = m.piglin && goldSlot < 0 && !wearingGold;
+            boolean blocked = enclosed || walledOff.contains(m) || botOutOfReach(m) || piglinNeutral;
             double d = distTo(m);
             // de-aggro: the bot broke contact (outran it) or sealed it out long enough -> it's gone.
             // A long-range ghast hovers at a fixed distance with line-of-sight — it does NOT lose the bot
@@ -1209,6 +1259,8 @@ public final class SurvivalSim {
         s.blockSlot = blocks > 0 ? 1 : -1;
         s.blockCount = blocks;
         s.bedSlot = bedSlot;
+        s.goldSlot = goldSlot;
+        s.wearingGold = wearingGold;
         s.nearestWater = nearestWater;
         s.surfaceSealed = surfaceSealed;
         s.contactHazardAtFeet = contactHazard;
@@ -1229,6 +1281,7 @@ public final class SurvivalSim {
             mi.hostile = m.hostile;
             mi.ranged = m.ranged;
             mi.longRange = m.longRange;
+            mi.piglin = m.piglin;
             mi.unkillable = m.unkillable;
             mi.x = m.x;
             mi.y = m.y;

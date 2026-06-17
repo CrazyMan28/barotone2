@@ -70,4 +70,10 @@ public final class MobInfo {
     public boolean unkillable;
     /** Creeper currently hissing/ignited (severity spike). */
     public boolean ignited;
+    /**
+     * A piglin (or piglin brute) — neutral UNTIL it sees us holding/wearing gold, then it (and the
+     * whole pack) aggros. The fix is to remove the gold trigger (drop held gold) and back off, not to
+     * fight the swarm it summons.
+     */
+    public boolean piglin;
 }

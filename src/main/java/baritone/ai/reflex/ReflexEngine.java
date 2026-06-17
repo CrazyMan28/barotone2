@@ -19,6 +19,7 @@ package baritone.ai.reflex;
 
 import baritone.ai.reflex.behavior.AntiFallBehavior;
 import baritone.ai.reflex.behavior.CombatBehavior;
+import baritone.ai.reflex.behavior.DropGoldBehavior;
 import baritone.ai.reflex.behavior.EatBehavior;
 import baritone.ai.reflex.behavior.EscapeLavaBehavior;
 import baritone.ai.reflex.behavior.ExtinguishFireBehavior;
@@ -73,6 +74,7 @@ public final class ReflexEngine {
         register(new RetreatAndHealBehavior());
         register(new EatBehavior());
         register(new ShelterBehavior());
+        register(new DropGoldBehavior());
     }
 
     private void register(ReflexBehavior b) {

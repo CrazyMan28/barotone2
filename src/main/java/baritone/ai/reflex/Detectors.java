@@ -41,6 +41,8 @@ public final class Detectors {
     public static final int SEV_FLEE_MOB = 80;
     /** A hissing creeper gets this on top of {@link #SEV_FLEE_MOB}. */
     public static final int SEV_IGNITED_BONUS = 15;
+    /** Gold near a piglin — address the aggro trigger (drop gold + back off) above an ordinary mob-flee. */
+    public static final int SEV_PIGLIN_GOLD = 84;
     /** A plain hostile the gear-aware power score says we'd lose to. Below creeper, above overwhelmed. */
     public static final int SEV_OUTMATCHED = 78;
     /**
@@ -301,6 +303,22 @@ public final class Detectors {
             }
         }
         return null;
+    }
+
+    /**
+     * Holding/wearing gold within sight of a piglin — the whole pack aggros (vanilla). The root fix is
+     * to remove the trigger: drop the held gold (handled by the DROP_GOLD behavior) and back off, rather
+     * than fight the swarm gold summons. Fires while a piglin is in perception AND we carry gold; once the
+     * gold is gone the piglin reverts to neutral and this clears. Worn gold (no held slot) still fires so
+     * the bot at least backs off — un-equipping armor needs the inventory GUI (the LLM), flagged in the
+     * snapshot's {@code wearingGold}.
+     */
+    public static Threat piglinGoldAggro(WorldSnapshot s, ReflexTuning t) {
+        if (s.goldSlot < 0 && !s.wearingGold) {
+            return null;
+        }
+        MobInfo piglin = nearest(s, t.perceptionRadius, m -> m.piglin);
+        return piglin != null ? new Threat(ThreatType.PIGLIN_GOLD_AGGRO, SEV_PIGLIN_GOLD, piglin) : null;
     }
 
     /**

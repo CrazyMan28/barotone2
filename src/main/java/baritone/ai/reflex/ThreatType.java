@@ -33,6 +33,12 @@ public enum ThreatType {
     /** The Warden: unwinnable, one-shots geared players — always flee, ranks above every other mob. */
     WARDEN,
     CREEPER,
+    /**
+     * Holding/wearing gold near a piglin: the whole pack aggros (a vanilla trigger). The root fix is to
+     * remove the trigger (drop held gold) and back off — not to fight the swarm. Ranks just above the
+     * ordinary flee tier so it answers the cause, not just the symptom, before a plain swarm-flee kicks in.
+     */
+    PIGLIN_GOLD_AGGRO,
     SWARM,
     RANGED,
     MELEE_MOB,

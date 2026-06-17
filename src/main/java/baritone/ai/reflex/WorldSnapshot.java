@@ -116,6 +116,15 @@ public final class WorldSnapshot {
     public int blockCount;
     /** Hotbar slot holding a bed (-1 = none) — sleeping skips the night entirely. */
     public int bedSlot = -1;
+    /**
+     * Hotbar slot holding a GOLD item (-1 = none). Holding/wearing gold aggros every nearby piglin
+     * (a vanilla mechanic), so the safe play near piglins is to stow/drop the gold AND back off. The
+     * reflex can drop a HELD gold item; worn gold armor needs inventory management (the LLM), flagged
+     * by {@link #wearingGold}.
+     */
+    public int goldSlot = -1;
+    /** Wearing gold armor — also aggros piglins, but a reflex can't un-equip it (needs the inventory GUI). */
+    public boolean wearingGold;
 
     // ---- precomputed world scans (adapter-side, since the core can't read block states)
     /**

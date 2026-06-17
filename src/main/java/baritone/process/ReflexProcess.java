@@ -42,10 +42,12 @@ import baritone.utils.BaritoneProcessHelper;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.monster.Creeper;
@@ -520,6 +522,9 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         // so we take cover before the first fireball, not after it has been shelling us from afar.
         m.longRange = e.getType() == EntityType.GHAST;
         m.ignited = e instanceof Creeper && ((Creeper) e).isIgnited();
+        // piglin / piglin brute: neutral until it sees us holding/wearing gold, then the pack aggros —
+        // drop the gold + back off rather than fight the swarm it summons.
+        m.piglin = e.getType() == EntityType.PIGLIN || e.getType() == EntityType.PIGLIN_BRUTE;
         m.aggro = e instanceof Mob && ((Mob) e).getTarget() == player;
         Double prev = prevMobDist.get(m.entityId);
         m.approachingSpeed = prev == null ? 0D : (prev - m.distance) / dtTicks;
@@ -568,7 +573,32 @@ public final class ReflexProcess extends BaritoneProcessHelper {
                     s.blockSlot = slot;
                 }
             }
+            // gold in the hotbar aggros piglins — track the first such slot so we can drop it
+            if (s.goldSlot < 0 && isGoldItem(item)) {
+                s.goldSlot = slot;
+            }
         }
+        // worn gold armor also aggros piglins, but a reflex can't un-equip it (needs the inventory GUI)
+        s.wearingGold = isWearingGold(player);
+    }
+
+    /** A gold item that aggros piglins (tools/weapons/armor/ingots/nuggets/blocks/apple). */
+    private static boolean isGoldItem(Item item) {
+        String id = BuiltInRegistries.ITEM.getKey(item).getPath();
+        return id.contains("gold") || id.contains("golden");
+    }
+
+    /** Any worn armor piece made of gold (also a piglin aggro trigger we can't reflexively remove). */
+    private static boolean isWearingGold(LocalPlayer player) {
+        EquipmentSlot[] armorSlots = {EquipmentSlot.HEAD, EquipmentSlot.CHEST,
+                EquipmentSlot.LEGS, EquipmentSlot.FEET};
+        for (EquipmentSlot slot : armorSlots) {
+            ItemStack armor = player.getItemBySlot(slot);
+            if (armor != null && !armor.isEmpty() && isGoldItem(armor.getItem())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** A block that ticks contact damage while we touch it (not fire/lava — those have own handlers). */

@@ -115,6 +115,7 @@ public class SurvivalBrain {
         Threat meleeThreat = Detectors.meleeFight(s, t);
         add(threats, fleeThreat);
         add(threats, meleeThreat);
+        add(threats, Detectors.piglinGoldAggro(s, t));
         add(threats, Detectors.swarm(s, t));
         add(threats, Detectors.knockbackHazard(s, t));
         add(threats, Detectors.overwhelmed(s, t));
@@ -725,6 +726,13 @@ public class SurvivalBrain {
                 // nothing left to do: no food to heal with and nobody chasing us
                 return s.bestFoodSlot < 0 && !s.poisoned
                         && hostileCount(s, t.retreatSafeDistance) == 0;
+            case DROP_GOLD:
+                // done once the gold trigger is gone (held gold dropped, no worn gold) AND no piglin is
+                // still in range — once de-aggroed the piglin reverts to neutral and we can resume. If
+                // only worn armor triggers it (can't drop), release when the piglins have left perception.
+                return (s.goldSlot < 0 && !s.wearingGold)
+                        ? !Detectors.anyWithin(s, t.perceptionRadius, m -> m.piglin)
+                        : !Detectors.anyWithin(s, t.perceptionRadius, m -> m.piglin && m.aggro);
             case EAT:
                 return s.food >= t.eatReleaseFood || s.screenOpen || s.bestFoodSlot < 0
                         || activeTicks > t.eatTimeoutTicks;
@@ -796,6 +804,9 @@ public class SurvivalBrain {
             case CONTACT_HAZARD:
                 // both answered by "get off the burning/spiked block" — run to clear ground
                 return BehaviorId.EXTINGUISH_FIRE;
+            case PIGLIN_GOLD_AGGRO:
+                // remove the aggro trigger (drop held gold) + back off — not fight the swarm gold summons
+                return BehaviorId.DROP_GOLD;
             case WARDEN:
             case CREEPER:
             case SWARM:

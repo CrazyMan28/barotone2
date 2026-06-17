@@ -31,7 +31,8 @@ public enum BehaviorId {
     COMBAT("fighting back"),
     RETREAT_HEAL("retreating to heal"),
     EAT("eating"),
-    SHELTER("sheltering");
+    SHELTER("sheltering"),
+    DROP_GOLD("dropping gold");
 
     /** Human description, used by ReflexLog / chat / the process display name. */
     public final String describe;
