@@ -370,8 +370,15 @@ public class SurvivalBrain {
             return BehaviorId.SHELTER;
         }
         // Withered: a DoT natural regen can't outrun, so every blow we trade compounds it — don't stand
-        // and fight, break contact and wait it out (retreat). (Plain poison can't kill, so we still fight.)
+        // and fight, break contact and wait it out. (Plain poison can't kill, so we still fight.)
         if (behavior == BehaviorId.COMBAT && s.withered) {
+            // ...but with NO food there's nothing to heal with and regen is off below 18 hunger, so a
+            // retreat-heal loop just bleeds out while the mob keeps re-engaging. Seal in (SHELTER) so
+            // contact breaks and natural regen can tick once the wither fades. (No creeper: a hole can't
+            // be sealed against a blast.) Mirrors the no-food RETREAT_HEAL override above.
+            if (!a.hasFood && a.creepersNear == 0 && t.shelter && (a.hasBlocks || s.digDownSafe)) {
+                return BehaviorId.SHELTER;
+            }
             return BehaviorId.RETREAT_HEAL;
         }
         // cornered while fleeing something that isn't a creeper: sprinting just runs into the wall

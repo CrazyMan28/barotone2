@@ -273,6 +273,19 @@ public class SurvivalRateTest {
         all.add(new Scenario("weakened + 2 zombies", () -> kitted().armor(12).weak().zombie(5, 0).zombie(6, 60)));
         all.add(new Scenario("withered lowhp", () -> kitted().armor(10).hp(11).wither()));
         all.add(new Scenario("withered + zombie", () -> kitted().armor(12).hp(12).wither().zombie(7, 0)));
+        // withered with NO food + a hostile: a retreat-heal loop is futile (nothing to eat, regen off
+        // below 18 hunger, wither bleeding) — must seal in so contact breaks. With an hp buffer to ride
+        // out the DoT, sealing in survives where standing and trading (or heal-looping) dies.
+        all.add(new Scenario("withered no-food + zombie", () -> {
+            SurvivalSim s = new SurvivalSim().weapon(2).armor(12).blocks(20).hp(19).wither();
+            s.food = 0; s.foodSlot = -1;
+            return s.zombie(6, 0);
+        }));
+        all.add(new Scenario("withered no-food dig-in", () -> {
+            SurvivalSim s = new SurvivalSim().armor(10).hp(19).wither();
+            s.food = 0; s.foodSlot = -1;
+            return s.zombie(6, 0);
+        }));
         // blindness/darkness: can't see threats, fleeing blind in the open fails -> seal in
         all.add(new Scenario("blind + zombie", () -> kitted().armor(10).blind().zombie(6, 0)));
         all.add(new Scenario("blind + zombie fresh", () -> freshBlocks().blind().zombie(6, 0)));
@@ -555,5 +568,28 @@ public class SurvivalRateTest {
         SurvivalSim.Outcome o = kitted().armor(12).contactHazard().creeper(6, 0)
                 .disableReflexes().run(TICKS);
         assertFalse("with no reflexes contact hazard + a creeper must kill the bot", o.survived);
+    }
+
+    // ---------------------------------------------------------------- wither + no food dig-in
+
+    @Test
+    public void witheredNoFoodSealsInsteadOfHealLooping() {
+        // withered + no food + a hostile: a retreat-heal loop can't heal (nothing to eat, regen off),
+        // so it must SHELTER (dig in) to break contact and let regen tick once the wither fades.
+        SurvivalSim s = new SurvivalSim().armor(10).blocks(20).hp(19).wither();
+        s.food = 0; s.foodSlot = -1;
+        s.zombie(6, 0);
+        SurvivalSim.Outcome o = s.run(TICKS);
+        assertTrue("withered+no-food must seal in and survive: " + o.cause, o.survived);
+        assertTrue("must have sheltered (dug in), not heal-looped",
+                s.behaviorsSeen.contains(BehaviorId.SHELTER));
+    }
+
+    @Test
+    public void controlReflexesOffDiesWitheredNoFood() {
+        SurvivalSim s = new SurvivalSim().armor(10).blocks(20).hp(19).wither();
+        s.food = 0; s.foodSlot = -1;
+        SurvivalSim.Outcome o = s.zombie(6, 0).disableReflexes().run(TICKS);
+        assertFalse("with no reflexes withered + no food + a zombie must kill the bot", o.survived);
     }
 }
