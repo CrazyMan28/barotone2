@@ -115,6 +115,13 @@ public final class ReflexProcess extends BaritoneProcessHelper {
      */
     public static volatile String LAST_REPORT;
 
+    /**
+     * The danger zone the last flee episode left, or null. {@code goto_coords} consults it so the LLM
+     * can't immediately path the bot back to where it just nearly died (the flee → "avoid" hint →
+     * forgotten → walk-back death loop). Cleared once the agent moves well clear of it.
+     */
+    public static volatile baritone.ai.AvoidZone LAST_AVOID_ZONE;
+
     private final ReflexEngine engine = new ReflexEngine();
     private final ReflexTuning tuning = new ReflexTuning();
     private final ReflexExecutor executor;
@@ -245,6 +252,11 @@ public final class ReflexProcess extends BaritoneProcessHelper {
             baritone.ai.reflex.SurvivalReport report = engine.lastReport();
             if (report != null) {
                 LAST_REPORT = report.summary;
+                // remember the spot we fled so goto_coords can refuse to walk straight back into it
+                LAST_AVOID_ZONE = report.hasAvoid
+                        ? new baritone.ai.AvoidZone((int) Math.round(report.avoidX),
+                                (int) Math.round(report.avoidZ))
+                        : null;
                 ReflexLog.record("[reflex] report: " + report.summary);
             }
             emitTelemetry("done", out.previous, null, out.previousTicks);

@@ -924,8 +924,21 @@ public final class BaritoneTools {
         int x = a.get("x").getAsInt();
         int y = a.get("y").getAsInt();
         int z = a.get("z").getAsInt();
+        // Guard the survival death-loop: the reflex just fled a danger and left an avoid zone; pathing
+        // straight back into it (the LLM forgetting the last_survival_action hint) re-enters the threat.
+        // We still path (the agent may have a good reason — e.g. recovering drops after the mob left),
+        // but the result string warns loudly so the model reconsiders / approaches from a safe side.
+        AvoidZone avoid = ReflexProcess.LAST_AVOID_ZONE;
+        String warning = "";
+        if (avoid != null && avoid.blocks(x, z)) {
+            warning = String.format(
+                    "WARNING: (%d, %d) is within %d blocks of a spot the survival reflex JUST fled "
+                            + "(avoid ~(%d,%d)). Pathing back risks the same death — only proceed if the "
+                            + "threat is gone (check get_state), and prefer approaching from a safe side. ",
+                    x, z, avoid.radius, avoid.x, avoid.z);
+        }
         executeCommand(String.format("goto %d %d %d", x, y, z));
-        return String.format("Pathing to (%d, %d, %d).", x, y, z);
+        return warning + String.format("Pathing to (%d, %d, %d).", x, y, z);
     }
 
     private String gotoBlock(JsonObject a) {
