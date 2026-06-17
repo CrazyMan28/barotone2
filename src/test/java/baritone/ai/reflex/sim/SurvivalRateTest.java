@@ -191,6 +191,11 @@ public class SurvivalRateTest {
         all.add(new Scenario("standing on cactus", () -> kitted().contactHazard()));
         all.add(new Scenario("contact hazard lowhp", () -> kitted().armor(10).hp(8).contactHazard()));
         all.add(new Scenario("contact hazard + zombie", () -> kitted().armor(12).contactHazard().zombie(7, 0)));
+        // contact hazard + a higher-severity mob that PREEMPTS the step-off (creeper/skeleton): the bot
+        // flees off the spikes, and the flee must carry it clear of the contact cell (and not release
+        // while still standing on it). Tests the cross-behavior contact-clear + FLEE-release guard.
+        all.add(new Scenario("contact hazard + creeper", () -> kitted().armor(12).contactHazard().creeper(6, 0)));
+        all.add(new Scenario("contact hazard + skeleton", () -> kitted().armor(12).contactHazard().skeleton(7, 0)));
 
         // U. critical starvation, safe to eat
         all.add(new Scenario("starving f1", () -> new SurvivalSim().food(1, 2, 6)));
@@ -252,6 +257,14 @@ public class SurvivalRateTest {
         all.add(new Scenario("undergeared night swarm", () -> new SurvivalSim().atNight().zombie(5, 0).zombie(6, 100).zombie(6, 220)));
         all.add(new Scenario("undergeared night sk+zombies", () -> new SurvivalSim().atNight().skeleton(7, 0).zombie(6, 120).zombie(6, 240)));
         all.add(new Scenario("undergeared surrounded day", () -> new SurvivalSim().zombie(5, 0).zombie(5, 120).zombie(5, 240)));
+        // AF2. CORNERED swarm with NO blocks: can't pillar/wall AND can't run (boxed) — fleeing nowhere
+        // just stands us still while faster mobs (cave spiders 0.33 > 0.32) land hits. Must dig in.
+        all.add(new Scenario("cornered swarm no-blocks food", () -> new SurvivalSim().food(20, 2, 6)
+                .cornered().zombie(5, 0).zombie(6, 30).caveSpider(5, 50)));
+        all.add(new Scenario("boxed swarm no-blocks food", () -> new SurvivalSim().food(20, 2, 6)
+                .fullyBoxed().zombie(5, 0).zombie(6, 60).zombie(6, 120)));
+        all.add(new Scenario("cornered cavespider swarm", () -> new SurvivalSim().armor(6).food(20, 2, 6)
+                .cornered().caveSpider(5, 0).caveSpider(6, 40).caveSpider(6, 80)));
 
         // AG. status effects (witch / wither): slowness (can't outrun -> dig in), weakness (don't lose a
         // fight -> flee/shelter), wither (DoT -> retreat + heal)
@@ -501,5 +514,46 @@ public class SurvivalRateTest {
         SurvivalSim.Outcome o = sim.run(TICKS);
         assertTrue("must survive a phantom without futile combat: " + o.cause, o.survived);
         assertFalse("a flying phantom must not be melee-chased", sim.behaviorsSeen.contains(BehaviorId.COMBAT));
+    }
+
+    // ---------------------------------------------------------------- cornered-swarm dig-in
+
+    @Test
+    public void corneredSwarmNoBlocksDigsIn() {
+        // boxed by a swarm with NO blocks to pillar/wall: running nowhere stands us still while faster
+        // mobs land hits. The brain must route to SHELTER (bare-handed dig-in), and the bot survives.
+        SurvivalSim sim = new SurvivalSim().food(20, 2, 6)
+                .fullyBoxed().zombie(5, 0).zombie(6, 60).caveSpider(5, 120);
+        SurvivalSim.Outcome o = sim.run(TICKS);
+        assertTrue("must dig in when cornered by a swarm with no blocks: " + o.cause, o.survived);
+        assertTrue("must have sheltered (dug in), not fled nowhere",
+                sim.behaviorsSeen.contains(BehaviorId.SHELTER));
+    }
+
+    @Test
+    public void controlReflexesOffDiesToCorneredSwarm() {
+        SurvivalSim.Outcome o = new SurvivalSim().food(20, 2, 6)
+                .fullyBoxed().zombie(5, 0).zombie(6, 60).caveSpider(5, 120)
+                .disableReflexes().run(TICKS);
+        assertFalse("with no reflexes a cornered swarm must kill the bot", o.survived);
+    }
+
+    // ---------------------------------------------------------------- contact hazard interrupted by a mob
+
+    @Test
+    public void contactHazardFledClearWhenMobPreempts() {
+        // a creeper outranks the step-off, so the bot FLEEs — the flee must carry it off the contact
+        // cell, and it must NOT go idle while still standing on the spikes.
+        SurvivalSim sim = kitted().armor(12).contactHazard().creeper(6, 0);
+        SurvivalSim.Outcome o = sim.run(TICKS);
+        assertTrue("must survive contact hazard preempted by a creeper: " + o.cause, o.survived);
+        assertFalse("must have left the contact hazard even while fleeing", sim.contactHazard);
+    }
+
+    @Test
+    public void controlReflexesOffDiesToContactHazardWithMob() {
+        SurvivalSim.Outcome o = kitted().armor(12).contactHazard().creeper(6, 0)
+                .disableReflexes().run(TICKS);
+        assertFalse("with no reflexes contact hazard + a creeper must kill the bot", o.survived);
     }
 }

@@ -229,4 +229,50 @@ public class NewThreatBehaviorTest {
         assertTrue("still push out of the lava along a safe octant", holds(out.actions, Input.MOVE_FORWARD));
         assertNotNull("aim along the safe octant", find(out.actions, ReflexAction.Kind.LOOK));
     }
+
+    @Test
+    public void lavaEscapeHeadsToAClearColumn() {
+        ReflexEngine e = new ReflexEngine();
+        WorldSnapshot s = working();
+        s.inLava = true;
+        s.lavaEscape = new BlockPosSpec(4, 64, 0); // east, no mob on it
+        ReflexEngine.Output out = e.tick(s, t);
+        assertEquals(BehaviorId.ESCAPE_LAVA, out.plan.behavior);
+        ReflexAction look = find(out.actions, ReflexAction.Kind.LOOK);
+        assertNotNull("aim toward the clear column", look);
+        float towardColumn = ReflexMath.yawToward(s.posX, s.posZ, 4.5D, 0.5D);
+        assertEquals("must look toward the clear escape column", towardColumn, look.yaw, 1.0F);
+        assertTrue("push toward it", holds(out.actions, Input.MOVE_FORWARD));
+    }
+
+    @Test
+    public void lavaEscapeAvoidsAMobParkedOnTheColumn() {
+        // the precomputed column is east (+X), but a zombie is standing right on it. Climbing out
+        // onto the mob means eating lava + melee at once — fall back to a clear safe octant instead
+        // of aiming at the blocked column.
+        ReflexEngine e = new ReflexEngine();
+        WorldSnapshot s = working();
+        s.inLava = true;
+        s.lavaEscape = new BlockPosSpec(4, 64, 0); // east column
+        // only the west octant (index 5: dx=-1,dz=-1 ... pick a clearly-west one) is open
+        s.octantSafe = new boolean[]{false, false, false, false, false, false, true, false};
+        MobInfo zombie = new MobInfo();
+        zombie.entityId = 1;
+        zombie.typeId = "zombie";
+        zombie.hostile = true;
+        zombie.x = 4.4D; // within MOB_BLOCK_RADIUS of the column centre (4.5,0.5)
+        zombie.y = 64;
+        zombie.z = 0.2D;
+        zombie.distance = 4.0D;
+        zombie.aggro = true;
+        s.mobs.add(zombie);
+        ReflexEngine.Output out = e.tick(s, t);
+        assertEquals(BehaviorId.ESCAPE_LAVA, out.plan.behavior);
+        ReflexAction look = find(out.actions, ReflexAction.Kind.LOOK);
+        assertNotNull("must still aim somewhere out of the lava", look);
+        float towardBlockedColumn = ReflexMath.yawToward(s.posX, s.posZ, 4.5D, 0.5D);
+        assertTrue("must NOT aim at the mob-blocked column",
+                Math.abs(ReflexMath.angleDelta(look.yaw, towardBlockedColumn)) > 30F);
+        assertTrue("still push out of the lava along the clear octant", holds(out.actions, Input.MOVE_FORWARD));
+    }
 }

@@ -381,6 +381,18 @@ public class SurvivalBrain {
                 && a.hasBlocks && a.creepersNear == 0) {
             return BehaviorId.RETREAT_HEAL;
         }
+        // cornered while fleeing a swarm/outmatched fight with NO blocks: can't pillar, can't wall, and
+        // the faster mobs (cave spiders 0.33 > bot 0.32) close before we reach an opening — so running
+        // nowhere just stands us still while 5 mobs land hits (the biggest swarm-death cluster). Dig in
+        // (SHELTER) instead: a bare turtle hole needs no blocks, breaks contact, and lets regen tick.
+        // Mirrors the undergeared dig-in rule above; extended to the cornered case even when we have
+        // food (the broke-rule required BOTH no-blocks AND no-food). Creepers excluded (a bare hole
+        // can't be sealed against a blast — they keep the pillar ladder).
+        if (behavior == BehaviorId.FLEE && a.cornered && !a.hasBlocks && s.digDownSafe && t.shelter
+                && a.creepersNear == 0
+                && (top.type == ThreatType.SWARM || top.type == ThreatType.OUTMATCHED)) {
+            return BehaviorId.SHELTER;
+        }
         return behavior;
     }
 
@@ -439,10 +451,13 @@ public class SurvivalBrain {
     }
 
     /**
-     * Hazards the bot is CURRENTLY INSIDE and takes continuous damage from — these own the body
-     * unconditionally (you can't flee a mob while drowning/burning). FALL and VOID are deliberately
-     * NOT here: a falling bot at low hp may rightly choose to flee a creeper and eat the landing
-     * (the fall is a recoverable trade; lava/fire/drown are not). They still win on raw severity.
+     * Hazards the bot is CURRENTLY STANDING IN/ON and takes continuous damage from — these own the
+     * body unconditionally (you can't flee/shelter a mob while drowning/burning/bleeding on a cactus).
+     * FALL and VOID are deliberately NOT here: a falling bot at low hp may rightly choose to flee a
+     * creeper and eat the landing (the fall is a recoverable trade; lava/fire/drown/contact are not).
+     * They still win on raw severity. CONTACT_HAZARD belongs here because a mob defense like SHELTER
+     * digs in PLACE — it never steps off the cactus/magma, so the bot bleeds out unless stepping off
+     * the block always preempts the mob (the contact-hazard + mob death cluster).
      */
     private static boolean isTerrainHazard(ThreatType type) {
         switch (type) {
@@ -450,6 +465,7 @@ public class SurvivalBrain {
             case DROWN:
             case SUFFOCATION:
             case FIRE:
+            case CONTACT_HAZARD:
                 return true;
             default:
                 return false;
@@ -606,7 +622,10 @@ public class SurvivalBrain {
                 boolean fleeMobGone = !Detectors.fleeRequiredWithin(s, t, Detectors.fleeEngageRadius(t) + 4D);
                 boolean swarmGone = activeCause == null || activeCause.type != ThreatType.SWARM
                         || hostileCount(s, t.swarmRadius + 4D) < t.swarmCount;
-                return fleeMobGone && swarmGone;
+                // don't go idle while still standing on a contact-damage block: fleeing a mob can carry
+                // us OFF a cactus/magma cell, but if we released here we'd stand on the spikes bleeding
+                // (the contact-hazard cluster). Hold until we've actually stepped clear of it too.
+                return fleeMobGone && swarmGone && !s.contactHazardAtFeet;
             }
             case COMBAT: {
                 MobInfo target = findMob(s, combatTargetId);
