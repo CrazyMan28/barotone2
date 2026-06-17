@@ -56,6 +56,8 @@ import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.phys.AABB;
 
@@ -404,6 +406,10 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         s.headBlockedByGravity = headState.getBlock() instanceof FallingBlock;
         // suffocating inside ANY solid block (wall/cave-in/piston/bad teleport), not just gravity
         s.headInSolid = headState.isSuffocating(ctx.world(), headPos);
+        // contact-damage block at the feet (cactus/sweet-berry we're inside, magma we stand on) — the
+        // "fall-MLG landed on cactus and the bot stands there bleeding" death. Check both cells.
+        s.contactHazardAtFeet = isContactHazard(ctx.world().getBlockState(player.blockPosition()))
+                || isContactHazard(ctx.world().getBlockState(player.blockPosition().below()));
         // look & UI
         s.yaw = ctx.playerRotations().getYaw();
         s.pitch = ctx.playerRotations().getPitch();
@@ -517,6 +523,13 @@ public final class ReflexProcess extends BaritoneProcessHelper {
                 }
             }
         }
+    }
+
+    /** A block that ticks contact damage while we touch it (not fire/lava — those have own handlers). */
+    private static boolean isContactHazard(BlockState st) {
+        Block b = st.getBlock();
+        return b == Blocks.CACTUS || b == Blocks.MAGMA_BLOCK || b == Blocks.SWEET_BERRY_BUSH
+                || b == Blocks.WITHER_ROSE || b == Blocks.POWDER_SNOW;
     }
 
     /** Air gap straight down from the feet (for fall/void threats). */

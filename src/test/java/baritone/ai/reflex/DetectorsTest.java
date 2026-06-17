@@ -56,6 +56,27 @@ public class DetectorsTest {
     }
 
     @Test
+    public void contactHazardFiresOnTheFeetBlockButDefersToLavaAndWater() {
+        WorldSnapshot s = calm();
+        s.contactHazardAtFeet = true;
+        Threat th = Detectors.contactHazard(s, t);
+        assertNotNull("standing on cactus/magma must produce a contact-hazard threat", th);
+        assertEquals(ThreatType.CONTACT_HAZARD, th.type);
+
+        WorldSnapshot inLava = calm();
+        inLava.contactHazardAtFeet = true;
+        inLava.inLava = true;
+        assertNull("lava owns its own case", Detectors.contactHazard(inLava, t));
+
+        WorldSnapshot swimming = calm();
+        swimming.contactHazardAtFeet = true;
+        swimming.underWater = true;
+        assertNull("underwater is the drown handler's", Detectors.contactHazard(swimming, t));
+
+        assertNull("no hazard, no threat", Detectors.contactHazard(calm(), t));
+    }
+
+    @Test
     public void fireDefersToLavaAndWater() {
         WorldSnapshot inLava = calm();
         inLava.onFire = true;

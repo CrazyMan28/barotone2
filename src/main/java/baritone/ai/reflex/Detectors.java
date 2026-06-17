@@ -35,6 +35,8 @@ public final class Detectors {
     /** The Warden — unwinnable, one-shots geared players. Outranks every other mob: drop everything and run. */
     public static final int SEV_WARDEN = 92;
     public static final int SEV_FALL = 90;
+    /** Standing on a contact-damage block (cactus/magma/sweet-berry) — step off NOW (like fire). */
+    public static final int SEV_CONTACT_HAZARD = 82;
     public static final int SEV_SWARM = 85;
     public static final int SEV_FLEE_MOB = 80;
     /** A hissing creeper gets this on top of {@link #SEV_FLEE_MOB}. */
@@ -339,6 +341,19 @@ public final class Detectors {
         double hpFrac = s.maxHp <= 0 ? 1D : s.hp / (double) s.maxHp;
         int sev = 70 + (int) Math.round(20D * (1D - hpFrac));
         return new Threat(ThreatType.FIRE, sev);
+    }
+
+    /**
+     * Standing on/in a contact-damage block (cactus, magma block, sweet-berry bush). Not fire/lava
+     * (those own their own cases), but it ticks damage while we touch it — the classic "fall-MLG landed
+     * on cactus and the bot stands there bleeding" death. Step off, same response as fire (run to clear
+     * ground). Suppressed in lava/water so those handlers stay in charge.
+     */
+    public static Threat contactHazard(WorldSnapshot s, ReflexTuning t) {
+        if (!s.contactHazardAtFeet || s.inLava || s.underWater) {
+            return null;
+        }
+        return new Threat(ThreatType.CONTACT_HAZARD, SEV_CONTACT_HAZARD);
     }
 
     /** A real fall with a water bucket ready — the only fall the reflex can actually break. */

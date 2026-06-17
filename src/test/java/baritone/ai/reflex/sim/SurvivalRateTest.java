@@ -186,6 +186,11 @@ public class SurvivalRateTest {
         for (double h : new double[]{10, 20, 40}) {
             all.add(new Scenario("fall@" + h + " bucket", () -> kitted().falling(h)));
         }
+        // T2. contact-damage block (cactus/magma/sweet-berry): standing on one ticks damage until we
+        // step off — must run clear, not stand there bleeding (the fall-MLG-onto-cactus death)
+        all.add(new Scenario("standing on cactus", () -> kitted().contactHazard()));
+        all.add(new Scenario("contact hazard lowhp", () -> kitted().armor(10).hp(8).contactHazard()));
+        all.add(new Scenario("contact hazard + zombie", () -> kitted().armor(12).contactHazard().zombie(7, 0)));
 
         // U. critical starvation, safe to eat
         all.add(new Scenario("starving f1", () -> new SurvivalSim().food(1, 2, 6)));
@@ -462,6 +467,20 @@ public class SurvivalRateTest {
     public void controlReflexesOffDiesToWitch() {
         SurvivalSim.Outcome o = kitted().armor(10).witch(5, 0).disableReflexes().run(TICKS);
         assertFalse("with no reflexes a witch must kill the bot", o.survived);
+    }
+
+    @Test
+    public void controlReflexesOffDiesToContactHazard() {
+        SurvivalSim.Outcome o = kitted().contactHazard().disableReflexes().run(TICKS);
+        assertFalse("with no reflexes a contact-damage block must kill the bot", o.survived);
+    }
+
+    @Test
+    public void contactHazardIsSteppedOff() {
+        SurvivalSim sim = kitted().contactHazard();
+        SurvivalSim.Outcome o = sim.run(TICKS);
+        assertTrue("must step off a cactus/magma block, not stand there bleeding: " + o.cause, o.survived);
+        assertFalse("must have left the contact hazard", sim.contactHazard);
     }
 
     @Test

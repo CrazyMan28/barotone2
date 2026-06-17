@@ -86,6 +86,7 @@ public class SurvivalBrain {
         add(threats, Detectors.suffocation(s, t));
         add(threats, Detectors.drown(s, t));
         add(threats, Detectors.fire(s, t));
+        add(threats, Detectors.contactHazard(s, t));
         add(threats, Detectors.fall(s, t));
         Threat fleeThreat = Detectors.fleeMob(s, t);
         Threat meleeThreat = Detectors.meleeFight(s, t);
@@ -585,7 +586,9 @@ public class SurvivalBrain {
             case DIG_OUT:
                 return !s.headBlockedByGravity;
             case EXTINGUISH_FIRE:
-                return !s.onFire;
+                // released once we're off the fire AND off any contact-damage block (same behavior
+                // handles both: run to clear ground — don't release while still standing on the spikes)
+                return !s.onFire && !s.contactHazardAtFeet;
             case ANTI_FALL:
                 return s.onGround || s.underWater;
             case FLEE: {
@@ -670,6 +673,8 @@ public class SurvivalBrain {
             case SUFFOCATION:
                 return BehaviorId.DIG_OUT;
             case FIRE:
+            case CONTACT_HAZARD:
+                // both answered by "get off the burning/spiked block" — run to clear ground
                 return BehaviorId.EXTINGUISH_FIRE;
             case WARDEN:
             case CREEPER:

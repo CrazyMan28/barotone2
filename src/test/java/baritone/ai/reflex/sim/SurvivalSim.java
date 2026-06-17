@@ -92,6 +92,9 @@ public final class SurvivalSim {
     public boolean encased;     // head inside ANY solid block (wall/cave-in/bad teleport)
     public boolean night;
     public int ticksSinceHurt = Integer.MAX_VALUE;
+    /** Standing on a contact-damage block (cactus/magma/sweet-berry): ticks damage until we step off. */
+    public boolean contactHazard;
+    private double contactHazardMoved; // how far we've moved off the hazard cell
 
     // gear / resources
     public int weaponSlot = -1, weaponTier = -1;
@@ -350,6 +353,16 @@ public final class SurvivalSim {
         return this;
     }
 
+    /**
+     * Standing on a contact-damage block (cactus / magma block / sweet-berry bush): it ticks damage
+     * until we step ~1 block off. The classic "fall-MLG landed on cactus and stood there bleeding".
+     */
+    public SurvivalSim contactHazard() {
+        this.contactHazard = true;
+        this.contactHazardMoved = 0;
+        return this;
+    }
+
     /** Encased in solid (e.g. a cave-in / bad teleport): must mine out AND climb the shaft. */
     public SurvivalSim encased() {
         this.encased = true;
@@ -512,6 +525,9 @@ public final class SurvivalSim {
         if (suffocating || encased) {
             return "suffocation";
         }
+        if (contactHazard) {
+            return "contact_hazard";
+        }
         if (!mobs.isEmpty()) {
             return mobs.get(0).type;
         }
@@ -657,8 +673,25 @@ public final class SurvivalSim {
             case EXTINGUISH_FIRE:
                 if (nearestWater != null) {
                     moveToward(nearestWater.x, nearestWater.z, BOT_SPEED);
+                } else if (contactHazard) {
+                    // no water: run off the spiked/hot block along a safe octant until ~1 block clear
+                    int octant = -1;
+                    for (int i = 0; i < octantSafe.length; i++) {
+                        if (octantSafe[i]) {
+                            octant = i;
+                            break;
+                        }
+                    }
+                    if (octant >= 0) {
+                        double ang = Math.toRadians(octant * 45);
+                        moveAlongSafe(Math.sin(ang), Math.cos(ang), BOT_SPEED);
+                        contactHazardMoved += BOT_SPEED;
+                        if (contactHazardMoved >= 1.0D) {
+                            contactHazard = false; // stepped off the hazard block
+                        }
+                    }
                 }
-                if (++fireFightProgress >= 6) {
+                if (onFire && ++fireFightProgress >= 6) {
                     onFire = false;
                 }
                 break;
@@ -845,6 +878,10 @@ public final class SurvivalSim {
             hp -= 0.6D;
             hurt = true;
         }
+        if (contactHazard) {
+            hp -= 0.5D; // cactus/magma/sweet-berry contact ticks until we step off
+            hurt = true;
+        }
         if (falling) {
             fallDistance += 0.5D;
             if (fallDistance > 60) {
@@ -982,6 +1019,7 @@ public final class SurvivalSim {
         s.bedSlot = bedSlot;
         s.nearestWater = nearestWater;
         s.surfaceSealed = surfaceSealed;
+        s.contactHazardAtFeet = contactHazard;
         s.octantSafe = octantSafe.clone();
         s.digDownSafe = digDownSafe;
         s.night = night;

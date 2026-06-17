@@ -139,6 +139,12 @@ public final class WorldSnapshot {
     public boolean digDownSafe;
     /** A solid block sits within 2 above the head — the turtle hole is already sealed. */
     public boolean sealedOverhead;
+    /**
+     * Standing on / inside a contact-damage block (cactus, magma block, sweet-berry bush) that ticks
+     * damage while we touch it but isn't fire/lava. After a fall-MLG the bot can land on one and stand
+     * there bleeding because nothing else detects it — step off NOW. Set by the adapter's block scan.
+     */
+    public boolean contactHazardAtFeet;
 
     // ---- ambient (spawn / night awareness)
     /** Block-light at the feet (0-15); low light at night is where hostiles spawn on top of you. */

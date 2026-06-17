@@ -27,6 +27,8 @@ public enum ThreatType {
     DROWN,
     SUFFOCATION,
     FIRE,
+    /** Standing on/in a contact-damage block (cactus / magma / sweet-berry): step off, like fire. */
+    CONTACT_HAZARD,
     FALL,
     /** The Warden: unwinnable, one-shots geared players — always flee, ranks above every other mob. */
     WARDEN,

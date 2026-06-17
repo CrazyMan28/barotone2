@@ -123,6 +123,38 @@ public class NewThreatBehaviorTest {
     }
 
     @Test
+    public void contactHazardRunsOffTheSpikedBlock() {
+        // standing on cactus/magma with no water: run off the block (same response as fire-no-water)
+        ReflexEngine e = new ReflexEngine();
+        WorldSnapshot s = working();
+        s.contactHazardAtFeet = true;
+        ReflexEngine.Output out = e.tick(s, t);
+        assertEquals(BehaviorId.EXTINGUISH_FIRE, out.plan.behavior);
+        ReflexAction goal = find(out.actions, ReflexAction.Kind.SET_GOAL);
+        assertNotNull("must path off the contact-damage block", goal);
+        assertEquals(GoalSpec.Kind.RUN_AWAY, goal.goal.kind);
+    }
+
+    @Test
+    public void contactHazardHoldsUntilSteppedOff() {
+        // must NOT release while still standing on the hazard (the bot would stop and keep bleeding)
+        ReflexEngine e = new ReflexEngine();
+        WorldSnapshot on = working();
+        on.contactHazardAtFeet = true;
+        assertEquals(BehaviorId.EXTINGUISH_FIRE, e.tick(on, t).plan.behavior);
+        WorldSnapshot still = working();
+        still.gameTime = 1;
+        still.contactHazardAtFeet = true; // not off it yet
+        assertEquals("still on the hazard: keep running off it",
+                BehaviorId.EXTINGUISH_FIRE, e.tick(still, t).plan.behavior);
+        WorldSnapshot off = working();
+        off.gameTime = 2;
+        ReflexEngine.Output o = e.tick(off, t); // stepped clear
+        assertEquals(BehaviorId.NONE, o.plan.behavior);
+        assertTrue(o.released);
+    }
+
+    @Test
     public void suffocationMinesTheHeadBlock() {
         ReflexEngine e = new ReflexEngine();
         WorldSnapshot s = working();
