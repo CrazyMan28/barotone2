@@ -41,6 +41,13 @@ public final class Detectors {
     public static final int SEV_OUTMATCHED = 78;
     /** Getting beaten and can't win the trade — break off and heal. Above melee, below mob-flee. */
     public static final int SEV_OVERWHELMED = 75;
+    /**
+     * Eat NOW because food is critical — but only when it's safe to (the detector's range guard makes
+     * sure no hostile is anywhere near). Ranks above night-turtling and ordinary hunger so a starving
+     * bot tops up before doing anything optional, yet below EVERY mob/terrain threat: eating next to a
+     * danger is suicide, so any real threat always wins and the bot flees/fights first.
+     */
+    public static final int SEV_STARVATION = 45;
     public static final int SEV_MELEE = 60;
     public static final int SEV_POISON = 50;
     /** Proactive night turtling — every real emergency must outrank it. Above hunger, below poison. */
@@ -282,6 +289,21 @@ public final class Detectors {
         // but only when it's safe so we don't waste the meal getting interrupted.
         boolean healEat = s.hp < s.maxHp && s.food < t.eatReleaseFood && calm;
         return urgent || lull || healEat ? new Threat(ThreatType.HUNGER, SEV_HUNGER) : null;
+    }
+
+    /**
+     * Food critically low with a safe window to eat in (no hostile within {@code starvationSafeRadius})
+     * — eat NOW even mid-mission. The range guard means a near mob still flees/retreats first (you
+     * can't safely stand still and eat next to a zombie), so this only ever fires when eating is safe.
+     */
+    public static Threat starvation(WorldSnapshot s, ReflexTuning t) {
+        if (!t.autoEat || s.screenOpen || s.bestFoodSlot < 0 || s.food > t.criticalStarvationFood) {
+            return null;
+        }
+        if (anyWithin(s, t.starvationSafeRadius, m -> m.hostile || m.creeper || m.skeleton)) {
+            return null; // too close to safely stand and eat — flee/retreat owns this instead
+        }
+        return new Threat(ThreatType.STARVATION, SEV_STARVATION);
     }
 
     /** On fire (and not in lava/water, which own their cases). Scarier the lower our hp. */

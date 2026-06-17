@@ -39,5 +39,12 @@ public enum ThreatType {
     /** A plain hostile (zombie etc.) the gear-aware judgment says we'd lose to — flee, don't brawl. */
     OUTMATCHED,
     /** Night + undergeared + hostiles visible: proactively turtle up instead of working until dead. */
-    NIGHT_EXPOSURE
+    NIGHT_EXPOSURE,
+    /**
+     * Food so low natural regen is off and a single hit could end us, with no mob close enough to
+     * make eating suicide — eat NOW, even mid-mission. Ranks above mob-flee so the bot stops kiting a
+     * distant creeper forever while it quietly starves (a real death mode), but the detector itself
+     * only fires when nothing is in melee/blast range, so a near threat still flees first.
+     */
+    STARVATION
 }

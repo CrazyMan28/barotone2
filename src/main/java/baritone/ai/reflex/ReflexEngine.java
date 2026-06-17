@@ -54,7 +54,7 @@ public final class ReflexEngine {
         public FleeMode resolvedMode;
     }
 
-    private final ResponseArbiter arbiter = new ResponseArbiter();
+    private final SurvivalBrain brain = new SurvivalBrain();
     private final Map<BehaviorId, ReflexBehavior> behaviors = new EnumMap<>(BehaviorId.class);
 
     private ReflexBehavior current;
@@ -80,7 +80,7 @@ public final class ReflexEngine {
     }
 
     public Output tick(WorldSnapshot s, ReflexTuning t) {
-        ResponsePlan plan = arbiter.decide(s, t);
+        ResponsePlan plan = brain.decide(s, t);
         Output out = new Output();
         out.plan = plan;
         if (plan.behavior != last) {
@@ -119,6 +119,16 @@ public final class ReflexEngine {
     /** Ticks the current behavior has been engaged. */
     public int ticksInBehavior() {
         return ticksInBehavior;
+    }
+
+    /** The brain's whole-picture read of the latest tick — for the HUD / telemetry / get_state. */
+    public SituationAssessment situation() {
+        return brain.situation();
+    }
+
+    /** The report the most recently ended episode left for the paused LLM agent (null until one has). */
+    public SurvivalReport lastReport() {
+        return brain.lastReport();
     }
 
     /** Force-release whatever is running (reflexes disabled / process lost control). */

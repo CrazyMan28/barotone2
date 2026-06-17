@@ -58,6 +58,14 @@ public final class ReflexTuning {
     // ---- proactive survival
     /** Top the hunger bar up during a calm lull once food drops to this (no threats around). */
     public int proactiveEatHunger = 16;
+    /** At/under this food, eating jumps the priority queue (STARVATION) — even mid-mission. */
+    public int criticalStarvationFood = 3;
+    /** A starving bot only stops to eat when no hostile is within this radius (eating is ~1.6s frozen). */
+    public double starvationSafeRadius = 10.0D;
+    /** Hp at/under this is a hard "never trade blows" floor: disengage to heal/flee no matter what. */
+    public float criticalHp = 4.0F;
+    /** Two or fewer safe directions to move = cornered: bunker instead of fleeing into a wall. */
+    public int corneredSafeDirections = 2;
 
     // ---- eat (pre-redesign constants)
     public int eatReleaseFood = 18;

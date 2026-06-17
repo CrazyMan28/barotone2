@@ -101,6 +101,19 @@ public final class ReflexProcess extends BaritoneProcessHelper {
     public static final java.util.concurrent.atomic.AtomicLong ENGAGED_MILLIS =
             new java.util.concurrent.atomic.AtomicLong();
 
+    /**
+     * The brain's whole-picture read of the current tick (e.g. "endangered — 2 hostiles (1c/0r/1m),
+     * can win"), for get_state / the HUD. The agent doesn't act on it, but it explains the situation.
+     */
+    public static volatile String SITUATION = "safe";
+
+    /**
+     * The report from the last survival episode the reflex resolved while the LLM was paused — e.g.
+     * "fleeing danger handled creeper; moved 18 blocks; avoid ~(312,-44)". Surfaced once in get_state
+     * so the agent resumes from an accurate view (it was moved) and doesn't path back into the trap.
+     */
+    public static volatile String LAST_REPORT;
+
     private final ReflexEngine engine = new ReflexEngine();
     private final ReflexTuning tuning = new ReflexTuning();
     private final ReflexExecutor executor;
@@ -221,9 +234,18 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         } else {
             ACTIVE_STATUS = out.plan.behavior.describe;
         }
+        baritone.ai.reflex.SituationAssessment sit = engine.situation();
+        if (sit != null) {
+            SITUATION = sit.describe();
+        }
         if (out.released) {
             executor.cleanup();
             ReflexLog.record("[reflex] " + out.previous.describe + " ended after " + (out.previousTicks / 20) + "s");
+            baritone.ai.reflex.SurvivalReport report = engine.lastReport();
+            if (report != null) {
+                LAST_REPORT = report.summary;
+                ReflexLog.record("[reflex] report: " + report.summary);
+            }
             emitTelemetry("done", out.previous, null, out.previousTicks);
         }
         if (out.engaged) {
@@ -263,6 +285,17 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         ReflexEngine.Output out = lastOutput;
         if (out == null || out.plan.behavior == BehaviorId.NONE) {
             return new PathingCommand(null, PathingCommandType.DEFER);
+        }
+        // A danger is being handled, but you can't move with a chest/crafting GUI open — if a blocking
+        // craft/station tool left one up, close it so the reflex can actually flee/fight. (Eating is
+        // exempt: its detector already skips while a screen is open, so this never interrupts a meal.)
+        if (out.plan.behavior != BehaviorId.EAT) {
+            net.minecraft.client.Minecraft mc = ctx.minecraft();
+            if (mc != null && mc.screen != null && mc.player != null
+                    && !(mc.player.containerMenu instanceof net.minecraft.world.inventory.InventoryMenu)) {
+                mc.player.closeContainer();
+                mc.setScreen(null);
+            }
         }
         return executor.execute(out.actions, true);
     }

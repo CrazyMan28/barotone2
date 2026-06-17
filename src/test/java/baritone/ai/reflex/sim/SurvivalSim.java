@@ -1,0 +1,902 @@
+/*
+ * This file is part of Baritone.
+ *
+ * Baritone is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * Baritone is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with Baritone.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+package baritone.ai.reflex.sim;
+
+import baritone.ai.reflex.BehaviorId;
+import baritone.ai.reflex.BlockPosSpec;
+import baritone.ai.reflex.FleeMode;
+import baritone.ai.reflex.MobInfo;
+import baritone.ai.reflex.ReflexEngine;
+import baritone.ai.reflex.ReflexTuning;
+import baritone.ai.reflex.WorldSnapshot;
+
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+
+/**
+ * A deterministic, Minecraft-free survival simulator. Each tick it renders the sim world into a
+ * {@link WorldSnapshot}, asks the real {@link ReflexEngine} what to do, then applies that decision's
+ * <em>physical consequence</em> back into the world (flee → distance opens, pillar → out of reach,
+ * shelter → sealed in, combat → mob takes damage, eat → food/regen, escape-lava → out of the lava…)
+ * and steps the threats (mobs close in and hit, lava/drown/fire/fall tick down hp).
+ *
+ * <p>It is intentionally <em>fair, not rigged</em>: doing nothing in any of these scenarios kills the
+ * bot (see the control tests), and the damage/speed model is tuned so a <em>correct</em> reflex
+ * decision survives while a wrong one dies. That is what makes "≥99% survival across 100+ scenarios"
+ * a real measurement of the decision core, not a tautology.
+ *
+ * <p>The grain is the decision layer (which behavior, against the whole picture) — exactly what the
+ * {@link baritone.ai.reflex.SurvivalBrain} rewrite owns. The behaviors' action emission is unit-tested
+ * separately ({@code EngineParityTest} et al.); here we model each behavior's outcome.
+ */
+public final class SurvivalSim {
+
+    // ---- speed / damage model (blocks per tick, hp). Bot outruns every mob; doing nothing dies.
+    private static final double BOT_SPEED = 0.32D;
+    private static final double PILLAR_RATE = 0.34D;
+    private static final double LAVA_DMG = 0.45D;     // per tick while standing in lava
+    private static final double FIRE_DMG = 0.12D;     // per tick on fire (out of lava)
+    private static final double DROWN_DMG = 0.5D;     // per tick once air is gone
+    private static final int CREEPER_FUSE = 30;       // ticks within blast range before it detonates
+    private static final double CREEPER_BLAST = 45D;  // point-blank damage (lethal even geared)
+    private static final double CREEPER_RANGE = 3.0D; // fuse range
+    private static final double CREEPER_STOP = 0.6D;  // a creeper walks right up onto the player
+    private static final int SHELTER_BUILD_TICKS = 22; // ticks to seal a turtle hole / wall in
+    private static final int WALL_BUILD_TICKS = 12;
+    // a mob loses the bot once it has been outrun (broken contact) or sealed away long enough — the
+    // reflex's contract is "break contact"; crediting that as escape is what makes flee/shelter
+    // measurable. Both thresholds are conservative (the bot must really get clear).
+    private static final double DEAGGRO_RANGE = 11D;   // ~the flee release distance: contact broken
+    private static final int DEAGGRO_TICKS = 12;       // sustained beyond range => lost the target
+    private static final int UNREACHABLE_TICKS = 40;   // sealed/pillared away this long => wanders off
+
+    public final ReflexTuning tuning = new ReflexTuning();
+    private final ReflexEngine engine = new ReflexEngine();
+    private boolean reflexesOff; // control: force NONE to prove the sim is genuinely lethal
+
+    // ---- bot state
+    public double x, y, z;
+    public double hp = 20, maxHp = 20;
+    public int food = 20;
+    public int air = 300;
+    public boolean onFire;
+    public boolean inLava;
+    public boolean underWater;
+    public boolean poisoned;
+    public boolean falling;
+    public double fallDistance;
+    public boolean suffocating;
+    public boolean night;
+    public int ticksSinceHurt = Integer.MAX_VALUE;
+
+    // gear / resources
+    public int weaponSlot = -1, weaponTier = -1;
+    public int armor;
+    public boolean shield;
+    public int blocks;          // blocks on hand
+    public int foodSlot = -1, foodNutrition = -1;
+    public int bucketSlot = -1;
+    public int bedSlot = -1;
+
+    // terrain
+    public boolean[] octantSafe = {true, true, true, true, true, true, true, true};
+    public boolean digDownSafe = true; // can always dig a bare-handed turtle hole on solid ground
+    public BlockPosSpec lavaEscape;
+    public BlockPosSpec nearestWater;
+
+    // internal episode bookkeeping
+    private int attackCooldown;
+    private int eatProgress;
+    private int shelterProgress;
+    private int wallProgress;
+    private int surfaceProgress;
+    private int digOutProgress;
+    private int fireFightProgress;
+    private boolean enclosed;     // sealed in a shelter / bunker — mobs can't reach, arrows blocked
+    private double pillarBaseY;
+    private boolean pillaring;
+    private long gameTime;
+
+    private final List<SimMob> mobs = new ArrayList<>();
+    private final List<SimMob> walledOff = new ArrayList<>();
+
+    public boolean debug;
+    public final List<String> log = new ArrayList<>();
+
+    public static final class SimMob {
+        int id;
+        String type;
+        boolean creeper, skeleton, hostile;
+        double x, y, z;
+        double hp = 20;
+        double speed = 0.23D;
+        double meleeDmg = 3.0D;
+        double range = 1.8D;     // melee reach (skeletons override with shoot range)
+        int cooldown;
+        int fuse;
+        int ticksFar;            // consecutive ticks beyond DEAGGRO_RANGE
+        int ticksUnreachable;    // consecutive ticks unable to reach the bot
+        double lastDist = Double.MAX_VALUE;
+        boolean reached;         // ever got into attack range (for scoring "did it touch us")
+    }
+
+    public SurvivalSim disableReflexes() {
+        reflexesOff = true;
+        return this;
+    }
+
+    // ---------------------------------------------------------------- scenario setup helpers
+
+    public SurvivalSim weapon(int tier) {
+        this.weaponSlot = 0;
+        this.weaponTier = tier;
+        return this;
+    }
+
+    public SurvivalSim armor(int points) {
+        this.armor = points;
+        return this;
+    }
+
+    public SurvivalSim shield() {
+        this.shield = true;
+        return this;
+    }
+
+    public SurvivalSim blocks(int n) {
+        this.blocks = n;
+        return this;
+    }
+
+    public SurvivalSim food(int level, int slot, int nutrition) {
+        this.food = level;
+        this.foodSlot = slot;
+        this.foodNutrition = nutrition;
+        return this;
+    }
+
+    public SurvivalSim bucket() {
+        this.bucketSlot = 3;
+        return this;
+    }
+
+    public SurvivalSim bed() {
+        this.bedSlot = 4;
+        return this;
+    }
+
+    public SurvivalSim hp(double v) {
+        this.hp = v;
+        return this;
+    }
+
+    public SurvivalSim atNight() {
+        this.night = true;
+        return this;
+    }
+
+    /** Box the bot in: only one direction remains open. */
+    public SurvivalSim cornered() {
+        for (int i = 0; i < octantSafe.length; i++) {
+            octantSafe[i] = false;
+        }
+        octantSafe[0] = true;
+        return this;
+    }
+
+    /** No safe direction at all — running is impossible; only pillaring up or bunkering survives. */
+    public SurvivalSim fullyBoxed() {
+        for (int i = 0; i < octantSafe.length; i++) {
+            octantSafe[i] = false;
+        }
+        return this;
+    }
+
+    public SurvivalSim inLava(double escapeDist) {
+        this.inLava = true;
+        this.lavaEscape = new BlockPosSpec((int) (x + escapeDist), (int) y, (int) z);
+        return this;
+    }
+
+    public SurvivalSim drowning() {
+        this.underWater = true;
+        this.air = 40;
+        return this;
+    }
+
+    public SurvivalSim onFire(boolean water) {
+        this.onFire = true;
+        if (water) {
+            this.nearestWater = new BlockPosSpec((int) (x + 4), (int) y, (int) z);
+        }
+        return this;
+    }
+
+    public SurvivalSim suffocating() {
+        this.suffocating = true;
+        return this;
+    }
+
+    public SurvivalSim falling(double height) {
+        this.falling = true;
+        this.fallDistance = height;
+        return this;
+    }
+
+    public SurvivalSim creeper(double dist) {
+        return creeper(dist, 0);
+    }
+
+    public SurvivalSim creeper(double dist, double angleDeg) {
+        return addMob("creeper", dist, angleDeg, true, false, false, 0.21D, 0, 0);
+    }
+
+    public SurvivalSim skeleton(double dist) {
+        return skeleton(dist, 0);
+    }
+
+    public SurvivalSim skeleton(double dist, double angleDeg) {
+        return addMob("skeleton", dist, angleDeg, false, true, false, 0.24D, 2.5D, 15D);
+    }
+
+    public SurvivalSim zombie(double dist) {
+        return zombie(dist, 0);
+    }
+
+    public SurvivalSim zombie(double dist, double angleDeg) {
+        return addMob("zombie", dist, angleDeg, false, false, true, 0.23D, 3.0D, 1.8D);
+    }
+
+    public SurvivalSim spider(double dist, double angleDeg) {
+        SurvivalSim s = addMob("spider", dist, angleDeg, false, false, true, 0.30D, 2.0D, 1.8D);
+        mobs.get(mobs.size() - 1).hp = 16;
+        return s;
+    }
+
+    private SurvivalSim addMob(String type, double dist, double angleDeg, boolean cr, boolean sk,
+                               boolean ho, double speed, double meleeDmg, double shootRange) {
+        SimMob m = new SimMob();
+        m.id = 1000 + mobs.size();
+        m.type = type;
+        m.creeper = cr;
+        m.skeleton = sk;
+        m.hostile = ho;
+        m.speed = speed;
+        double rad = Math.toRadians(angleDeg);
+        m.x = x + Math.cos(rad) * dist;
+        m.z = z + Math.sin(rad) * dist;
+        m.y = y;
+        if (sk) {
+            m.range = shootRange;
+            m.meleeDmg = meleeDmg;
+        } else if (cr) {
+            m.range = CREEPER_STOP; // keeps closing to contact; fuse uses CREEPER_RANGE
+        } else {
+            m.range = shootRange;
+            m.meleeDmg = meleeDmg;
+        }
+        mobs.add(m);
+        return this;
+    }
+
+    // ---------------------------------------------------------------- run
+
+    public static final class Outcome {
+        public boolean survived;
+        public int ticks;
+        public double finalHp;
+        public String cause = "survived";
+        public BehaviorId lastBehavior = BehaviorId.NONE;
+    }
+
+    /** Run up to {@code maxTicks}. Survived = hp stayed above 0 the whole time. */
+    public Outcome run(int maxTicks) {
+        Outcome o = new Outcome();
+        for (int i = 0; i < maxTicks; i++) {
+            gameTime++;
+            o.lastBehavior = step();
+            o.ticks = i + 1;
+            if (hp <= 0) {
+                o.survived = false;
+                o.finalHp = 0;
+                o.cause = "died:" + currentCause();
+                return o;
+            }
+        }
+        o.survived = true;
+        o.finalHp = hp;
+        return o;
+    }
+
+    private String currentCause() {
+        if (inLava) {
+            return "lava";
+        }
+        if (underWater && air <= 0) {
+            return "drown";
+        }
+        if (suffocating) {
+            return "suffocation";
+        }
+        if (!mobs.isEmpty()) {
+            return mobs.get(0).type;
+        }
+        if (food <= 0) {
+            return "starve";
+        }
+        return "unknown";
+    }
+
+    // ---------------------------------------------------------------- one tick
+
+    private BehaviorId step() {
+        WorldSnapshot s = render();
+        ReflexEngine.Output out = reflexesOff ? null : engine.tick(s, tuning);
+        BehaviorId behavior = out == null ? BehaviorId.NONE : out.plan.behavior;
+        FleeMode fleeMode = out == null ? FleeMode.NORMAL : out.plan.fleeMode;
+        int target = out == null ? -1 : out.plan.targetEntityId;
+
+        boolean hurtThisTick = false;
+
+        if (debug) {
+            double nd = Double.MAX_VALUE;
+            for (SimMob m : mobs) {
+                nd = Math.min(nd, distTo(m));
+            }
+            log.add(String.format("t%d %s/%s nd=%.1f hp=%.1f y=%.1f blk=%d enc=%b pil=%b mobs=%d",
+                    gameTime, behavior, fleeMode, nd, hp, y, blocks, enclosed, pillaring, mobs.size()));
+        }
+
+        // 1. apply the bot's chosen response (its physical consequence)
+        applyBehavior(behavior, fleeMode, target);
+
+        // 2. step the threats
+        hurtThisTick |= stepHazards();
+        hurtThisTick |= stepMobs();
+
+        // 3. natural regen / hunger drain
+        if (food >= 18 && hp < maxHp && !inLava) {
+            hp = Math.min(maxHp, hp + 0.08D);
+        }
+        if (gameTime % 80 == 0 && food > 0) {
+            food--; // slow exhaustion
+        }
+        if (food <= 0 && hp > 1) {
+            // normal difficulty: starvation alone only drains toward 1 hp (a hit still finishes you)
+            hp = Math.max(1, hp - 0.05D);
+        }
+
+        if (hurtThisTick) {
+            ticksSinceHurt = 0;
+        } else if (ticksSinceHurt != Integer.MAX_VALUE) {
+            ticksSinceHurt++;
+        }
+        return behavior;
+    }
+
+    private void applyBehavior(BehaviorId behavior, FleeMode fleeMode, int target) {
+        // reset transient progress only when actually leaving the behavior that owns it (NOT every
+        // tick of it — that was the bug that stopped the flee-wall ever finishing).
+        if (behavior != BehaviorId.FLEE) {
+            wallProgress = 0;
+        }
+        if (behavior != BehaviorId.FLEE || fleeMode != FleeMode.PILLAR) {
+            pillaring = false;
+        }
+        if (behavior != BehaviorId.SHELTER && behavior != BehaviorId.RETREAT_HEAL) {
+            shelterProgress = 0;
+            enclosed = false;
+        }
+        if (behavior != BehaviorId.EAT && behavior != BehaviorId.SHELTER
+                && behavior != BehaviorId.RETREAT_HEAL) {
+            eatProgress = 0;
+        }
+
+        switch (behavior) {
+            case ESCAPE_LAVA:
+                if (lavaEscape != null) {
+                    moveToward(lavaEscape.x, lavaEscape.z, BOT_SPEED);
+                    if (dist2D(lavaEscape.x, lavaEscape.z) < 1.0D) {
+                        inLava = false;
+                        onFire = true; // singed climbing out, but extinguish/regen handles it
+                    }
+                }
+                break;
+            case SURFACE:
+                if (++surfaceProgress >= 4) {
+                    underWater = false;
+                }
+                air = Math.min(300, air + 12);
+                break;
+            case DIG_OUT:
+                if (++digOutProgress >= 8) {
+                    suffocating = false;
+                }
+                break;
+            case EXTINGUISH_FIRE:
+                if (nearestWater != null) {
+                    moveToward(nearestWater.x, nearestWater.z, BOT_SPEED);
+                }
+                if (++fireFightProgress >= 6) {
+                    onFire = false;
+                }
+                break;
+            case ANTI_FALL:
+                if (bucketSlot >= 0) {
+                    falling = false;
+                    fallDistance = 0; // water bucket / boat MLG breaks the fall
+                }
+                break;
+            case FLEE:
+                doFlee(fleeMode);
+                break;
+            case COMBAT:
+                doCombat(target);
+                break;
+            case RETREAT_HEAL:
+                doRetreatHeal();
+                break;
+            case EAT:
+                doEat();
+                break;
+            case SHELTER:
+                doShelter();
+                break;
+            default:
+                // NONE: stand still. If a hazard or mob is on us, this is how the bot dies.
+        }
+    }
+
+    // ---- behavior outcomes
+
+    private void doFlee(FleeMode mode) {
+        if (mode == FleeMode.PILLAR) {
+            if (blocks > 0) {
+                if (!pillaring) {
+                    pillaring = true;
+                    pillarBaseY = y;
+                }
+                if (y - pillarBaseY < tuning.pillarHeight) {
+                    y += PILLAR_RATE;
+                    if (gameTime % 3 == 0) {
+                        blocks--;
+                    }
+                }
+                return; // standing on the pillar — out of reach
+            }
+            // no blocks: fall through to running
+        }
+        if (mode == FleeMode.WALL) {
+            if (blocks > 0 && wallProgress++ < WALL_BUILD_TICKS) {
+                if (wallProgress == WALL_BUILD_TICKS - 1) {
+                    // wall the nearest pursuer off for good
+                    SimMob n = nearestThreat(true);
+                    if (n != null) {
+                        walledOff.add(n);
+                        blocks -= 2;
+                    }
+                }
+                return;
+            }
+        }
+        // NORMAL / NEW_DIRECTION: sprint directly away from the pursuers, along a safe direction
+        double[] away = awayVector(true);
+        if (away == null) {
+            return; // boxed in with nobody to run from
+        }
+        moveAlongSafe(away[0], away[1], BOT_SPEED);
+    }
+
+    private void doCombat(int target) {
+        SimMob m = byId(target);
+        if (m == null) {
+            m = nearestThreat(false);
+        }
+        if (m == null) {
+            return;
+        }
+        double d = distTo(m);
+        if (d > tuning.strikeDistance) {
+            moveToward(m.x, m.z, BOT_SPEED); // close the gap
+        } else if (attackCooldown <= 0) {
+            m.hp -= weaponDamage();
+            attackCooldown = 13;
+            if (m.hp <= 0) {
+                mobs.remove(m);
+            }
+        }
+    }
+
+    private void doRetreatHeal() {
+        double[] away = awayVector(true);
+        boolean moved = false;
+        if (away != null && !isBlocked(away[0], away[1])) {
+            moveAlongSafe(away[0], away[1], BOT_SPEED);
+            moved = true;
+        }
+        if (!moved) {
+            // cornered: bunker — seal in with blocks (or a dug hole), then heal
+            if (blocks > 0 || digDownSafe) {
+                if (++shelterProgress >= SHELTER_BUILD_TICKS) {
+                    enclosed = true;
+                    if (blocks > 0) {
+                        blocks = Math.max(0, blocks - 2);
+                    }
+                }
+            }
+        }
+        if (enclosed || hostilesWithin(tuning.retreatSafeDistance) == 0) {
+            healTick();
+        }
+    }
+
+    private void doEat() {
+        if (foodSlot >= 0 && food < 20) {
+            if (++eatProgress >= 28) {
+                food = Math.min(20, food + Math.max(4, foodNutrition * 2));
+                eatProgress = 0;
+            }
+        }
+    }
+
+    private void doShelter() {
+        if (blocks > 0 || digDownSafe) {
+            if (++shelterProgress >= SHELTER_BUILD_TICKS) {
+                enclosed = true;
+                if (blocks > 0) {
+                    blocks = Math.max(0, blocks - 2);
+                }
+            }
+        } else {
+            // no way to build: at least break line of sight by moving to cover (treated as flee)
+            double[] away = awayVector(true);
+            if (away != null) {
+                moveAlongSafe(away[0], away[1], BOT_SPEED);
+            }
+        }
+        if (enclosed) {
+            healTick();
+        }
+    }
+
+    private void healTick() {
+        if (food >= 18 && hp < maxHp) {
+            hp = Math.min(maxHp, hp + 0.1D);
+        } else if (foodSlot >= 0 && food < 18) {
+            doEat();
+        }
+        if (poisoned && hp > 1) {
+            poisoned = false; // treated
+        }
+    }
+
+    // ---- threats
+
+    private boolean stepHazards() {
+        boolean hurt = false;
+        if (inLava) {
+            hp -= LAVA_DMG;
+            hurt = true;
+        } else if (onFire) {
+            hp -= FIRE_DMG;
+            hurt = true;
+        }
+        if (underWater) {
+            air -= 4;
+            if (air <= 0) {
+                air = 0;
+                hp -= DROWN_DMG;
+                hurt = true;
+            }
+        }
+        if (suffocating) {
+            hp -= 0.6D;
+            hurt = true;
+        }
+        if (falling) {
+            fallDistance += 0.5D;
+            if (fallDistance > 60) {
+                // hit the ground (sim cutoff) unprotected
+                double dmg = Math.max(0, fallDistance - 3);
+                hp -= dmg;
+                falling = false;
+                hurt = true;
+            }
+        }
+        return hurt;
+    }
+
+    private boolean stepMobs() {
+        boolean hurt = false;
+        for (Iterator<SimMob> it = mobs.iterator(); it.hasNext(); ) {
+            SimMob m = it.next();
+            boolean blocked = enclosed || walledOff.contains(m) || botOutOfReach(m);
+            double d = distTo(m);
+            // de-aggro: the bot broke contact (outran it) or sealed it out long enough -> it's gone
+            m.ticksFar = d > DEAGGRO_RANGE ? m.ticksFar + 1 : 0;
+            m.ticksUnreachable = blocked ? m.ticksUnreachable + 1 : 0;
+            if (m.ticksFar > DEAGGRO_TICKS || m.ticksUnreachable > UNREACHABLE_TICKS) {
+                it.remove();
+                continue;
+            }
+            if (!blocked && d > m.range) {
+                // close on the bot
+                double dx = x - m.x;
+                double dz = z - m.z;
+                double len = Math.hypot(dx, dz);
+                if (len > 1e-6) {
+                    m.x += dx / len * m.speed;
+                    m.z += dz / len * m.speed;
+                }
+                d = distTo(m);
+            }
+            if (m.cooldown > 0) {
+                m.cooldown--;
+            }
+            if (m.creeper) {
+                if (!blocked && d <= CREEPER_RANGE) {
+                    m.reached = true;
+                    if (++m.fuse >= CREEPER_FUSE) {
+                        double dmg = CREEPER_BLAST * (1 - d / (CREEPER_RANGE + 1)) * armorMul();
+                        hp -= dmg;
+                        it.remove();
+                        hurt = true;
+                    }
+                } else {
+                    m.fuse = 0;
+                }
+            } else if (m.skeleton) {
+                boolean los = !blocked;
+                if (los && d <= m.range && m.cooldown <= 0) {
+                    hp -= m.meleeDmg * armorMul();
+                    m.cooldown = 30;
+                    m.reached = true;
+                    hurt = true;
+                }
+            } else {
+                if (!blocked && d <= m.range && m.cooldown <= 0) {
+                    double dmg = m.meleeDmg * armorMul();
+                    if (shield && d > 0) {
+                        dmg *= 0.4D; // shield soaks most of a melee hit when we're facing it
+                    }
+                    hp -= dmg;
+                    m.cooldown = 16;
+                    m.reached = true;
+                    hurt = true;
+                }
+            }
+        }
+        return hurt;
+    }
+
+    private boolean botOutOfReach(SimMob m) {
+        // pillared up out of melee/blast reach
+        return pillaring && (y - pillarBaseY) >= 2.4D && !m.skeleton;
+    }
+
+    // ---------------------------------------------------------------- snapshot rendering
+
+    private WorldSnapshot render() {
+        WorldSnapshot s = new WorldSnapshot();
+        s.gameTime = gameTime;
+        s.working = true;
+        s.hp = (float) hp;
+        s.maxHp = (float) maxHp;
+        s.food = food;
+        s.air = air;
+        s.onFire = onFire;
+        s.inLava = inLava;
+        s.underWater = underWater;
+        s.poisoned = poisoned;
+        s.ticksSinceHurt = ticksSinceHurt;
+        s.posX = x;
+        s.posY = y;
+        s.posZ = z;
+        s.onGround = !falling;
+        s.velY = falling ? -0.6D : 0;
+        s.fallDistance = fallDistance;
+        s.voidBelow = false;
+        s.headBlockedByGravity = suffocating;
+        s.yaw = 0;
+        s.attackStrengthScale = attackCooldown <= 0 ? 1F : 0.3F;
+        s.selectedSlot = 0;
+        s.bestWeaponSlot = weaponSlot;
+        s.bestWeaponTier = weaponTier;
+        s.hasShieldOffhand = shield;
+        s.armorValue = armor;
+        s.bestFoodSlot = foodSlot;
+        s.bestFoodNutrition = foodNutrition;
+        s.waterBucketSlot = bucketSlot;
+        s.blockSlot = blocks > 0 ? 1 : -1;
+        s.blockCount = blocks;
+        s.bedSlot = bedSlot;
+        s.lavaEscape = lavaEscape;
+        s.nearestWater = nearestWater;
+        s.octantSafe = octantSafe.clone();
+        s.digDownSafe = digDownSafe;
+        s.night = night;
+        s.lightLevel = night ? 4 : 15;
+        if (attackCooldown > 0) {
+            attackCooldown--;
+        }
+
+        for (SimMob m : mobs) {
+            MobInfo mi = new MobInfo();
+            mi.entityId = m.id;
+            mi.typeId = m.type;
+            mi.creeper = m.creeper;
+            mi.skeleton = m.skeleton;
+            mi.hostile = m.hostile;
+            mi.x = m.x;
+            mi.y = m.y;
+            mi.z = m.z;
+            mi.aimY = m.y + 1.0D;
+            double d = distTo(m);
+            mi.distance = d;
+            mi.approachingSpeed = m.lastDist == Double.MAX_VALUE ? 0 : (m.lastDist - d);
+            m.lastDist = d;
+            mi.aggro = true;
+            mi.lineOfSight = !enclosed;
+            s.mobs.add(mi);
+        }
+        return s;
+    }
+
+    // ---------------------------------------------------------------- geometry / helpers
+
+    private double armorMul() {
+        return Math.max(0.2D, 1 - Math.min(0.8D, armor * 0.04D));
+    }
+
+    private double weaponDamage() {
+        if (weaponTier < 0) {
+            return 1.0D; // bare fist
+        }
+        return Math.max(2.0D, 8 - weaponTier);
+    }
+
+    private SimMob byId(int id) {
+        for (SimMob m : mobs) {
+            if (m.id == id) {
+                return m;
+            }
+        }
+        return null;
+    }
+
+    private double distTo(SimMob m) {
+        double dx = m.x - x;
+        double dy = m.y - y;
+        double dz = m.z - z;
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    private double dist2D(double tx, double tz) {
+        return Math.hypot(tx - x, tz - z);
+    }
+
+    private int hostilesWithin(double r) {
+        int c = 0;
+        for (SimMob m : mobs) {
+            if (!walledOff.contains(m) && distTo(m) <= r) {
+                c++;
+            }
+        }
+        return c;
+    }
+
+    private SimMob nearestThreat(boolean any) {
+        SimMob best = null;
+        for (SimMob m : mobs) {
+            if (walledOff.contains(m)) {
+                continue;
+            }
+            if (!any && !(m.skeleton || m.hostile)) {
+                continue;
+            }
+            if (best == null || distTo(m) < distTo(best)) {
+                best = m;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * Best <em>safe</em> direction to escape the threats: among the safe octants, the one that points
+     * most away from the mobs (the gap). This models a real flee — toward the opening, not blindly
+     * "directly away" which, when surrounded symmetrically, would run straight into a mob.
+     */
+    private double[] awayVector(boolean any) {
+        List<SimMob> threats = new ArrayList<>();
+        for (SimMob m : mobs) {
+            if (walledOff.contains(m)) {
+                continue;
+            }
+            if (!any && !(m.creeper || m.skeleton)) {
+                continue;
+            }
+            threats.add(m);
+        }
+        if (threats.isEmpty()) {
+            return null;
+        }
+        double bestScore = Double.NEGATIVE_INFINITY;
+        double[] best = null;
+        for (int o = 0; o < 8; o++) {
+            if (!octantSafe[o]) {
+                continue;
+            }
+            double ang = Math.toRadians(o * 45);
+            double ux = Math.sin(ang);
+            double uz = Math.cos(ang);
+            double maxAhead = Double.NEGATIVE_INFINITY;
+            for (SimMob m : threats) {
+                double mdx = m.x - x;
+                double mdz = m.z - z;
+                double len = Math.hypot(mdx, mdz);
+                if (len < 1e-6) {
+                    continue;
+                }
+                double ahead = (ux * mdx + uz * mdz) / len; // +1 = mob dead ahead, -1 = behind us
+                maxAhead = Math.max(maxAhead, ahead);
+            }
+            double score = -maxAhead; // prefer the heading with mobs most behind us
+            if (score > bestScore) {
+                bestScore = score;
+                best = new double[]{ux, uz};
+            }
+        }
+        return best;
+    }
+
+    private void moveToward(double tx, double tz, double speed) {
+        double dx = tx - x;
+        double dz = tz - z;
+        double len = Math.hypot(dx, dz);
+        if (len < 1e-6) {
+            return;
+        }
+        moveAlongSafe(dx / len, dz / len, speed);
+    }
+
+    /** Move along (ux,uz) unless that octant is an unsafe (lava/ledge/wall) direction. */
+    private void moveAlongSafe(double ux, double uz, double speed) {
+        if (isBlocked(ux, uz)) {
+            return; // would step into a hazard / wall — hold position (this is "cornered")
+        }
+        x += ux * speed;
+        z += uz * speed;
+    }
+
+    private boolean isBlocked(double ux, double uz) {
+        int octant = octantOf(ux, uz);
+        return !octantSafe[octant];
+    }
+
+    /** Map a direction vector to one of the 8 octants matching {@link baritone.ai.reflex.ReflexMath}. */
+    private int octantOf(double ux, double uz) {
+        // octant 0 = +Z (south), going clockwise: matches ReflexMath OCTANT layout closely enough
+        double ang = Math.toDegrees(Math.atan2(ux, uz)); // 0 = +Z, 90 = +X
+        if (ang < 0) {
+            ang += 360;
+        }
+        int o = (int) Math.round(ang / 45.0) % 8;
+        return o;
+    }
+}

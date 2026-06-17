@@ -2856,6 +2856,14 @@ public final class BaritoneTools {
             if (liveThreat != null && !"idle".equals(liveThreat)) {
                 // a reflex is handling a danger RIGHT NOW — the agent should not fight it for control
                 s.addProperty("active_threat", liveThreat);
+                s.addProperty("survival_situation", ReflexProcess.SITUATION);
+            }
+            // the survival brain leaves a report after it pauses us to handle a danger: what it did and
+            // where NOT to walk back. Surface it ONCE (then clear) so a resumed mission has the truth.
+            String report = ReflexProcess.LAST_REPORT;
+            if (report != null) {
+                s.addProperty("last_survival_action", report);
+                ReflexProcess.LAST_REPORT = null;
             }
             List<String> reflexes = ReflexLog.recent(4);
             if (!reflexes.isEmpty()) {
