@@ -167,9 +167,12 @@ public class SurvivalRateTest {
         all.add(new Scenario("onfire+no-water", () -> kitted().onFire(false)));
         all.add(new Scenario("onfire+zombie", () -> kitted().armor(12).onFire(false).zombie(7, 0)));
 
-        // S. suffocation
+        // S. suffocation — sand on the head AND being encased in solid (wall/cave-in/bad teleport)
         all.add(new Scenario("suffocation", () -> kitted().suffocating()));
         all.add(new Scenario("suffocation+zombie", () -> kitted().armor(12).suffocating().zombie(6, 0)));
+        all.add(new Scenario("encased in wall", () -> kitted().encased()));
+        all.add(new Scenario("encased lowhp", () -> kitted().armor(8).hp(12).encased()));
+        all.add(new Scenario("encased+zombie", () -> kitted().armor(12).encased().zombie(6, 0)));
 
         // T. fall with bucket
         for (double h : new double[]{10, 20, 40}) {

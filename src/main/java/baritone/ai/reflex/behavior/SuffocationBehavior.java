@@ -28,8 +28,13 @@ import baritone.api.utils.input.Input;
 import java.util.List;
 
 /**
- * Sand/gravel collapsed onto the head: look straight up and mine it before it suffocates us.
- * No movement — wiggling under falling gravity blocks just collects more of them.
+ * Suffocating: look straight up and mine out before it kills us.
+ * <ul>
+ *   <li>Buried by falling sand/gravel — mine up, but do NOT move: wiggling just collects more of the
+ *       gravity blocks still falling above.</li>
+ *   <li>Encased in solid (cave-in, piston, a closing gap, a bad spawn/teleport) — mine up AND jump, to
+ *       climb the shaft we're carving and break back out to air.</li>
+ * </ul>
  */
 public final class SuffocationBehavior implements ReflexBehavior {
 
@@ -44,6 +49,15 @@ public final class SuffocationBehavior implements ReflexBehavior {
 
     @Override
     public List<ReflexAction> tick(WorldSnapshot s, ReflexTuning t, ResponsePlan plan) {
+        // encased in solid (not merely buried by gravity) -> climb the shaft we're mining
+        boolean encased = s.headInSolid && !s.headBlockedByGravity;
+        if (encased) {
+            return List.of(
+                    ReflexAction.snapLook(s.yaw, -90F),
+                    ReflexAction.hold(Input.CLICK_LEFT, true),
+                    ReflexAction.hold(Input.JUMP, true)
+            );
+        }
         return List.of(
                 ReflexAction.snapLook(s.yaw, -90F),
                 ReflexAction.hold(Input.CLICK_LEFT, true)

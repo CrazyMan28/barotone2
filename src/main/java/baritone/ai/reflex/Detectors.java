@@ -332,9 +332,10 @@ public final class Detectors {
         return !s.onGround && s.voidBelow ? new Threat(ThreatType.VOID, SEV_VOID) : null;
     }
 
-    /** Sand/gravel collapsed onto the head — kills in seconds, dig out NOW. */
+    /** Suffocating — sand/gravel on the head OR encased in any solid block (wall/cave-in/piston). Dig out NOW. */
     public static Threat suffocation(WorldSnapshot s, ReflexTuning t) {
-        return s.headBlockedByGravity ? new Threat(ThreatType.SUFFOCATION, SEV_SUFFOCATION) : null;
+        return (s.headBlockedByGravity || s.headInSolid)
+                ? new Threat(ThreatType.SUFFOCATION, SEV_SUFFOCATION) : null;
     }
 
     /** Enough hostiles in brawling range that fighting is suicide — run instead. */

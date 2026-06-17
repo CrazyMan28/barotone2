@@ -84,6 +84,7 @@ public final class SurvivalSim {
     public boolean falling;
     public double fallDistance;
     public boolean suffocating;
+    public boolean encased;     // head inside ANY solid block (wall/cave-in/bad teleport)
     public boolean night;
     public int ticksSinceHurt = Integer.MAX_VALUE;
 
@@ -235,6 +236,12 @@ public final class SurvivalSim {
         return this;
     }
 
+    /** Encased in solid (e.g. a cave-in / bad teleport): must mine out AND climb the shaft. */
+    public SurvivalSim encased() {
+        this.encased = true;
+        return this;
+    }
+
     public SurvivalSim falling(double height) {
         this.falling = true;
         this.fallDistance = height;
@@ -340,7 +347,7 @@ public final class SurvivalSim {
         if (underWater && air <= 0) {
             return "drown";
         }
-        if (suffocating) {
+        if (suffocating || encased) {
             return "suffocation";
         }
         if (!mobs.isEmpty()) {
@@ -434,8 +441,12 @@ public final class SurvivalSim {
                 air = Math.min(300, air + 12);
                 break;
             case DIG_OUT:
-                if (++digOutProgress >= 8) {
+                digOutProgress++;
+                if (digOutProgress >= 8) {
                     suffocating = false;
+                }
+                if (digOutProgress >= 16) {
+                    encased = false; // solid stone takes longer to mine through than falling sand
                 }
                 break;
             case EXTINGUISH_FIRE:
@@ -623,7 +634,7 @@ public final class SurvivalSim {
                 hurt = true;
             }
         }
-        if (suffocating) {
+        if (suffocating || encased) {
             hp -= 0.6D;
             hurt = true;
         }
@@ -738,6 +749,7 @@ public final class SurvivalSim {
         s.fallDistance = fallDistance;
         s.voidBelow = false;
         s.headBlockedByGravity = suffocating;
+        s.headInSolid = encased || suffocating;
         s.yaw = 0;
         s.attackStrengthScale = attackCooldown <= 0 ? 1F : 0.3F;
         s.selectedSlot = 0;

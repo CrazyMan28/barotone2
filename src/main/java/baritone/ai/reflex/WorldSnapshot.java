@@ -59,6 +59,12 @@ public final class WorldSnapshot {
     public boolean voidBelow;
     /** A gravity block (sand/gravel) occupies the head space — suffocating. */
     public boolean headBlockedByGravity;
+    /**
+     * The head is inside ANY solid block — suffocating in a wall (cave-in, a piston shove, a bad
+     * spawn/teleport, a closing gap). Unlike {@link #headBlockedByGravity} the fix is to mine out AND
+     * climb the shaft, since the bot is encased rather than just buried from above.
+     */
+    public boolean headInSolid;
 
     // ---- look & UI
     public float yaw, pitch;

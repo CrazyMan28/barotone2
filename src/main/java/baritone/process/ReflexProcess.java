@@ -382,8 +382,11 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         s.onGround = player.onGround();
         s.horizontalCollision = player.horizontalCollision;
         sampleBelow(player, s);
-        s.headBlockedByGravity = ctx.world().getBlockState(player.blockPosition().above())
-                .getBlock() instanceof FallingBlock;
+        BlockPos headPos = player.blockPosition().above();
+        BlockState headState = ctx.world().getBlockState(headPos);
+        s.headBlockedByGravity = headState.getBlock() instanceof FallingBlock;
+        // suffocating inside ANY solid block (wall/cave-in/piston/bad teleport), not just gravity
+        s.headInSolid = headState.isSuffocating(ctx.world(), headPos);
         // look & UI
         s.yaw = ctx.playerRotations().getYaw();
         s.pitch = ctx.playerRotations().getPitch();
