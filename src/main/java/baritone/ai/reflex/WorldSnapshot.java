@@ -62,6 +62,16 @@ public final class WorldSnapshot {
     // ---- position & motion
     public double posX, posY, posZ;
     public double velY;
+    /** Horizontal speed (blocks/tick) — used to read knockback shoves toward a ledge/lava. */
+    public double horizontalSpeed;
+    /**
+     * A melee/knockback-capable hostile is close enough to land a hit AND its knockback would shove us
+     * toward an unsafe octant (a killing drop or lava): standing put means getting punched off the edge
+     * (the "blaze/hoglin knocked me into the void/lava" death). The bot must reposition onto safe ground
+     * (break contact / step off the brink) BEFORE the hit lands, not flee further toward the edge. Set
+     * by the adapter from the mob bearing vs the per-octant safety scan.
+     */
+    public boolean knockbackTowardUnsafe;
     public double fallDistance;
     public boolean onGround = true;
     public boolean horizontalCollision;

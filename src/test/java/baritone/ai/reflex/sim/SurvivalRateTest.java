@@ -316,6 +316,21 @@ public class SurvivalRateTest {
         }
         all.add(new Scenario("blaze + zombie kitted", () -> kitted().armor(12).blaze(9, 0).zombie(6, 180)));
 
+        // AK3. GHAST at range: lobs fireballs from FAR past normal perception (16) — must take cover
+        // before the first hit, not ignore it until it drifts close. Detected out to rangedPerception (24).
+        for (double d : new double[]{14, 18, 22}) {
+            all.add(new Scenario("ghast@" + d + " kitted", () -> kitted().armor(12).ghast(d)));
+            all.add(new Scenario("ghast@" + d + " fresh", () -> freshBlocks().atNight().ghast(d)));
+        }
+        all.add(new Scenario("ghast + zombie kitted", () -> kitted().armor(12).ghast(20, 0).zombie(6, 180)));
+
+        // AK4. KNOCKBACK toward a ledge/lava: a melee mob on the safe side, a deadly drop behind us — a
+        // single hit shoves us off. Must reposition off the brink (RETREAT to safe ground), not stand
+        // put or flee straight away (into the drop). Both loadouts.
+        all.add(new Scenario("knockback ledge zombie", () -> kitted().armor(12).knockbackLedge(3)));
+        all.add(new Scenario("knockback ledge lowhp", () -> kitted().armor(10).hp(10).knockbackLedge(3)));
+        all.add(new Scenario("knockback ledge heavy", () -> heavy().knockbackLedge(3)));
+
         // AK2. special mobs you can't out-DPS in melee: a witch heals through hits, a cave spider
         // out-speeds + poisons, a phantom flies out of reach — all must be fled/sheltered, never brawled
         all.add(new Scenario("witch armed", () -> kitted().armor(10).witch(6, 0)));
@@ -481,6 +496,39 @@ public class SurvivalRateTest {
     public void controlReflexesOffDiesToBlaze() {
         SurvivalSim.Outcome o = kitted().armor(12).blaze(6).disableReflexes().run(TICKS);
         assertFalse("with no reflexes a blaze must kill the bot", o.survived);
+    }
+
+    @Test
+    public void ghastAtRangeIsShelteredNotIgnored() {
+        // a ghast shoots from 22 blocks — well past normal perception (16). The bot must perceive it
+        // (rangedPerception 24) and take cover BEFORE the first fireball, not stand in the open.
+        SurvivalSim sim = kitted().armor(12).ghast(22);
+        SurvivalSim.Outcome o = sim.run(TICKS);
+        assertTrue("must survive a far ghast by taking cover: " + o.cause, o.survived);
+        assertFalse("a ghast must not be melee-charged across open ground",
+                sim.behaviorsSeen.contains(BehaviorId.COMBAT));
+        assertTrue("must take cover from a far ghast", sim.behaviorsSeen.contains(BehaviorId.SHELTER));
+    }
+
+    @Test
+    public void controlReflexesOffDiesToFarGhast() {
+        SurvivalSim.Outcome o = kitted().armor(12).ghast(22).disableReflexes().run(TICKS);
+        assertFalse("with no reflexes a far ghast must shell the bot to death", o.survived);
+    }
+
+    @Test
+    public void knockbackTowardLedgeIsBracedAgainst() {
+        // a melee mob on the safe side, a deadly drop behind: a hit shoves us off. The bot must
+        // reposition off the brink (retreat to safe ground), not get punched into the void.
+        SurvivalSim sim = kitted().armor(12).knockbackLedge(3);
+        SurvivalSim.Outcome o = sim.run(TICKS);
+        assertTrue("must reposition off the brink and survive the knockback: " + o.cause, o.survived);
+    }
+
+    @Test
+    public void controlReflexesOffDiesToKnockbackLedge() {
+        SurvivalSim.Outcome o = kitted().armor(12).knockbackLedge(3).disableReflexes().run(TICKS);
+        assertFalse("with no reflexes a knockback shove off a ledge must kill the bot", o.survived);
     }
 
     @Test

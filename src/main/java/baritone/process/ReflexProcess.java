@@ -456,17 +456,31 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         // (perception radius reaches past the engage radius so the bot can react to a threat that is
         // closing fast while it is still far enough to do something about it)
         double scan = Math.max(Math.max(2D, tuning.creeperRadius) + 4D, tuning.perceptionRadius);
+        // ghasts lob fireballs from far past normal perception — scan out to the ranged radius, but
+        // keep a far mob ONLY if it's a ghast-class long-range shooter (everything else uses `scan`).
+        double wideScan = Math.max(scan, tuning.rangedPerceptionRadius);
         long dtTicks = prevSnapshotTick == Long.MIN_VALUE ? 1 : Math.max(1, now - prevSnapshotTick);
         Map<Integer, Double> curMobDist = new HashMap<>();
         for (Monster e : ctx.world().getEntitiesOfClass(Monster.class,
-                new AABB(player.blockPosition()).inflate(scan),
-                m -> m.isAlive() && player.distanceTo(m) <= scan)) {
+                new AABB(player.blockPosition()).inflate(wideScan),
+                m -> m.isAlive() && player.distanceTo(m) <= wideScan)) {
+            double d = player.distanceTo(e);
+            boolean ghastClass = e.getType() == EntityType.GHAST;
+            if (d > scan && !ghastClass) {
+                continue; // a far non-ghast is out of our reaction range — ignore until it closes
+            }
             MobInfo info = mobInfo(player, e, dtTicks);
             s.mobs.add(info);
             curMobDist.put(info.entityId, info.distance);
         }
         prevMobDist = curMobDist;
         prevSnapshotTick = now;
+        // knockback-toward-hazard: a melee hostile in striking range whose knockback (it shoves us away
+        // from itself) would push us toward an unsafe octant (a killing drop / lava). The octant scan in
+        // sampleSurroundings already flagged the unsafe directions; here we check whether the away-from-mob
+        // bearing lands on one. (after mobs + octantSafe are both filled.)
+        s.horizontalSpeed = Math.hypot(player.getDeltaMovement().x, player.getDeltaMovement().z);
+        s.knockbackTowardUnsafe = computeKnockbackTowardUnsafe(s);
         // world scans the pure core can't do itself (after mobs, so they can be mob-aware)
         if (s.inLava) {
             s.lavaEscape = findLavaEscape(player, s.mobs);
@@ -502,6 +516,9 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         m.ranged = e.getType() == EntityType.BLAZE || e.getType() == EntityType.GHAST
                 || e.getType() == EntityType.WITCH || e.getType() == EntityType.PHANTOM
                 || (e.getType() == EntityType.DROWNED && e.getMainHandItem().is(Items.TRIDENT));
+        // a ghast shoots from far past normal perception — perceive it out to rangedPerceptionRadius
+        // so we take cover before the first fireball, not after it has been shelling us from afar.
+        m.longRange = e.getType() == EntityType.GHAST;
         m.ignited = e instanceof Creeper && ((Creeper) e).isIgnited();
         m.aggro = e instanceof Mob && ((Mob) e).getTarget() == player;
         Double prev = prevMobDist.get(m.entityId);
@@ -694,6 +711,29 @@ public final class ReflexProcess extends BaritoneProcessHelper {
             }
         }
         return EscapeColumns.best(candidates, mobs);
+    }
+
+    /**
+     * True if a melee hostile is close enough to land a hit AND the direction its knockback would shove
+     * us (directly away from the mob) lands on an unsafe octant (a killing drop / lava) — i.e. a single
+     * punch would launch us off a ledge or into lava. Pure read of the already-built snapshot.
+     */
+    private static boolean computeKnockbackTowardUnsafe(WorldSnapshot s) {
+        for (MobInfo m : s.mobs) {
+            if (m.creeper || m.skeleton || m.ranged || !m.hostile) {
+                continue; // only melee shovers (a creeper explodes, a shooter doesn't melee-knockback)
+            }
+            if (m.distance > ReflexMath.EYE_HEIGHT + 3D) {
+                continue; // out of striking range — it can't knock us anywhere yet
+            }
+            // knockback pushes us AWAY from the mob: the octant pointing from the mob toward us
+            float awayYaw = ReflexMath.yawAway(s.posX, s.posZ, m.x, m.z);
+            int octant = ReflexMath.nearestOctant(awayYaw);
+            if (octant >= 0 && octant < s.octantSafe.length && !s.octantSafe[octant]) {
+                return true; // the shove direction is a ledge/lava — a hit launches us off it
+            }
+        }
+        return false;
     }
 
     private static boolean hasClearColumn(List<BlockPosSpec> candidates, List<MobInfo> mobs) {

@@ -38,6 +38,12 @@ public enum ThreatType {
     MELEE_MOB,
     /** Being beaten by mob(s) we can't/shouldn't trade with (low hp or outnumbered) — retreat+heal. */
     OVERWHELMED,
+    /**
+     * A melee/knockback-capable hostile is about to punch us toward a ledge/lava — a single hit shoves
+     * us off the edge to our death. Reposition onto safe ground (retreat to a safe octant, off the brink)
+     * before the hit lands. Ranks above ordinary mob threats (a fatal shove beats a survivable trade).
+     */
+    KNOCKBACK,
     POISON,
     HUNGER,
     /** A plain hostile (zombie etc.) the gear-aware judgment says we'd lose to — flee, don't brawl. */

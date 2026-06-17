@@ -43,6 +43,11 @@ public final class Detectors {
     public static final int SEV_IGNITED_BONUS = 15;
     /** A plain hostile the gear-aware power score says we'd lose to. Below creeper, above overwhelmed. */
     public static final int SEV_OUTMATCHED = 78;
+    /**
+     * About to be punched off a ledge/into lava — a fatal shove, so it outranks a survivable melee trade
+     * (above OUTMATCHED, below the flee-mob/creeper tier: a creeper blast or a Warden is still worse).
+     */
+    public static final int SEV_KNOCKBACK = 79;
     /** Getting beaten and can't win the trade — break off and heal. Above melee, below mob-flee. */
     public static final int SEV_OVERWHELMED = 75;
     /**
@@ -248,6 +253,14 @@ public final class Detectors {
         if (t.fleeCreepers && rangedFar != null && skeletonToFight(s, t) == null) {
             return new Threat(ThreatType.RANGED, SEV_FLEE_MOB, rangedFar);
         }
+        // a LONG-range shooter (ghast) lobbing fireballs from FAR past normal perception, with a clear
+        // line of sight — take cover / break LOS NOW, before the first fireball lands. Without this the
+        // bot ignores a fireball source until it drifts to ~16 blocks, by which point it has been shelled.
+        // Only fires on line-of-sight: behind a wall already, a distant ghast can't hit us.
+        MobInfo ghastFar = nearest(s, t.rangedPerceptionRadius, m -> m.longRange && m.lineOfSight);
+        if (t.fleeCreepers && ghastFar != null && skeletonToFight(s, t) == null) {
+            return new Threat(ThreatType.RANGED, SEV_FLEE_MOB, ghastFar);
+        }
         if (t.gearAwareCombat && !CombatPower.fightFavorable(s, t)) {
             // a committed (charging) MELEE hostile gets the full proactive radius — a real head start
             // to run; a merely nearby idle one only the normal flee radius (shooters go to cover above)
@@ -301,6 +314,20 @@ public final class Detectors {
         }
         MobInfo attacker = nearest(s, t.retreatSafeDistance, m -> m.hostile || m.skeleton);
         return attacker != null ? new Threat(ThreatType.OVERWHELMED, SEV_OVERWHELMED, attacker) : null;
+    }
+
+    /**
+     * A melee hostile within striking range whose knockback would punch us toward a ledge/lava — one
+     * hit shoves us off the edge. The adapter sets {@link WorldSnapshot#knockbackTowardUnsafe} from the
+     * mob bearing vs the octant-safety scan; here we only confirm a melee threat is actually in range to
+     * deliver that shove (a far mob can't knock us anywhere yet). Reposition onto safe ground.
+     */
+    public static Threat knockbackHazard(WorldSnapshot s, ReflexTuning t) {
+        if (!s.knockbackTowardUnsafe) {
+            return null;
+        }
+        MobInfo shover = nearest(s, t.meleeEngageRadius + 1D, m -> m.hostile && !m.creeper && !isShooter(m));
+        return shover != null ? new Threat(ThreatType.KNOCKBACK, SEV_KNOCKBACK, shover) : null;
     }
 
     public static Threat hunger(WorldSnapshot s, ReflexTuning t) {

@@ -48,6 +48,14 @@ public final class ReflexTuning {
      * bot fights or runs with a head start instead of waiting to get hit.
      */
     public double proactiveEngageRadius = 14.0D;
+    /**
+     * How far to perceive LONG-range shooters (a ghast lobs fireballs from far past the normal
+     * perception radius — up to ~64 blocks in vanilla). Detecting one this far out lets the bot break
+     * line-of-sight / take cover BEFORE the first fireball lands, instead of standing in the open
+     * eating explosions until the ghast drifts into normal perception. Only ghast-class shooters get
+     * this extended reach; melee mobs and close shooters use {@link #perceptionRadius}.
+     */
+    public double rangedPerceptionRadius = 24.0D;
 
     // ---- anti-flap (committed mob episodes)
     /** A freshly engaged mob behavior won't release for at least this many ticks. */

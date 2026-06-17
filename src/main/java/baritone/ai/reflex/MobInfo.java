@@ -57,6 +57,13 @@ public final class MobInfo {
      */
     public boolean ranged;
     /**
+     * A LONG-range shooter (a ghast — fireballs from far past normal perception). Perceived out to
+     * {@link ReflexTuning#rangedPerceptionRadius} so the bot breaks LOS / takes cover before the first
+     * fireball lands, rather than ignoring a fireball source until it drifts into normal range. Always
+     * also {@link #ranged}.
+     */
+    public boolean longRange;
+    /**
      * Unwinnable by design (the Warden): can one-shot fully geared and out-damages any trade — there
      * is no fight to be had, only flee. Forced down the flee ladder regardless of gear.
      */

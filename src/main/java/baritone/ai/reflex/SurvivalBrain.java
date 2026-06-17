@@ -116,6 +116,7 @@ public class SurvivalBrain {
         add(threats, fleeThreat);
         add(threats, meleeThreat);
         add(threats, Detectors.swarm(s, t));
+        add(threats, Detectors.knockbackHazard(s, t));
         add(threats, Detectors.overwhelmed(s, t));
         add(threats, Detectors.poison(s, t));
         add(threats, Detectors.starvation(s, t));
@@ -736,9 +737,19 @@ public class SurvivalBrain {
                 if (activeCause != null && activeCause.type == ThreatType.RANGED) {
                     // sheltering from a shooter: hold until it has fully left our perception, not
                     // just stepped past melee range — a kiting skeleton/blaze backs off and keeps
-                    // shooting, and resuming into that (the live death loop) is fatal
-                    return !Detectors.anyWithin(s, t.perceptionRadius, Detectors::isShooter)
-                            || Detectors.combatReady(s, t);
+                    // shooting, and resuming into that (the live death loop) is fatal. A ghast still
+                    // lobbing fireballs from far past normal perception (longRange, with LOS) keeps us
+                    // in cover too — coming out into its fire is the same death at greater range.
+                    boolean shooterNear = Detectors.anyWithin(s, t.perceptionRadius, Detectors::isShooter);
+                    // hold while the ghast is anywhere in ranged perception — do NOT key off line-of-sight
+                    // for the RELEASE: our own shelter walls block LOS, and popping out the instant we
+                    // can't see it (we sealed in BECAUSE of it) just steps back into the fireball line.
+                    boolean ghastFar = Detectors.anyWithin(s, t.rangedPerceptionRadius, m -> m.longRange);
+                    if (ghastFar) {
+                        return false; // a ghast hovers out of melee reach — being "combat-ready" can't
+                                      // reach it; leaving cover only steps back into its fireballs. Hold.
+                    }
+                    return !shooterNear || Detectors.combatReady(s, t);
                 }
                 // night turtle: out at dawn, once geared, or once nobody is visible any more
                 return Detectors.nightExposure(s, t) == null;
@@ -797,6 +808,10 @@ public class SurvivalBrain {
                 return BehaviorId.SHELTER;
             case MELEE_MOB:
                 return BehaviorId.COMBAT;
+            case KNOCKBACK:
+                // about to be shoved off a ledge: break contact onto SAFE ground. RETREAT_HEAL's move
+                // is octant-safe-constrained, so it steps to safe ground (off the brink), never off the
+                // edge — repositioning away from both the mob and the drop before the hit lands.
             case OVERWHELMED:
             case POISON:
                 return BehaviorId.RETREAT_HEAL;

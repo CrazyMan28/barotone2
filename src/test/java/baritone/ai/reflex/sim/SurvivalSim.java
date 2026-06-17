@@ -97,6 +97,14 @@ public final class SurvivalSim {
     /** Standing on a contact-damage block (cactus/magma/sweet-berry): ticks damage until we step off. */
     public boolean contactHazard;
     private double contactHazardMoved; // how far we've moved off the hazard cell
+    /**
+     * Standing at the brink of a ledge/lava with a melee mob on the safe side: a hit knocks us off to a
+     * fatal fall. The bot survives only by repositioning off the brink (moving ~1 block toward safe
+     * ground) BEFORE the mob lands a hit. {@code ledgeUnsafeOctant} is the drop direction (knockback dir).
+     */
+    private boolean atKnockbackLedge;
+    private int ledgeUnsafeOctant = -1;
+    private double knockbackMovedToSafety; // distance moved off the brink this episode
 
     // gear / resources
     public int weaponSlot = -1, weaponTier = -1;
@@ -162,6 +170,7 @@ public final class SurvivalSim {
         String type;
         boolean creeper, skeleton, hostile;
         boolean ranged;      // blaze/ghast/trident-drowned: shoots from range (treated like a skeleton)
+        boolean longRange;   // ghast: shoots from FAR past normal perception (24+) — cover before the hit
         boolean unkillable;  // warden: never winnable — must always flee
         double x, y, z;
         double hp = 20;
@@ -362,6 +371,24 @@ public final class SurvivalSim {
         return s;
     }
 
+    public SurvivalSim ghast(double dist) {
+        return ghast(dist, 0);
+    }
+
+    /**
+     * A ghast: hovers far off (speed 0) and lobs fireballs from well past normal perception (range 24).
+     * It is only answered by breaking line-of-sight / taking cover; standing in the open eats explosions.
+     * Detected out to {@code rangedPerceptionRadius} via the {@code longRange} flag.
+     */
+    public SurvivalSim ghast(double dist, double angleDeg) {
+        SurvivalSim s = addMob("ghast", dist, angleDeg, false, false, true, 0.0D, 6.0D, 24D);
+        SimMob m = mobs.get(mobs.size() - 1);
+        m.ranged = true;
+        m.longRange = true;
+        m.hp = 10;
+        return s;
+    }
+
     public SurvivalSim onFire(boolean water) {
         this.onFire = true;
         if (water) {
@@ -420,6 +447,22 @@ public final class SurvivalSim {
         this.falling = true;
         this.fallDistance = height;
         return this;
+    }
+
+    /**
+     * At the brink of a deadly drop with a melee mob on the safe side, {@code mobDist} blocks away: a hit
+     * knocks us off to a fatal fall. The drop is to the -X side (octants 5/6/7 unsafe), the mob is at +X.
+     * The bot survives only by repositioning off the brink (moving ~1 block along safe ground via
+     * RETREAT/FLEE) before the mob lands a shove. Doing nothing — or fleeing straight away from the mob
+     * (toward the -X drop) — gets it punched into the void.
+     */
+    public SurvivalSim knockbackLedge(double mobDist) {
+        this.atKnockbackLedge = true;
+        this.ledgeUnsafeOctant = 6; // -X drop = the knockback direction (away from the +X mob)
+        for (int o = 5; o <= 7; o++) {
+            octantSafe[o] = false; // the whole -X brink is a killing drop
+        }
+        return zombie(mobDist, 0); // melee shover on the safe (+X) side
     }
 
     public SurvivalSim creeper(double dist) {
@@ -740,6 +783,15 @@ public final class SurvivalSim {
                 contactHazard = false; // stepped off the hazard block
             }
         }
+        // knockback ledge: any active repositioning along safe ground steps us off the brink. Once we've
+        // moved ~1 block to safety the knockback geometry no longer sends us off the edge. Doing nothing
+        // (NONE) never accrues this — the mob's next hit then shoves the idle bot off (stepMobs).
+        if (atKnockbackLedge) {
+            knockbackMovedToSafety += Math.hypot(x - preX, z - preZ);
+            if (knockbackMovedToSafety >= 1.0D) {
+                atKnockbackLedge = false; // repositioned onto safe ground, off the brink
+            }
+        }
     }
 
     // ---- behavior outcomes
@@ -1034,8 +1086,11 @@ public final class SurvivalSim {
             }
             boolean blocked = enclosed || walledOff.contains(m) || botOutOfReach(m);
             double d = distTo(m);
-            // de-aggro: the bot broke contact (outran it) or sealed it out long enough -> it's gone
-            m.ticksFar = d > DEAGGRO_RANGE ? m.ticksFar + 1 : 0;
+            // de-aggro: the bot broke contact (outran it) or sealed it out long enough -> it's gone.
+            // A long-range ghast hovers at a fixed distance with line-of-sight — it does NOT lose the bot
+            // just because it's far (that's the whole point: it shells from afar). It only gives up once
+            // the bot has broken LOS / taken cover (the `blocked` path below), never by distance.
+            m.ticksFar = (!m.longRange && d > DEAGGRO_RANGE) ? m.ticksFar + 1 : 0;
             m.ticksUnreachable = blocked ? m.ticksUnreachable + 1 : 0;
             if (m.ticksFar > DEAGGRO_TICKS || m.ticksUnreachable > UNREACHABLE_TICKS) {
                 it.remove();
@@ -1084,6 +1139,12 @@ public final class SurvivalSim {
                     hp -= dmg;
                     if (m.poisonOnHit) {
                         poisoned = true; // cave spider venom
+                    }
+                    // knockback into the void: a hit while still at the brink shoves the (un-repositioned)
+                    // bot off the ledge to a fatal fall. Repositioning off the brink (atKnockbackLedge
+                    // cleared) makes the same hit just a survivable melee trade on safe ground.
+                    if (atKnockbackLedge && !m.creeper && !m.skeleton && !m.ranged) {
+                        hp = 0; // launched off the edge — the fall finishes it
                     }
                     m.cooldown = 16;
                     m.reached = true;
@@ -1167,6 +1228,7 @@ public final class SurvivalSim {
             mi.skeleton = m.skeleton;
             mi.hostile = m.hostile;
             mi.ranged = m.ranged;
+            mi.longRange = m.longRange;
             mi.unkillable = m.unkillable;
             mi.x = m.x;
             mi.y = m.y;
@@ -1190,7 +1252,32 @@ public final class SurvivalSim {
         }
         s.lavaEscape = lavaEscape;
         s.surfaceEscape = surfaceEscape;
+        // knockback-toward-hazard: a melee mob in striking range whose knockback (it shoves us AWAY from
+        // itself) would push us toward an unsafe octant. Computed the same way the adapter does, so the
+        // brain reads the identical flag — only true while we're still at the brink (atKnockbackLedge).
+        s.knockbackTowardUnsafe = computeKnockbackTowardUnsafeSim(s);
         return s;
+    }
+
+    /** Mirrors {@code ReflexProcess.computeKnockbackTowardUnsafe}: melee shover in range, shove dir unsafe. */
+    private boolean computeKnockbackTowardUnsafeSim(WorldSnapshot s) {
+        if (!atKnockbackLedge) {
+            return false;
+        }
+        for (MobInfo m : s.mobs) {
+            if (m.creeper || m.skeleton || m.ranged || !m.hostile) {
+                continue;
+            }
+            if (m.distance > baritone.ai.reflex.ReflexMath.EYE_HEIGHT + 3D) {
+                continue;
+            }
+            float awayYaw = baritone.ai.reflex.ReflexMath.yawAway(s.posX, s.posZ, m.x, m.z);
+            int octant = baritone.ai.reflex.ReflexMath.nearestOctant(awayYaw);
+            if (octant >= 0 && octant < s.octantSafe.length && !s.octantSafe[octant]) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // ---------------------------------------------------------------- geometry / helpers
