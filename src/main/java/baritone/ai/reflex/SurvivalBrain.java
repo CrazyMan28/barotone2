@@ -343,6 +343,15 @@ public class SurvivalBrain {
                     || top.type == ThreatType.SWARM)) {
             return BehaviorId.SHELTER;
         }
+        // RETREAT_HEAL with no food to heal with and a hostile still nearby: running in a heal loop is
+        // futile (nothing to eat, regen is off below 18 hunger, the mob keeps re-engaging — the live
+        // thrash). Seal in (SHELTER) instead so contact breaks and natural regen can tick once we're
+        // walled away. Excludes creepers (a hole can't be sealed against a blast — keep the flee ladder).
+        if (behavior == BehaviorId.RETREAT_HEAL && !a.hasFood && a.creepersNear == 0
+                && t.shelter && (a.hasBlocks || s.digDownSafe)
+                && Detectors.anyWithin(s, t.retreatSafeDistance, m -> m.hostile || m.skeleton)) {
+            return BehaviorId.SHELTER;
+        }
         // Slowed (witch's Slowness, soul sand, cobwebs): we can't kite, flee, OR break contact — every
         // mobile tactic fails. The only thing that works is to wall/dig in. Route ALL mob responses to
         // SHELTER (no creeper around: never bunker beside one).

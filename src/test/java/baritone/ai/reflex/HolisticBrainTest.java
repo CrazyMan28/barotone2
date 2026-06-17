@@ -162,6 +162,39 @@ public class HolisticBrainTest {
         assertEquals(BehaviorId.FLEE, decide(new SurvivalBrain(), s));
     }
 
+    // ------------------------------------------------------ retreat with no food -> seal in
+
+    @Test
+    public void retreatWithNoFoodAndAHostileNearSealsInInsteadOfLooping() {
+        // geared but hurt below the brawl floor (OVERWHELMED), NO food to heal with, blocks in hand,
+        // a zombie still near: a heal loop is futile -> SHELTER (seal in) so contact breaks + regen.
+        WorldSnapshot s = overwhelmedByZombie();
+        s.bestFoodSlot = -1;  // nothing to eat
+        hasBlocks(s);
+        assertEquals(BehaviorId.SHELTER, decide(new SurvivalBrain(), s));
+    }
+
+    @Test
+    public void retreatWithFoodStillHealsNotShelters() {
+        // same shape but WITH food: keep the normal retreat-and-eat path (don't seal in needlessly)
+        WorldSnapshot s = overwhelmedByZombie();
+        hasFood(s);
+        hasBlocks(s);
+        assertEquals(BehaviorId.RETREAT_HEAL, decide(new SurvivalBrain(), s));
+    }
+
+    /** Geared bot hurt below the brawl floor with a zombie at melee range -> OVERWHELMED (retreat). */
+    private static WorldSnapshot overwhelmedByZombie() {
+        WorldSnapshot s = calm();
+        s.bestWeaponSlot = 0;
+        s.bestWeaponTier = 2; // iron sword (would brawl at full hp)
+        s.armorValue = 8;
+        s.hp = 5;             // below combatMinHealth(8): can't brawl, just got hit -> OVERWHELMED
+        s.ticksSinceHurt = 1;
+        s.mobs.add(zombieAt(4));
+        return s;
+    }
+
     // ---------------------------------------------------------------- whole-picture assessment
 
     @Test

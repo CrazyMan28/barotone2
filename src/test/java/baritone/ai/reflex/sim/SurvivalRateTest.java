@@ -278,6 +278,19 @@ public class SurvivalRateTest {
         }
         all.add(new Scenario("blaze + zombie kitted", () -> kitted().armor(12).blaze(9, 0).zombie(6, 180)));
 
+        // AM. RETREAT_HEAL with NO food + a hostile nearby: a heal loop is futile (nothing to eat,
+        // regen off below 18 hunger) — must seal in so contact breaks and natural regen ticks.
+        all.add(new Scenario("retreat no-food hostile", () -> {
+            SurvivalSim s = new SurvivalSim().weapon(2).armor(8).blocks(16).hp(10);
+            s.food = 0; s.foodSlot = -1;
+            return s.zombie(8, 0);
+        }));
+        all.add(new Scenario("retreat no-food 2 hostiles", () -> {
+            SurvivalSim s = new SurvivalSim().weapon(2).armor(10).blocks(20).hp(11);
+            s.food = 0; s.foodSlot = -1;
+            return s.zombie(7, 0).zombie(8, 120);
+        }));
+
         // AL. near-broken weapon: a sword about to snap deals fist damage, so a fight that looks
         // winnable on the weapon tier is actually a loss — the power score must discount it and flee.
         all.add(new Scenario("broken sword + zombie", () -> kitted().armor(6).weaponDurability(2).zombie(5, 0)));
