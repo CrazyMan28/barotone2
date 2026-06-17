@@ -107,6 +107,13 @@ public final class SurvivalSim {
     public boolean[] octantSafe = {true, true, true, true, true, true, true, true};
     public boolean digDownSafe = true; // can always dig a bare-handed turtle hole on solid ground
     public BlockPosSpec lavaEscape;
+    /**
+     * Lava ocean: no precomputed escape column within scan radius ({@code lavaEscape == null}). The
+     * only way out is to swim along a safe octant until reaching the edge {@code lavaOceanEdge} blocks
+     * away. Modeled as a moving target so the behavior's safe-octant fallback is fairly exercised.
+     */
+    private double lavaOceanEdge = -1;
+    private double lavaSwum;
     public BlockPosSpec nearestWater;
     public BlockPosSpec surfaceEscape;
     public boolean surfaceSealed;
@@ -240,6 +247,19 @@ public final class SurvivalSim {
     public SurvivalSim inLava(double escapeDist) {
         this.inLava = true;
         this.lavaEscape = new BlockPosSpec((int) (x + escapeDist), (int) y, (int) z);
+        return this;
+    }
+
+    /**
+     * In a lava ocean with NO clear escape column in scan radius ({@code lavaEscape == null}). The
+     * behavior must fall back to swimming along a safe octant; the bot reaches solid ground after
+     * {@code edgeDist} blocks of swimming. Without that fallback the bot cooks in place (control).
+     */
+    public SurvivalSim inLavaOcean(double edgeDist) {
+        this.inLava = true;
+        this.lavaEscape = null;
+        this.lavaOceanEdge = edgeDist;
+        this.lavaSwum = 0;
         return this;
     }
 
@@ -549,6 +569,25 @@ public final class SurvivalSim {
                     if (dist2D(lavaEscape.x, lavaEscape.z) < 1.0D) {
                         inLava = false;
                         onFire = true; // singed climbing out, but extinguish/regen handles it
+                    }
+                } else if (lavaOceanEdge > 0) {
+                    // no escape column: the behavior swims along the first safe octant. Credit that as
+                    // real progress toward the ocean edge — reaching it gets us onto solid ground.
+                    int octant = -1;
+                    for (int i = 0; i < octantSafe.length; i++) {
+                        if (octantSafe[i]) {
+                            octant = i;
+                            break;
+                        }
+                    }
+                    if (octant >= 0) {
+                        double ang = Math.toRadians(octant * 45);
+                        moveAlongSafe(Math.sin(ang), Math.cos(ang), BOT_SPEED);
+                        lavaSwum += BOT_SPEED;
+                        if (lavaSwum >= lavaOceanEdge) {
+                            inLava = false;
+                            onFire = true;
+                        }
                     }
                 }
                 break;

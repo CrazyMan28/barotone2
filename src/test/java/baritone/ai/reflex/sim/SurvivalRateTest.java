@@ -162,6 +162,9 @@ public class SurvivalRateTest {
         }
         all.add(new Scenario("lava+creeper opp", () -> kitted().inLava(3).creeper(6, 180)));
         all.add(new Scenario("lava+zombie opp", () -> kitted().inLava(3).zombie(6, 180)));
+        // lava ocean: no clear escape column in scan radius — must swim out along a safe octant
+        all.add(new Scenario("lava ocean@5", () -> kitted().armor(12).inLavaOcean(5)));
+        all.add(new Scenario("lava ocean@7 heavy", () -> heavy().inLavaOcean(7)));
 
         // Q. drowning
         all.add(new Scenario("drowning", () -> kitted().drowning()));
@@ -341,6 +344,21 @@ public class SurvivalRateTest {
     public void controlReflexesOffDiesToLava() {
         SurvivalSim.Outcome o = kitted().inLava(3).disableReflexes().run(TICKS);
         assertFalse("with no reflexes lava must kill the bot", o.survived);
+    }
+
+    @Test
+    public void controlReflexesOffDiesToLavaOcean() {
+        SurvivalSim.Outcome o = kitted().armor(12).inLavaOcean(5).disableReflexes().run(TICKS);
+        assertFalse("with no reflexes a lava ocean must kill the bot", o.survived);
+    }
+
+    @Test
+    public void lavaOceanSwimsOutAlongASafeOctant() {
+        // no precomputed escape column: the behavior must swim out a safe direction, not cook in place
+        SurvivalSim sim = kitted().armor(12).inLavaOcean(5);
+        SurvivalSim.Outcome o = sim.run(TICKS);
+        assertTrue("must swim out of a lava ocean with no escape column: " + o.cause, o.survived);
+        assertTrue("must have escaped the lava", !sim.inLava);
     }
 
     @Test
