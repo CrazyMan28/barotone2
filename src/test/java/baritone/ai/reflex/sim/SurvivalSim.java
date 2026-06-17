@@ -91,6 +91,7 @@ public final class SurvivalSim {
     public double fallDistance;
     public boolean suffocating;
     public boolean encased;     // head inside ANY solid block (wall/cave-in/bad teleport)
+    private boolean headFreed;  // encased: head block broken (~tick 8) -> suffocation damage stops
     public boolean night;
     public int ticksSinceHurt = Integer.MAX_VALUE;
     /** Standing on a contact-damage block (cactus/magma/sweet-berry): ticks damage until we step off. */
@@ -600,6 +601,11 @@ public final class SurvivalSim {
     }
 
     private void applyBehavior(BehaviorId behavior, FleeMode fleeMode, int target) {
+        // remember where we started this tick so we can credit ANY movement off a contact hazard
+        // (real MC clears cactus/magma/sweet-berry damage the instant you leave the block, no matter
+        // which behavior moved you — not just EXTINGUISH_FIRE). See the post-switch clear below.
+        double preX = x;
+        double preZ = z;
         // reset transient progress only when actually leaving the behavior that owns it (NOT every
         // tick of it — that was the bug that stopped the flee-wall ever finishing).
         if (behavior != BehaviorId.FLEE) {
@@ -672,6 +678,11 @@ public final class SurvivalSim {
                 digOutProgress++;
                 if (digOutProgress >= 8) {
                     suffocating = false;
+                    // Real MC stops suffocation the instant the head block breaks (~8 ticks): you're
+                    // now climbing up through air. The remaining dig (to tick 16) is in air pockets, so
+                    // it deals NO suffocation damage. Mark the head freed so stepHazards stops the
+                    // 0.6/tick encased damage now, while keeping encased=true for the DIG_OUT routing.
+                    headFreed = true;
                 }
                 if (digOutProgress >= 16) {
                     encased = false; // solid stone takes longer to mine through than falling sand
@@ -692,10 +703,7 @@ public final class SurvivalSim {
                     if (octant >= 0) {
                         double ang = Math.toRadians(octant * 45);
                         moveAlongSafe(Math.sin(ang), Math.cos(ang), BOT_SPEED);
-                        contactHazardMoved += BOT_SPEED;
-                        if (contactHazardMoved >= 1.0D) {
-                            contactHazard = false; // stepped off the hazard block
-                        }
+                        // (movement off the hazard is credited uniformly at the end of applyBehavior)
                     }
                 }
                 if (onFire && ++fireFightProgress >= 6) {
@@ -725,6 +733,17 @@ public final class SurvivalSim {
                 break;
             default:
                 // NONE: stand still. If a hazard or mob is on us, this is how the bot dies.
+        }
+
+        // Contact damage clears the instant you leave the block in real MC — credit ANY movement this
+        // tick toward stepping off the cactus/magma/sweet-berry, no matter which behavior moved us. The
+        // old code only advanced this in EXTINGUISH_FIRE, so when a higher-severity mob preempted and the
+        // bot FLED off the hazard, the sim kept applying phantom 0.5/tick damage forever (cluster bug).
+        if (contactHazard) {
+            contactHazardMoved += Math.hypot(x - preX, z - preZ);
+            if (contactHazardMoved >= 1.0D) {
+                contactHazard = false; // stepped off the hazard block
+            }
         }
     }
 
@@ -881,7 +900,9 @@ public final class SurvivalSim {
                 hurt = true;
             }
         }
-        if (suffocating || encased) {
+        if (suffocating || (encased && !headFreed)) {
+            // suffocation damage only while the head is actually buried — it stops the instant the
+            // head block breaks (~tick 8), not when the whole shaft is cleared (tick 16)
             hp -= 0.6D;
             hurt = true;
         }
