@@ -131,17 +131,26 @@ public class SurvivalBrain {
         if (active != BehaviorId.NONE) {
             activeTicks++;
             Threat top = best(threats, s, t, true);
-            if (top != null && activeCause != null && top.severity > activeCause.severity
-                    && resolve(top, s, t) != active) {
+            // terrain hazards preempt a running behavior REGARDLESS of severity (a low-hp creeper
+            // scores 100 and would otherwise keep us fleeing while we drown/burn) — get out first.
+            boolean terrainPreempt = top != null && isTerrainHazard(top.type)
+                    && behaviorFor(top.type) != active;
+            if (top != null && activeCause != null && resolve(top, s, t) != active
+                    && (top.severity > activeCause.severity || terrainPreempt)) {
                 BehaviorId wanted = resolve(top, s, t);
                 if (!isMobBehavior(wanted)) {
                     return engage(wanted, top, now, s); // lethal terrain (or eat-now) always preempts
                 }
-                // a sheltered bot stays sheltered: the zombie crowd outside the wall must not
-                // pull it into the open night — unless it is being hit right now (breached)
-                boolean breached = s.ticksSinceHurt <= 5;
-                if (active == BehaviorId.SHELTER && !breached) {
-                    // hold the shelter
+                // COMMIT to a running shelter. Abandoning it to flee/retreat the very mobs it's
+                // walling out just thrashes (shelter->retreat->flee->shelter — the live logs showed
+                // the bot dying that way, oscillating for 80s and never sealing in) and never lets the
+                // dig-in finish. The ONLY thing worth breaking a shelter for is a creeper, which blasts
+                // the wall; every other mob is handled by sealing ourselves in.
+                if (active == BehaviorId.SHELTER) {
+                    if (top.type == ThreatType.CREEPER) {
+                        return engage(wanted, top, now, s);
+                    }
+                    // else hold the shelter — finish digging in / sealing
                 } else if (active != BehaviorId.RETREAT_HEAL) {
                     // (healing already breaks contact — don't let a mere flee threat cancel it)
                     if (active == BehaviorId.COMBAT && losingTrade(s, t)) {
@@ -309,6 +318,30 @@ public class SurvivalBrain {
     private BehaviorId resolve(Threat top, WorldSnapshot s, ReflexTuning t) {
         BehaviorId behavior = behaviorFor(top.type);
         SituationAssessment a = lastAssessment;
+        // Undergeared last resort: being beaten with NOTHING to fight/flee/heal with (no blocks to
+        // pillar/wall, no food to heal) — digging straight down (SHELTER) is the one defense that needs
+        // no resources, breaking contact through terrain. Far better than fleeing nowhere or "healing"
+        // with no food (the live death loop: thrashing flee<->retreat for 80s, then a creeper got it).
+        // Excludes creepers: a bare hole can't be sealed against a blast, so they keep the flee ladder.
+        boolean broke = !a.hasBlocks && !a.hasFood;
+        if (broke && s.digDownSafe && t.shelter && a.creepersNear == 0
+                && (top.type == ThreatType.OVERWHELMED || top.type == ThreatType.OUTMATCHED
+                    || top.type == ThreatType.SWARM)) {
+            return BehaviorId.SHELTER;
+        }
+        // Slowed (witch's Slowness, soul sand, cobwebs): we can't kite, flee, OR break contact — every
+        // mobile tactic fails. The only thing that works is to wall/dig in. Route ALL mob responses to
+        // SHELTER (no creeper around: never bunker beside one).
+        if (s.slownessLevel >= 1 && a.creepersNear == 0 && t.shelter && (s.digDownSafe || a.hasBlocks)
+                && (behavior == BehaviorId.FLEE || behavior == BehaviorId.COMBAT
+                    || behavior == BehaviorId.RETREAT_HEAL)) {
+            return BehaviorId.SHELTER;
+        }
+        // Withered: a DoT natural regen can't outrun, so every blow we trade compounds it — don't stand
+        // and fight, break contact and wait it out (retreat). (Plain poison can't kill, so we still fight.)
+        if (behavior == BehaviorId.COMBAT && s.withered) {
+            return BehaviorId.RETREAT_HEAL;
+        }
         // cornered while fleeing something that isn't a creeper: sprinting just runs into the wall
         // and eats hits. If we have blocks, wall off and heal instead of dying in the open. (A
         // creeper is the exception — never bunker beside one; the flee ladder pillars up instead.)
@@ -341,11 +374,24 @@ public class SurvivalBrain {
     }
 
     /**
-     * Highest severity wins; declaration order of {@link ThreatType} breaks ties. Threats whose
-     * behavior needs the working gate are skipped when not working — unless the bot is already
-     * mid mob-episode ({@code escalating}), where escalation must stay armed.
+     * Pick the threat to answer. <b>Lethal terrain always wins outright</b> — you must get out of
+     * lava/drowning/fire/suffocation/a killing fall BEFORE dealing with any mob, no matter how scary
+     * the mob is (a low-hp creeper scores 100 and would otherwise out-rank drowning/fire and leave the
+     * bot fleeing while it suffocates — a real death). Among non-terrain threats, highest severity wins
+     * and {@link ThreatType} order breaks ties. Working-gated behaviors are skipped when not working
+     * unless we're already mid mob-episode.
      */
     private Threat best(List<Threat> threats, WorldSnapshot s, ReflexTuning t, boolean escalating) {
+        Threat terrain = null;
+        for (Threat th : threats) {
+            if (isTerrainHazard(th.type) && (terrain == null || th.severity > terrain.severity
+                    || (th.severity == terrain.severity && th.type.ordinal() < terrain.type.ordinal()))) {
+                terrain = th;
+            }
+        }
+        if (terrain != null) {
+            return terrain; // terrain owns the body until it's resolved
+        }
         boolean workingOk = s.working || (escalating && isMobBehavior(active));
         Threat best = null;
         for (Threat th : threats) {
@@ -358,6 +404,24 @@ public class SurvivalBrain {
             }
         }
         return best;
+    }
+
+    /**
+     * Hazards the bot is CURRENTLY INSIDE and takes continuous damage from — these own the body
+     * unconditionally (you can't flee a mob while drowning/burning). FALL and VOID are deliberately
+     * NOT here: a falling bot at low hp may rightly choose to flee a creeper and eat the landing
+     * (the fall is a recoverable trade; lava/fire/drown are not). They still win on raw severity.
+     */
+    private static boolean isTerrainHazard(ThreatType type) {
+        switch (type) {
+            case LAVA:
+            case DROWN:
+            case SUFFOCATION:
+            case FIRE:
+                return true;
+            default:
+                return false;
+        }
     }
 
     private ResponsePlan engage(BehaviorId behavior, Threat cause, long now, WorldSnapshot s) {

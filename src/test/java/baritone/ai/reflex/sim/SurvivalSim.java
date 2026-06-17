@@ -81,6 +81,10 @@ public final class SurvivalSim {
     public boolean inLava;
     public boolean underWater;
     public boolean poisoned;
+    public int slownessLevel;   // can't outrun mobs while slowed
+    public boolean weakened;    // melee does far less
+    public boolean withered;    // damage-over-time
+    private int witherTicks;
     public boolean falling;
     public double fallDistance;
     public boolean suffocating;
@@ -242,6 +246,25 @@ public final class SurvivalSim {
         return this;
     }
 
+    /** Slowness (witch / soul sand): can't outrun mobs — fleeing fails, must dig in. */
+    public SurvivalSim slowed(int level) {
+        this.slownessLevel = level;
+        return this;
+    }
+
+    /** Weakness (witch potion): melee is gutted — a "winnable" fight becomes a loss. */
+    public SurvivalSim weak() {
+        this.weakened = true;
+        return this;
+    }
+
+    /** Wither (wither skeleton / boss): damage-over-time natural regen can't outrun. */
+    public SurvivalSim wither() {
+        this.withered = true;
+        this.witherTicks = 200;
+        return this;
+    }
+
     public SurvivalSim falling(double height) {
         this.falling = true;
         this.fallDistance = height;
@@ -386,8 +409,15 @@ public final class SurvivalSim {
         hurtThisTick |= stepHazards();
         hurtThisTick |= stepMobs();
 
+        // wither: damage-over-time that suppresses natural regen until it wears off (~1 dmg/2s)
+        if (withered) {
+            hp -= 0.04D;
+            if (--witherTicks <= 0) {
+                withered = false;
+            }
+        }
         // 3. natural regen / hunger drain
-        if (food >= 18 && hp < maxHp && !inLava) {
+        if (food >= 18 && hp < maxHp && !inLava && !withered) {
             hp = Math.min(maxHp, hp + 0.08D);
         }
         if (gameTime % 80 == 0 && food > 0) {
@@ -739,7 +769,10 @@ public final class SurvivalSim {
         s.onFire = onFire;
         s.inLava = inLava;
         s.underWater = underWater;
-        s.poisoned = poisoned;
+        s.poisoned = poisoned || withered;
+        s.withered = withered;
+        s.weakened = weakened;
+        s.slownessLevel = slownessLevel;
         s.ticksSinceHurt = ticksSinceHurt;
         s.posX = x;
         s.posY = y;
@@ -802,6 +835,9 @@ public final class SurvivalSim {
     }
 
     private double weaponDamage() {
+        if (weakened) {
+            return Math.max(0.5D, (weaponTier < 0 ? 1.0D : 8 - weaponTier) - 4.0D); // weakness guts melee
+        }
         if (weaponTier < 0) {
             return 1.0D; // bare fist
         }
@@ -916,6 +952,9 @@ public final class SurvivalSim {
     private void moveAlongSafe(double ux, double uz, double speed) {
         if (isBlocked(ux, uz)) {
             return; // would step into a hazard / wall — hold position (this is "cornered")
+        }
+        if (slownessLevel > 0) {
+            speed *= Math.max(0.25D, 1 - 0.15D * slownessLevel); // slowed: can't outrun pursuers
         }
         x += ux * speed;
         z += uz * speed;

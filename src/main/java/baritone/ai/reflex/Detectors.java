@@ -353,9 +353,9 @@ public final class Detectors {
         return count >= t.swarmCount ? new Threat(ThreatType.SWARM, SEV_SWARM, nearestMob) : null;
     }
 
-    /** Poisoned/withering at low hp with food to heal back — retreat and treat. */
+    /** Poisoned/withered at low hp — break contact and heal (wither outpaces natural regen too). */
     public static Threat poison(WorldSnapshot s, ReflexTuning t) {
-        return s.poisoned && s.hp <= t.poisonTreatHp && s.bestFoodSlot >= 0
+        return (s.poisoned || s.withered) && s.hp <= t.poisonTreatHp && s.bestFoodSlot >= 0
                 ? new Threat(ThreatType.POISON, SEV_POISON) : null;
     }
 

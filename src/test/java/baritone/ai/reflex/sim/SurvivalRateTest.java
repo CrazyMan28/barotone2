@@ -234,6 +234,20 @@ public class SurvivalRateTest {
         all.add(new Scenario("lowhp+creeper", () -> kitted().armor(10).hp(5).creeper(6, 0)));
         all.add(new Scenario("lowhp+swarm", () -> kitted().armor(10).hp(6).zombie(6, 0).zombie(6, 90).zombie(6, 180)));
 
+        // AF. UNDERGEARED (no blocks/food/weapon) surrounded at night — the real death loop: must commit
+        // to digging in (bare-handed) instead of thrashing flee<->retreat. (no creeper: that needs blocks)
+        all.add(new Scenario("undergeared night swarm", () -> new SurvivalSim().atNight().zombie(5, 0).zombie(6, 100).zombie(6, 220)));
+        all.add(new Scenario("undergeared night sk+zombies", () -> new SurvivalSim().atNight().skeleton(7, 0).zombie(6, 120).zombie(6, 240)));
+        all.add(new Scenario("undergeared surrounded day", () -> new SurvivalSim().zombie(5, 0).zombie(5, 120).zombie(5, 240)));
+
+        // AG. status effects (witch / wither): slowness (can't outrun -> dig in), weakness (don't lose a
+        // fight -> flee/shelter), wither (DoT -> retreat + heal)
+        all.add(new Scenario("slowed + zombies", () -> kitted().slowed(2).zombie(5, 0).zombie(6, 150)));
+        all.add(new Scenario("slowed + skeleton", () -> freshBlocks().slowed(2).skeleton(7, 0)));
+        all.add(new Scenario("weakened + 2 zombies", () -> kitted().armor(12).weak().zombie(5, 0).zombie(6, 60)));
+        all.add(new Scenario("withered lowhp", () -> kitted().armor(10).hp(11).wither()));
+        all.add(new Scenario("withered + zombie", () -> kitted().armor(12).hp(12).wither().zombie(7, 0)));
+
         return all;
     }
 

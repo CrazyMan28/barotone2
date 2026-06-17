@@ -370,6 +370,10 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         s.inLava = player.isInLava();
         s.underWater = player.isUnderWater();
         s.poisoned = player.hasEffect(MobEffects.POISON) || player.hasEffect(MobEffects.WITHER);
+        s.withered = player.hasEffect(MobEffects.WITHER);
+        s.weakened = player.hasEffect(MobEffects.WEAKNESS);
+        var slowEffect = player.getEffect(MobEffects.SLOWNESS);
+        s.slownessLevel = slowEffect != null ? slowEffect.getAmplifier() + 1 : 0;
         s.ticksSinceHurt = lastHurtAt == Long.MIN_VALUE
                 ? Integer.MAX_VALUE : (int) Math.min(Integer.MAX_VALUE, now - lastHurtAt);
         s.working = lastWorkingAt != Long.MIN_VALUE && now - lastWorkingAt <= 40;

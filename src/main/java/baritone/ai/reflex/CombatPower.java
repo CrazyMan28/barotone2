@@ -48,11 +48,17 @@ public final class CombatPower {
     /** What the bot brings to a melee: weapon + armor + health, with shield and full-belly tips. */
     public static double playerPower(WorldSnapshot s) {
         double hpFrac = s.maxHp <= 0 ? 1D : Math.min(1D, s.hp / (double) s.maxHp);
-        return weaponPoints(s.bestWeaponTier)
+        double power = weaponPoints(s.bestWeaponTier)
                 + 0.35D * s.armorValue
                 + 3.0D * hpFrac
                 + (s.hasShieldOffhand ? 1.0D : 0D)
                 + (s.food >= 18 ? 0.5D : 0D);
+        // Weakness (e.g. a witch's potion) guts melee damage — a "winnable" trade becomes a loss, so
+        // drop our assessed power hard and let the gear-aware judgment flee instead of brawling.
+        if (s.weakened) {
+            power -= 3.0D;
+        }
+        return power;
     }
 
     /**

@@ -42,6 +42,12 @@ public final class WorldSnapshot {
     public boolean inLava;
     public boolean underWater;
     public boolean poisoned;
+    /** Slowness amplifier + 1 (0 = none). Slowed, we can't outrun mobs — fleeing is futile, dig in instead. */
+    public int slownessLevel;
+    /** Weakness effect — melee does far less damage, so a "winnable" fight becomes a losing one. */
+    public boolean weakened;
+    /** Wither effect — damage-over-time that natural regen can't outpace; treat like poison (retreat + heal). */
+    public boolean withered;
     /** Ticks since the player was last hurt (MAX_VALUE = never). */
     public int ticksSinceHurt = Integer.MAX_VALUE;
     /** Pathing / AI mission active within the last ~2s (the adapter latches this). */
