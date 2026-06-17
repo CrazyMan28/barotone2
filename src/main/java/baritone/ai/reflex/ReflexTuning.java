@@ -123,6 +123,16 @@ public final class ReflexTuning {
     // ---- watchdog
     public int behaviorStuckTicks = 60;      // generic no-progress window
 
+    // ---- distress (the trigger for the cooperative LLM survival agent)
+    /**
+     * A survival behavior running longer than this WITHOUT resolving (still taking damage) means the
+     * rule ladder is exhausted — {@link SurvivalBrain#inDistress()} flips. Mirrors the
+     * {@code aiSurvivalDistressTicks} setting the adapter refreshes.
+     */
+    public int distressTicks = 60;
+    /** "Still being hurt" window for distress: damage this recently means the behavior isn't working. */
+    public int distressDamageWindowTicks = 40;
+
     // ---- shelter (turtle-when-weak)
     /** Proactively shelter at night when undergeared with hostiles visible (NIGHT_EXPOSURE). */
     public boolean shelter = true;

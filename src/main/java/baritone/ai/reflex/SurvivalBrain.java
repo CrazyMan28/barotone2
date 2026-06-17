@@ -67,13 +67,36 @@ public class SurvivalBrain {
     // ---- holistic state (the whole-picture read + the post-episode report)
     private SituationAssessment lastAssessment = new SituationAssessment();
     private SurvivalReport lastReport;
+    /**
+     * The rule ladder is exhausted and the bot is STILL endangered this tick — the trigger for
+     * spinning up the cooperative LLM survival agent. Pure (computed from the snapshot + the brain's
+     * own episode bookkeeping each tick); the adapter only debounces + escalates off it. See
+     * {@link #computeDistress}.
+     */
+    private boolean inDistress;
+    // ---- per-tick distress inputs, captured during decideInternal so computeDistress never
+    //      re-ticks the flee clock (calling flee.suppressed twice would advance the episode timer).
+    /** A flee episode got suppressed this tick (gave up shaking the mob). */
+    private boolean fleeGaveUpThisTick;
+    /** A flee-mob is still within engage range this tick. */
+    private boolean fleeMobInRangeThisTick;
     // episode bookkeeping for the report
     private double epStartX, epStartY, epStartZ;
     private double epThreatX, epThreatY, epThreatZ;
     private boolean epThreatHadPos;
     private boolean epEscalated;
 
+    /**
+     * Decide the survival response for one tick AND re-read the distress flag off the resulting
+     * situation. {@link #inDistress()} is valid only after this returns.
+     */
     public ResponsePlan decide(WorldSnapshot s, ReflexTuning t) {
+        ResponsePlan plan = decideInternal(s, t);
+        inDistress = computeDistress(s, t);
+        return plan;
+    }
+
+    private ResponsePlan decideInternal(WorldSnapshot s, ReflexTuning t) {
         if (flee == null) {
             flee = new FleeEscalation(t.maxFleeTicks, t.fleeCooldownTicks, t.fleeEpisodeGapTicks);
         }
@@ -107,6 +130,9 @@ public class SurvivalBrain {
         if (fleeSuppressed && fleeThreat != null) {
             threats.remove(fleeThreat);
         }
+        // capture distress inputs while we have them (computeDistress must NOT re-tick the flee clock)
+        fleeMobInRangeThisTick = fleeThreat != null;
+        fleeGaveUpThisTick = fleeSuppressed;
 
         // 3. health modulation: the lower our hp, the scarier every mob we'd have to outrun
         double hpFrac = s.maxHp <= 0 ? 1D : Math.min(1D, s.hp / (double) s.maxHp);
@@ -226,6 +252,55 @@ public class SurvivalBrain {
     /** The report left by the last episode that ended (null until one has). */
     public SurvivalReport lastReport() {
         return lastReport;
+    }
+
+    /**
+     * The rule ladder is EXHAUSTED and the bot is STILL endangered — the reflex is "having a bad
+     * time" and can't resolve the danger on its own. This is the trigger for the cooperative LLM
+     * survival agent (which gives STRATEGIC help — retreat to base, build a shelter, gear up —
+     * while the reflex keeps tick-level control). Valid only after {@link #decide} has run this tick.
+     *
+     * <p>Pure: it reads only the latest assessment, the captured flee state, the active behavior and
+     * its dwell, plus the snapshot's vitals — so it is exhaustively unit-testable with hand-built
+     * snapshots. True when ANY of:
+     * <ul>
+     *   <li>a flee episode got SUPPRESSED (gave up shaking the mob) while a flee-mob is still in
+     *       engage range — running stopped working but the threat is still on us;</li>
+     *   <li>we're CORNERED with hostiles near, no blocks to wall with, and can't dig down — every
+     *       static defense is unavailable (no viable resolve left);</li>
+     *   <li>a mob/survival behavior has run longer than {@code distressTicks} AND we took damage
+     *       within the last {@code distressDamageWindow} ticks — the behavior is NOT resolving, we're
+     *       still being hurt while it runs;</li>
+     *   <li>hp is at/under the critical floor with hostiles near AND a survival behavior has been
+     *       running a while — low and not recovering.</li>
+     * </ul>
+     */
+    public boolean inDistress() {
+        return inDistress;
+    }
+
+    private boolean computeDistress(WorldSnapshot s, ReflexTuning t) {
+        SituationAssessment a = lastAssessment;
+        // (1) flee gave up but the mob is still on us
+        if (fleeGaveUpThisTick && fleeMobInRangeThisTick) {
+            return true;
+        }
+        // (2) cornered, hostiles near, and no static defense left (no blocks, can't dig in)
+        if (a.cornered && a.hostilesNear > 0 && !a.hasBlocks && !s.digDownSafe) {
+            return true;
+        }
+        boolean survivalRunning = isMobBehavior(active) || active == BehaviorId.EAT;
+        // (3) a survival behavior has run a while and we're STILL being hurt (it isn't working)
+        if (survivalRunning && activeTicks > t.distressTicks
+                && s.ticksSinceHurt <= t.distressDamageWindowTicks) {
+            return true;
+        }
+        // (4) critically low hp with hostiles near and a survival behavior running a while
+        if (s.hp <= t.criticalHp && a.hostilesNear > 0
+                && survivalRunning && activeTicks > t.distressTicks / 2) {
+            return true;
+        }
+        return false;
     }
 
     // ---------------------------------------------------------------- holistic assessment

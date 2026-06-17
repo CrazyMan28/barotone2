@@ -1470,6 +1470,32 @@ public final class Settings {
     public final Setting<Boolean> aiAutoRespawn = new Setting<>(true);
 
     /**
+     * Cooperative LLM survival agent: when the rule-based survival reflex is "having a bad time" —
+     * its rule ladder is exhausted and the bot is STILL endangered (a flee it can't shake, cornered
+     * with no defenses, a behavior that runs while still taking hits, or critically low hp under
+     * attack) — spin up a dedicated LLM "survival agent" that gives STRATEGIC help (retreat to base /
+     * a known-safe spot, dig in + wall off, build a shelter, eat, gear up). It NEVER fights the reflex
+     * for control: the reflex stays the priority-10 tick-level guardian and the survival agent works
+     * through the same wait_until_idle / pathing layer as every other agent. A running mission/planner
+     * is paused and resumed once the danger resolves. Set false to disable the escalation entirely.
+     */
+    public final Setting<Boolean> aiSurvivalEscalation = new Setting<>(true);
+
+    /**
+     * How long (game ticks) a survival behavior must run WITHOUT resolving — still being hurt — before
+     * the reflex is considered "in distress" (the trigger for {@link #aiSurvivalEscalation}). ~3s at
+     * 20 tps. Lower = the LLM survival agent is summoned sooner; higher = the rules get more time to
+     * cope on their own first.
+     */
+    public final Setting<Integer> aiSurvivalDistressTicks = new Setting<>(60);
+
+    /**
+     * Minimum ticks between survival-agent escalations, so a danger that keeps flaring can't spawn a
+     * fresh survival agent every few seconds (an LLM round-trip is expensive). ~30s at 20 tps.
+     */
+    public final Setting<Integer> aiSurvivalEscalationCooldownTicks = new Setting<>(600);
+
+    /**
      * Model used ONLY for the planner's decompose/replan calls (the "main agent" that breaks the
      * goal into sub-goals). Defaults to {@code mistral-large-latest} so planning is done by a strong
      * model that traces the full tech ladder, even when the per-sub-goal executor runs a cheaper or

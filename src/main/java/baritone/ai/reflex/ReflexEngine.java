@@ -131,6 +131,14 @@ public final class ReflexEngine {
         return brain.lastReport();
     }
 
+    /**
+     * The rule ladder is exhausted and the bot is still endangered this tick — the trigger for the
+     * cooperative LLM survival agent. See {@link SurvivalBrain#inDistress()}.
+     */
+    public boolean inDistress() {
+        return brain.inDistress();
+    }
+
     /** Force-release whatever is running (reflexes disabled / process lost control). */
     public void abort() {
         if (current != null) {
