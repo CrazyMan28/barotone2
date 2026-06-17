@@ -48,6 +48,12 @@ public final class WorldSnapshot {
     public boolean weakened;
     /** Wither effect — damage-over-time that natural regen can't outpace; treat like poison (retreat + heal). */
     public boolean withered;
+    /**
+     * Blindness or Darkness — vision is gutted, so we can't aim/kite/path reliably and threats close
+     * unseen. With a hostile near, the safe play is to seal in (SHELTER) rather than flail blind in the
+     * open. Set by the adapter from MobEffects.BLINDNESS / DARKNESS.
+     */
+    public boolean blinded;
     /** Ticks since the player was last hurt (MAX_VALUE = never). */
     public int ticksSinceHurt = Integer.MAX_VALUE;
     /** Pathing / AI mission active within the last ~2s (the adapter latches this). */

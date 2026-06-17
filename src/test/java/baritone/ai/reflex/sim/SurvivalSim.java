@@ -85,6 +85,7 @@ public final class SurvivalSim {
     public int slownessLevel;   // can't outrun mobs while slowed
     public boolean weakened;    // melee does far less
     public boolean withered;    // damage-over-time
+    public boolean blinded;     // Blindness/Darkness: can't see threats -> kite/flee blind fails
     private int witherTicks;
     public boolean falling;
     public double fallDistance;
@@ -378,6 +379,12 @@ public final class SurvivalSim {
     /** Weakness (witch potion): melee is gutted — a "winnable" fight becomes a loss. */
     public SurvivalSim weak() {
         this.weakened = true;
+        return this;
+    }
+
+    /** Blindness/Darkness: vision gutted — fleeing/kiting blind fails, must seal in. */
+    public SurvivalSim blind() {
+        this.blinded = true;
         return this;
     }
 
@@ -992,6 +999,7 @@ public final class SurvivalSim {
         s.poisoned = poisoned || withered;
         s.withered = withered;
         s.weakened = weakened;
+        s.blinded = blinded;
         s.slownessLevel = slownessLevel;
         s.ticksSinceHurt = ticksSinceHurt;
         s.posX = x;
@@ -1192,6 +1200,9 @@ public final class SurvivalSim {
         }
         if (slownessLevel > 0) {
             speed *= Math.max(0.25D, 1 - 0.15D * slownessLevel); // slowed: can't outrun pursuers
+        }
+        if (blinded) {
+            speed *= 0.5D; // blind: stumbling, can't navigate to outrun a pursuer in the open
         }
         x += ux * speed;
         z += uz * speed;

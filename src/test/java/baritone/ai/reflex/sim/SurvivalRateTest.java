@@ -260,6 +260,10 @@ public class SurvivalRateTest {
         all.add(new Scenario("weakened + 2 zombies", () -> kitted().armor(12).weak().zombie(5, 0).zombie(6, 60)));
         all.add(new Scenario("withered lowhp", () -> kitted().armor(10).hp(11).wither()));
         all.add(new Scenario("withered + zombie", () -> kitted().armor(12).hp(12).wither().zombie(7, 0)));
+        // blindness/darkness: can't see threats, fleeing blind in the open fails -> seal in
+        all.add(new Scenario("blind + zombie", () -> kitted().armor(10).blind().zombie(6, 0)));
+        all.add(new Scenario("blind + zombie fresh", () -> freshBlocks().blind().zombie(6, 0)));
+        all.add(new Scenario("blind night skeleton", () -> freshBlocks().atNight().blind().skeleton(7, 0)));
 
         // AH. lava escape blocked by a mob: the near column has a mob parked on it, a clear column is
         // farther — must climb out the clear way, not cook climbing onto the mob. (kitted & low-hp)
@@ -467,6 +471,13 @@ public class SurvivalRateTest {
     public void controlReflexesOffDiesToWitch() {
         SurvivalSim.Outcome o = kitted().armor(10).witch(5, 0).disableReflexes().run(TICKS);
         assertFalse("with no reflexes a witch must kill the bot", o.survived);
+    }
+
+    @Test
+    public void controlReflexesOffDiesBlindToAZombie() {
+        // blind + can't outrun (half speed): with no reflexes the zombie catches and kills the bot
+        SurvivalSim.Outcome o = freshBlocks().blind().zombie(6, 0).disableReflexes().run(TICKS);
+        assertFalse("with no reflexes a blinded bot must die to the zombie", o.survived);
     }
 
     @Test

@@ -387,6 +387,7 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         s.poisoned = player.hasEffect(MobEffects.POISON) || player.hasEffect(MobEffects.WITHER);
         s.withered = player.hasEffect(MobEffects.WITHER);
         s.weakened = player.hasEffect(MobEffects.WEAKNESS);
+        s.blinded = player.hasEffect(MobEffects.BLINDNESS) || player.hasEffect(MobEffects.DARKNESS);
         var slowEffect = player.getEffect(MobEffects.SLOWNESS);
         s.slownessLevel = slowEffect != null ? slowEffect.getAmplifier() + 1 : 0;
         s.ticksSinceHurt = lastHurtAt == Long.MIN_VALUE

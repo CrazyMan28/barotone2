@@ -361,6 +361,14 @@ public class SurvivalBrain {
                     || behavior == BehaviorId.RETREAT_HEAL)) {
             return BehaviorId.SHELTER;
         }
+        // Blinded (Blindness/Darkness): vision is gutted, so kiting/fleeing/aiming blind in the open
+        // just runs us into things while threats close unseen. Seal in (SHELTER) until it wears off —
+        // same as slowness. (No creeper around: never bunker beside one; it keeps the flee/pillar ladder.)
+        if (s.blinded && a.creepersNear == 0 && t.shelter && (s.digDownSafe || a.hasBlocks)
+                && (behavior == BehaviorId.FLEE || behavior == BehaviorId.COMBAT
+                    || behavior == BehaviorId.RETREAT_HEAL)) {
+            return BehaviorId.SHELTER;
+        }
         // Withered: a DoT natural regen can't outrun, so every blow we trade compounds it — don't stand
         // and fight, break contact and wait it out (retreat). (Plain poison can't kill, so we still fight.)
         if (behavior == BehaviorId.COMBAT && s.withered) {

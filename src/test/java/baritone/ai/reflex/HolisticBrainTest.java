@@ -162,6 +162,28 @@ public class HolisticBrainTest {
         assertEquals(BehaviorId.FLEE, decide(new SurvivalBrain(), s));
     }
 
+    // ------------------------------------------------------ blindness -> seal in
+
+    @Test
+    public void blindedWithAHostileNearShelters() {
+        // Blindness: kiting/fleeing blind in the open fails -> seal in (like slowness)
+        WorldSnapshot s = calm();
+        s.blinded = true;
+        hasBlocks(s);
+        s.mobs.add(zombieAt(5)); // unarmed -> would normally FLEE
+        assertEquals(BehaviorId.SHELTER, decide(new SurvivalBrain(), s));
+    }
+
+    @Test
+    public void blindedNextToACreeperStillFleesNeverBunkers() {
+        WorldSnapshot s = calm();
+        s.blinded = true;
+        hasBlocks(s);
+        s.mobs.add(creeperAt(5));
+        // never bunker beside a creeper even when blind — the flee/pillar ladder owns it
+        assertEquals(BehaviorId.FLEE, decide(new SurvivalBrain(), s));
+    }
+
     // ------------------------------------------------------ retreat with no food -> seal in
 
     @Test
