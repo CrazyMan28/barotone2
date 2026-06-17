@@ -450,7 +450,10 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         m.unkillable = e.getType() == EntityType.WARDEN;
         // ranged non-skeletons (blaze/ghast fireballs, a trident-armed drowned): out-trade a melee
         // charge just like a skeleton, so answer with cover/shelter — never chase into their fire.
+        // A witch (throws potions, heals through our hits) and a phantom (flies out of melee reach) are
+        // likewise "no melee wins this" — flag them ranged so they get cover/flee regardless of gear.
         m.ranged = e.getType() == EntityType.BLAZE || e.getType() == EntityType.GHAST
+                || e.getType() == EntityType.WITCH || e.getType() == EntityType.PHANTOM
                 || (e.getType() == EntityType.DROWNED && e.getMainHandItem().is(Items.TRIDENT));
         m.ignited = e instanceof Creeper && ((Creeper) e).isIgnited();
         m.aggro = e instanceof Mob && ((Mob) e).getTarget() == player;

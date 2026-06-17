@@ -281,6 +281,15 @@ public class SurvivalRateTest {
         }
         all.add(new Scenario("blaze + zombie kitted", () -> kitted().armor(12).blaze(9, 0).zombie(6, 180)));
 
+        // AK2. special mobs you can't out-DPS in melee: a witch heals through hits, a cave spider
+        // out-speeds + poisons, a phantom flies out of reach — all must be fled/sheltered, never brawled
+        all.add(new Scenario("witch armed", () -> kitted().armor(10).witch(6, 0)));
+        all.add(new Scenario("witch + cornered", () -> kitted().armor(8).hp(12).witch(5, 0).cornered()));
+        all.add(new Scenario("cave spider armed", () -> kitted().armor(12).caveSpider(6, 0)));
+        all.add(new Scenario("cave spider fresh", () -> freshBlocks().caveSpider(7, 0)));
+        all.add(new Scenario("phantom night armed", () -> kitted().armor(12).atNight().phantom(6, 0)));
+        all.add(new Scenario("phantom fresh", () -> freshBlocks().atNight().phantom(7, 0)));
+
         // AM. RETREAT_HEAL with NO food + a hostile nearby: a heal loop is futile (nothing to eat,
         // regen off below 18 hunger) — must seal in so contact breaks and natural regen ticks.
         all.add(new Scenario("retreat no-food hostile", () -> {
@@ -437,5 +446,30 @@ public class SurvivalRateTest {
     public void controlReflexesOffDiesToBlaze() {
         SurvivalSim.Outcome o = kitted().armor(12).blaze(6).disableReflexes().run(TICKS);
         assertFalse("with no reflexes a blaze must kill the bot", o.survived);
+    }
+
+    @Test
+    public void witchIsFledNeverBrawled() {
+        // a witch out-heals our hits — brawling it is unwinnable. The power score must flee it.
+        SurvivalSim sim = kitted().armor(10).witch(6, 0);
+        SurvivalSim.Outcome o = sim.run(TICKS);
+        assertTrue("must survive a witch by fleeing: " + o.cause, o.survived);
+        assertFalse("a witch must not be melee-brawled (it heals through it)",
+                sim.behaviorsSeen.contains(BehaviorId.COMBAT));
+    }
+
+    @Test
+    public void controlReflexesOffDiesToWitch() {
+        SurvivalSim.Outcome o = kitted().armor(10).witch(5, 0).disableReflexes().run(TICKS);
+        assertFalse("with no reflexes a witch must kill the bot", o.survived);
+    }
+
+    @Test
+    public void phantomIsNotChasedInPointlessMelee() {
+        // a phantom flies out of reach — a ground charge never lands. Must shelter/flee, not COMBAT.
+        SurvivalSim sim = kitted().armor(12).atNight().phantom(6, 0);
+        SurvivalSim.Outcome o = sim.run(TICKS);
+        assertTrue("must survive a phantom without futile combat: " + o.cause, o.survived);
+        assertFalse("a flying phantom must not be melee-chased", sim.behaviorsSeen.contains(BehaviorId.COMBAT));
     }
 }

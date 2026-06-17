@@ -41,6 +41,24 @@ public final class CombatPower {
     private CombatPower() {
     }
 
+    /**
+     * Threat power for one melee/skeleton mob, by type. Most hostiles are {@link #HOSTILE_POWER};
+     * skeletons/ranged out-range us; and a cave spider is "you can't safely melee this" — it
+     * out-speeds you AND poisons, so it scores higher so a fresh/light bot flees rather than trading
+     * blows it can't disengage from. (A witch/phantom is handled at the detector tier — they're flagged
+     * ranged so they get cover/flee regardless of gear, since no player power out-heals/out-reaches them.)
+     */
+    static double perMobPower(MobInfo m) {
+        if (m.skeleton || m.ranged) {
+            return SKELETON_POWER;
+        }
+        String type = m.typeId == null ? "" : m.typeId;
+        if (type.contains("cave_spider")) {
+            return 5.0D;  // faster than us + poison on hit: trading just bleeds us out
+        }
+        return HOSTILE_POWER;
+    }
+
     /** Below this remaining durability the weapon is "about to snap" — count it as bare-handed. */
     private static final int BROKEN_WEAPON_PERCENT = 5;
 
@@ -96,7 +114,7 @@ public final class CombatPower {
             if (!inRange) {
                 continue;
             }
-            sum += m.skeleton ? SKELETON_POWER : HOSTILE_POWER;
+            sum += perMobPower(m);
         }
         return sum * (s.night ? t.nightThreatMultiplier : 1D);
     }
@@ -115,7 +133,7 @@ public final class CombatPower {
             if (m.distance > radius) {
                 continue;
             }
-            sum += m.skeleton ? SKELETON_POWER : HOSTILE_POWER;
+            sum += perMobPower(m);
         }
         return sum * (s.night ? t.nightThreatMultiplier : 1D);
     }

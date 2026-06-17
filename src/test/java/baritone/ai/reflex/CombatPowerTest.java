@@ -156,6 +156,17 @@ public class CombatPowerTest {
     }
 
     @Test
+    public void aCaveSpiderOutweighsAPlainZombie() {
+        WorldSnapshot s = bot(STONE_SWORD, 8);
+        s.mobs.add(mob(1, "cave_spider", 4));
+        // a stone sword + armor that beats a zombie should NOT confidently take a cave spider
+        // (faster + poison) — it scores higher than a plain hostile
+        WorldSnapshot zombieCase = bot(STONE_SWORD, 8);
+        zombieCase.mobs.add(mob(2, "zombie", 4));
+        assertTrue(CombatPower.threatPower(s, t) > CombatPower.threatPower(zombieCase, t));
+    }
+
+    @Test
     public void legacyModeTrustsTheOldJudgment() {
         t.gearAwareCombat = false;
         WorldSnapshot s = bot(-1, 0);

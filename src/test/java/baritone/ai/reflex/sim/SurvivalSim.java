@@ -164,6 +164,9 @@ public final class SurvivalSim {
         int ticksUnreachable;    // consecutive ticks unable to reach the bot
         double lastDist = Double.MAX_VALUE;
         boolean reached;         // ever got into attack range (for scoring "did it touch us")
+        double selfHeal;         // witch: regenerates this much hp/tick (can't out-DPS it in melee)
+        boolean poisonOnHit;     // cave spider: applies poison when it lands a hit
+        boolean flying;          // phantom: out of ground-melee reach, a charge never connects
     }
 
     public SurvivalSim disableReflexes() {
@@ -412,6 +415,35 @@ public final class SurvivalSim {
     public SurvivalSim spider(double dist, double angleDeg) {
         SurvivalSim s = addMob("spider", dist, angleDeg, false, false, true, 0.30D, 2.0D, 1.8D);
         mobs.get(mobs.size() - 1).hp = 16;
+        return s;
+    }
+
+    /** A witch: drinks healing potions, so melee can't out-DPS it — must flee/cover, never brawl. */
+    public SurvivalSim witch(double dist, double angleDeg) {
+        SurvivalSim s = addMob("witch", dist, angleDeg, false, false, true, 0.24D, 3.0D, 1.8D);
+        SimMob m = mobs.get(mobs.size() - 1);
+        m.hp = 26;
+        m.selfHeal = 2.0D; // regenerates faster than we can chip it down
+        m.ranged = true;   // throws potions / heals: no melee wins this -> cover/flee
+        return s;
+    }
+
+    /** A cave spider: faster than us and poisons on hit — trading just bleeds us out. */
+    public SurvivalSim caveSpider(double dist, double angleDeg) {
+        SurvivalSim s = addMob("cave_spider", dist, angleDeg, false, false, true, 0.33D, 2.0D, 1.8D);
+        SimMob m = mobs.get(mobs.size() - 1);
+        m.hp = 12;
+        m.poisonOnHit = true;
+        return s;
+    }
+
+    /** A phantom: flies out of melee reach, so a ground charge never lands — answer with cover/flee. */
+    public SurvivalSim phantom(double dist, double angleDeg) {
+        SurvivalSim s = addMob("phantom", dist, angleDeg, false, false, true, 0.30D, 3.0D, 1.8D);
+        SimMob m = mobs.get(mobs.size() - 1);
+        m.hp = 20;
+        m.flying = true; // ground melee can't reach it
+        m.ranged = true; // out of reach: answer with cover/flee, never a futile ground charge
         return s;
     }
 
@@ -717,7 +749,9 @@ public final class SurvivalSim {
         if (d > tuning.strikeDistance) {
             moveToward(m.x, m.z, BOT_SPEED); // close the gap
         } else if (attackCooldown <= 0) {
-            m.hp -= weaponDamage();
+            if (!m.flying) {
+                m.hp -= weaponDamage(); // a flying phantom is out of ground-melee reach — no hit lands
+            }
             attackCooldown = 13;
             if (m.hp <= 0) {
                 mobs.remove(m);
@@ -828,6 +862,9 @@ public final class SurvivalSim {
         boolean hurt = false;
         for (Iterator<SimMob> it = mobs.iterator(); it.hasNext(); ) {
             SimMob m = it.next();
+            if (m.selfHeal > 0) {
+                m.hp = Math.min(26, m.hp + m.selfHeal); // witch out-heals our chip damage
+            }
             boolean blocked = enclosed || walledOff.contains(m) || botOutOfReach(m);
             double d = distTo(m);
             // de-aggro: the bot broke contact (outran it) or sealed it out long enough -> it's gone
@@ -878,6 +915,9 @@ public final class SurvivalSim {
                         dmg *= 0.4D; // shield soaks most of a melee hit when we're facing it
                     }
                     hp -= dmg;
+                    if (m.poisonOnHit) {
+                        poisoned = true; // cave spider venom
+                    }
                     m.cooldown = 16;
                     m.reached = true;
                     hurt = true;
