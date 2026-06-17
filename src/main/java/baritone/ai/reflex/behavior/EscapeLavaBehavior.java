@@ -30,8 +30,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * In lava: float up (hold JUMP) and push toward the nearest non-lava column. The adapter
- * precomputes that column into {@link WorldSnapshot#lavaEscape} (the core can't scan blocks).
+ * In lava: float up (hold JUMP) and push toward the chosen non-lava column. The adapter precomputes
+ * that column into {@link WorldSnapshot#lavaEscape} mob-aware (the core can't scan blocks). When no
+ * clear column exists (every side is lava/blocked, or a mob is parked on the only one), fall back to
+ * the first safe octant out of the lava — any direction off the fire beats cooking in place.
  */
 public final class EscapeLavaBehavior implements ReflexBehavior {
 
@@ -52,8 +54,24 @@ public final class EscapeLavaBehavior implements ReflexBehavior {
             float yaw = ReflexMath.yawToward(s.posX, s.posZ, s.lavaEscape.x + 0.5D, s.lavaEscape.z + 0.5D);
             actions.add(ReflexAction.look(yaw, 0F));
             actions.add(ReflexAction.hold(Input.MOVE_FORWARD, true));
+            return actions;
+        }
+        // no precomputed column: head out along any safe octant rather than holding still in the lava
+        int octant = firstSafeOctant(s);
+        if (octant >= 0) {
+            actions.add(ReflexAction.look(ReflexMath.octantYaw(octant), 0F));
+            actions.add(ReflexAction.hold(Input.MOVE_FORWARD, true));
         }
         return actions;
+    }
+
+    private static int firstSafeOctant(WorldSnapshot s) {
+        for (int i = 0; i < s.octantSafe.length; i++) {
+            if (s.octantSafe[i]) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     @Override

@@ -146,6 +146,50 @@ public class DetectorsTest {
     }
 
     @Test
+    public void wardenIsAlwaysFledNeverFoughtEvenGeared() {
+        WorldSnapshot s = calm();
+        // fully geared: would normally stand and fight a melee mob
+        s.bestWeaponSlot = 0;
+        s.bestWeaponTier = 0;
+        s.armorValue = 20;
+        s.hp = 20;
+        MobInfo warden = new MobInfo();
+        warden.entityId = 7;
+        warden.hostile = true;
+        warden.unkillable = true;
+        warden.distance = 6;
+        s.mobs.add(warden);
+        Threat flee = Detectors.fleeMob(s, t);
+        assertNotNull("a warden must always produce a flee threat", flee);
+        assertEquals(ThreatType.WARDEN, flee.type);
+        assertEquals(Detectors.SEV_WARDEN, flee.severity);
+        assertNull("a warden is never a melee fight, no matter the gear", Detectors.meleeFight(s, t));
+        assertTrue("a warden requires fleeing", Detectors.fleeRequiredWithin(s, t, 8));
+    }
+
+    @Test
+    public void rangedMobShelteredNotCharged() {
+        WorldSnapshot s = calm();
+        // geared enough to brawl a melee mob — but a blaze must still be answered with cover (RANGED),
+        // never a melee charge (which a plain hostile of the same gear would get)
+        s.bestWeaponSlot = 0;
+        s.bestWeaponTier = 0;
+        s.armorValue = 20;
+        s.hp = 20;
+        MobInfo blaze = new MobInfo();
+        blaze.entityId = 8;
+        blaze.hostile = true;
+        blaze.ranged = true;
+        blaze.distance = 6;
+        s.mobs.add(blaze);
+        assertTrue("a blaze is a shooter", Detectors.isShooter(blaze));
+        Threat flee = Detectors.fleeMob(s, t);
+        assertNotNull("a ranged mob must produce a cover (RANGED) threat", flee);
+        assertEquals(ThreatType.RANGED, flee.type);
+        assertNull("a ranged mob must never be melee-charged", Detectors.meleeFight(s, t));
+    }
+
+    @Test
     public void swarmDetectedFleeNotBrawl() {
         WorldSnapshot s = calm();
         s.ticksSinceHurt = 5;

@@ -260,7 +260,7 @@ public class SurvivalBrain {
             }
             if (m.creeper) {
                 a.creepersNear++;
-            } else if (m.skeleton) {
+            } else if (Detectors.isShooter(m)) {
                 a.rangedNear++;
             } else if (m.hostile) {
                 a.meleeNear++;
@@ -318,6 +318,12 @@ public class SurvivalBrain {
     private BehaviorId resolve(Threat top, WorldSnapshot s, ReflexTuning t) {
         BehaviorId behavior = behaviorFor(top.type);
         SituationAssessment a = lastAssessment;
+        // A Warden is unwinnable AND tunnels through blocks: no bunker holds it and no fight wins it.
+        // It MUST always stay on the flee ladder — bypass every combo override (slowness→shelter,
+        // cornered→retreat, undergeared→dig-in) that would otherwise sit us still next to it.
+        if (top.type == ThreatType.WARDEN) {
+            return BehaviorId.FLEE;
+        }
         // Undergeared last resort: being beaten with NOTHING to fight/flee/heal with (no blocks to
         // pillar/wall, no food to heal) — digging straight down (SHELTER) is the one defense that needs
         // no resources, breaking contact through terrain. Far better than fleeing nowhere or "healing"
@@ -502,6 +508,11 @@ public class SurvivalBrain {
      * no blocks to spare, at least try a perpendicular escape route.
      */
     private FleeMode pickFleeResolution(WorldSnapshot s, ReflexTuning t) {
+        // a Warden tunnels through any wall and out-climbs a pillar — no static defense holds it.
+        // The only thing that helps is opening distance, so keep sprinting (NEW_DIRECTION).
+        if (Detectors.anyWithin(s, t.perceptionRadius, m -> m.unkillable)) {
+            return FleeMode.NEW_DIRECTION;
+        }
         // a creeper anywhere in perception means PILLAR is the right answer (it can't reach up and
         // won't detonate) — wider than the flee radius so a creeper hovering at the engage boundary
         // still gets the pillar, never a wall we'd have to stand behind next to it.
@@ -563,9 +574,9 @@ public class SurvivalBrain {
                 }
                 if (activeCause != null && activeCause.type == ThreatType.RANGED) {
                     // sheltering from a shooter: hold until it has fully left our perception, not
-                    // just stepped past melee range — a kiting skeleton backs off to ~14 blocks and
-                    // keeps shooting, and resuming into that (the live death loop) is fatal
-                    return !Detectors.anyWithin(s, t.perceptionRadius, m -> m.skeleton)
+                    // just stepped past melee range — a kiting skeleton/blaze backs off and keeps
+                    // shooting, and resuming into that (the live death loop) is fatal
+                    return !Detectors.anyWithin(s, t.perceptionRadius, Detectors::isShooter)
                             || Detectors.combatReady(s, t);
                 }
                 // night turtle: out at dawn, once geared, or once nobody is visible any more
@@ -611,6 +622,7 @@ public class SurvivalBrain {
                 return BehaviorId.DIG_OUT;
             case FIRE:
                 return BehaviorId.EXTINGUISH_FIRE;
+            case WARDEN:
             case CREEPER:
             case SWARM:
             case OUTMATCHED:

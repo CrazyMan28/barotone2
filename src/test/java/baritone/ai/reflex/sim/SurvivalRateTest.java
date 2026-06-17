@@ -17,6 +17,7 @@
 
 package baritone.ai.reflex.sim;
 
+import baritone.ai.reflex.BehaviorId;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -248,6 +249,31 @@ public class SurvivalRateTest {
         all.add(new Scenario("withered lowhp", () -> kitted().armor(10).hp(11).wither()));
         all.add(new Scenario("withered + zombie", () -> kitted().armor(12).hp(12).wither().zombie(7, 0)));
 
+        // AH. lava escape blocked by a mob: the near column has a mob parked on it, a clear column is
+        // farther — must climb out the clear way, not cook climbing onto the mob. (kitted & low-hp)
+        all.add(new Scenario("lava escape mob-blocked", () -> kitted().inLavaMobBlocked(2, 3).zombie(2.5, 0)));
+        all.add(new Scenario("lava escape mob-blocked lowhp", () -> kitted().armor(10).hp(10).inLavaMobBlocked(2, 3).zombie(2.5, 0)));
+        all.add(new Scenario("lava escape mob-blocked + skel", () -> kitted().armor(12).inLavaMobBlocked(2, 4).zombie(2.5, 0).skeleton(8, 20)));
+
+        // AI. drowning sealed overhead: bobbing up just keeps drowning — must mine up, or swim to a
+        // side opening (picked mob-aware so we never surface into a waiting mob)
+        all.add(new Scenario("drowning sealed dig-up", () -> kitted().drowningSealed()));
+        all.add(new Scenario("drowning side-escape", () -> kitted().armor(10).drowningSideEscape(3)));
+        all.add(new Scenario("drowning side-escape + mob", () -> kitted().armor(12).drowningSideEscape(3).zombie(7, 0)));
+
+        // AJ. Warden — unwinnable: must ALWAYS flee, never combat, even fully geared
+        all.add(new Scenario("warden heavy", () -> heavy().warden(8)));
+        all.add(new Scenario("warden kitted", () -> kitted().armor(14).warden(7)));
+        all.add(new Scenario("warden + zombie", () -> heavy().warden(8, 0).zombie(6, 180)));
+
+        // AK. ranged non-skeleton (blaze/ghast/trident-drowned): shoots from afar — answer with cover,
+        // never melee-charge into its fire (which is what treating it as a plain hostile would do)
+        for (double d : new double[]{6, 8, 11}) {
+            all.add(new Scenario("blaze@" + d + " kitted", () -> kitted().armor(12).blaze(d)));
+            all.add(new Scenario("blaze@" + d + " fresh", () -> freshBlocks().blaze(d)));
+        }
+        all.add(new Scenario("blaze + zombie kitted", () -> kitted().armor(12).blaze(9, 0).zombie(6, 180)));
+
         return all;
     }
 
@@ -305,5 +331,70 @@ public class SurvivalRateTest {
     public void controlReflexesOffDrowns() {
         SurvivalSim.Outcome o = kitted().drowning().disableReflexes().run(TICKS);
         assertFalse("with no reflexes drowning must kill the bot", o.survived);
+    }
+
+    // ---------------------------------------------------------------- the four new gaps
+
+    @Test
+    public void lavaEscapeRoutesAwayFromTheBlockingMob() {
+        // a mob is parked on the near escape column; a clear column is farther. The mob-aware pick
+        // must take the clear column and the bot must survive (not cook climbing onto the mob).
+        SurvivalSim sim = kitted().armor(10).hp(10).inLavaMobBlocked(2, 3).zombie(2.5, 0);
+        SurvivalSim.Outcome o = sim.run(TICKS);
+        assertTrue("must escape lava away from the blocking mob: " + o.cause, o.survived);
+        // climbed out the far (-X) side, away from the +X mob
+        assertTrue("must have ended up clear of the mob's side", sim.x < 1.0D);
+    }
+
+    @Test
+    public void controlReflexesOffDiesToMobBlockedLava() {
+        SurvivalSim.Outcome o = kitted().armor(10).hp(10).inLavaMobBlocked(2, 3).zombie(2.5, 0)
+                .disableReflexes().run(TICKS);
+        assertFalse("with no reflexes mob-blocked lava must kill the bot", o.survived);
+    }
+
+    @Test
+    public void drowningSealedDigsUpInsteadOfBobbing() {
+        // sealed straight overhead with no side opening: the only escape is to mine up
+        SurvivalSim.Outcome o = kitted().drowningSealed().run(TICKS);
+        assertTrue("must dig out of a sealed drowning, not bob into the ceiling: " + o.cause, o.survived);
+    }
+
+    @Test
+    public void controlReflexesOffDrownsSealed() {
+        SurvivalSim.Outcome o = kitted().drowningSealed().disableReflexes().run(TICKS);
+        assertFalse("with no reflexes a sealed drowning must kill the bot", o.survived);
+    }
+
+    @Test
+    public void wardenIsAlwaysFledNeverFought() {
+        SurvivalSim sim = heavy().warden(8);
+        SurvivalSim.Outcome o = sim.run(TICKS);
+        assertTrue("must survive a warden by fleeing: " + o.cause, o.survived);
+        assertFalse("a warden must NEVER be engaged in combat (it's unwinnable)",
+                sim.behaviorsSeen.contains(BehaviorId.COMBAT));
+    }
+
+    @Test
+    public void controlReflexesOffDiesToWarden() {
+        SurvivalSim.Outcome o = heavy().warden(6).disableReflexes().run(TICKS);
+        assertFalse("with no reflexes a warden must kill the bot", o.survived);
+    }
+
+    @Test
+    public void rangedMobIsShelteredNotCharged() {
+        // a blaze shoots from range; charging it (treating it as a plain hostile) eats fireballs.
+        // it must be answered with cover/shelter and never meleed.
+        SurvivalSim sim = kitted().armor(12).blaze(8);
+        SurvivalSim.Outcome o = sim.run(TICKS);
+        assertTrue("must survive a blaze by taking cover: " + o.cause, o.survived);
+        assertFalse("a ranged mob must not be melee-charged", sim.behaviorsSeen.contains(BehaviorId.COMBAT));
+        assertTrue("must take cover from a shooter", sim.behaviorsSeen.contains(BehaviorId.SHELTER));
+    }
+
+    @Test
+    public void controlReflexesOffDiesToBlaze() {
+        SurvivalSim.Outcome o = kitted().armor(12).blaze(6).disableReflexes().run(TICKS);
+        assertFalse("with no reflexes a blaze must kill the bot", o.survived);
     }
 }

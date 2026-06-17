@@ -146,4 +146,55 @@ public class NewThreatBehaviorTest {
         s.air = 50;
         assertEquals(BehaviorId.DIG_OUT, e.tick(s, t).plan.behavior);
     }
+
+    // ---------------------------------------------------------------- drowning surface safety
+
+    @Test
+    public void drowningSealedDigsUpInsteadOfBobbing() {
+        ReflexEngine e = new ReflexEngine();
+        WorldSnapshot s = working();
+        s.underWater = true;
+        s.air = 20;
+        s.surfaceSealed = true; // capped overhead, no side opening
+        ReflexEngine.Output out = e.tick(s, t);
+        assertEquals(BehaviorId.SURFACE, out.plan.behavior);
+        ReflexAction look = find(out.actions, ReflexAction.Kind.SNAP_LOOK);
+        assertNotNull("sealed overhead: mine straight up", look);
+        assertEquals(-90F, look.pitch, 0.01F);
+        assertTrue("dig the ceiling out", holds(out.actions, Input.CLICK_LEFT));
+        assertTrue("climb the shaft", holds(out.actions, Input.JUMP));
+    }
+
+    @Test
+    public void drowningSwimsToTheSafeColumn() {
+        ReflexEngine e = new ReflexEngine();
+        WorldSnapshot s = working();
+        s.underWater = true;
+        s.air = 20;
+        s.surfaceSealed = true;
+        s.surfaceEscape = new BlockPosSpec(5, 64, 0); // open column to the side
+        ReflexEngine.Output out = e.tick(s, t);
+        assertEquals(BehaviorId.SURFACE, out.plan.behavior);
+        assertNotNull("aim toward the open column", find(out.actions, ReflexAction.Kind.LOOK));
+        assertTrue("swim to it", holds(out.actions, Input.MOVE_FORWARD));
+        assertTrue("rise into it", holds(out.actions, Input.JUMP));
+        assertNull("never blindly mine when a clear column exists",
+                find(out.actions, ReflexAction.Kind.SNAP_LOOK));
+    }
+
+    // ---------------------------------------------------------------- lava escape mob-awareness
+
+    @Test
+    public void lavaEscapeFallsBackToASafeOctantWithNoColumn() {
+        ReflexEngine e = new ReflexEngine();
+        WorldSnapshot s = working();
+        s.inLava = true;
+        s.lavaEscape = null; // every near column is lava/blocked or mob-parked
+        s.octantSafe = new boolean[]{false, false, true, false, false, false, false, false};
+        ReflexEngine.Output out = e.tick(s, t);
+        assertEquals(BehaviorId.ESCAPE_LAVA, out.plan.behavior);
+        assertTrue("float up", holds(out.actions, Input.JUMP));
+        assertTrue("still push out of the lava along a safe octant", holds(out.actions, Input.MOVE_FORWARD));
+        assertNotNull("aim along the safe octant", find(out.actions, ReflexAction.Kind.LOOK));
+    }
 }

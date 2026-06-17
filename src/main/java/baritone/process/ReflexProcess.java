@@ -26,6 +26,7 @@ import baritone.ai.ReflexLog;
 import baritone.ai.reflex.BehaviorId;
 import baritone.ai.reflex.BlockPosSpec;
 import baritone.ai.reflex.Detectors;
+import baritone.ai.reflex.EscapeColumns;
 import baritone.ai.reflex.MobInfo;
 import baritone.ai.reflex.ReflexEngine;
 import baritone.ai.reflex.ReflexMath;
@@ -401,17 +402,12 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         sampleHotbar(player, s);
         s.hasShieldOffhand = player.getOffhandItem().is(Items.SHIELD);
         s.armorValue = player.getArmorValue();
-        // world scans the pure core can't do itself
-        if (s.inLava) {
-            s.lavaEscape = findLavaEscape(player);
-        }
-        if (s.onFire && !s.inLava && !s.underWater) {
-            s.nearestWater = findWaterNear(player);
-        }
         sampleSurroundings(player, s);
         sampleAmbient(player, s);
-        // mobs (perception radius reaches past the engage radius so the bot can react to a
-        // threat that is closing fast while it is still far enough to do something about it)
+        // mobs FIRST: the lava/surface escape picks must be mob-aware (climbing out next to a mob,
+        // or surfacing into one waiting at the top, is a death the precomputed column avoids).
+        // (perception radius reaches past the engage radius so the bot can react to a threat that is
+        // closing fast while it is still far enough to do something about it)
         double scan = Math.max(Math.max(2D, tuning.creeperRadius) + 4D, tuning.perceptionRadius);
         long dtTicks = prevSnapshotTick == Long.MIN_VALUE ? 1 : Math.max(1, now - prevSnapshotTick);
         Map<Integer, Double> curMobDist = new HashMap<>();
@@ -424,6 +420,16 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         }
         prevMobDist = curMobDist;
         prevSnapshotTick = now;
+        // world scans the pure core can't do itself (after mobs, so they can be mob-aware)
+        if (s.inLava) {
+            s.lavaEscape = findLavaEscape(player, s.mobs);
+        }
+        if (s.onFire && !s.inLava && !s.underWater) {
+            s.nearestWater = findWaterNear(player);
+        }
+        if (s.underWater) {
+            sampleSurfaceEscape(player, s);
+        }
         return s;
     }
 
@@ -440,6 +446,12 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         m.creeper = e instanceof Creeper;
         m.skeleton = e instanceof AbstractSkeleton;
         m.hostile = true;
+        // unwinnable: a Warden one-shots geared players and tunnels through walls — flee, never fight.
+        m.unkillable = e.getType() == EntityType.WARDEN;
+        // ranged non-skeletons (blaze/ghast fireballs, a trident-armed drowned): out-trade a melee
+        // charge just like a skeleton, so answer with cover/shelter — never chase into their fire.
+        m.ranged = e.getType() == EntityType.BLAZE || e.getType() == EntityType.GHAST
+                || (e.getType() == EntityType.DROWNED && e.getMainHandItem().is(Items.TRIDENT));
         m.ignited = e instanceof Creeper && ((Creeper) e).isIgnited();
         m.aggro = e instanceof Mob && ((Mob) e).getTarget() == player;
         Double prev = prevMobDist.get(m.entityId);
@@ -595,9 +607,14 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         s.night = dayTime >= 13000L && dayTime <= 23000L;
     }
 
-    /** Nearest column that isn't lava (feet, head and floor all clear), ring-searched outward. */
-    private BlockPosSpec findLavaEscape(LocalPlayer player) {
+    /**
+     * Columns that aren't lava (feet, head and floor all clear), ring-searched outward, then picked
+     * mob-aware: the one farthest from any hostile (never one a mob is parked on). Climbing out RIGHT
+     * next to a waiting mob — or cooking because a mob blocked the only near column — is a real death.
+     */
+    private BlockPosSpec findLavaEscape(LocalPlayer player, List<MobInfo> mobs) {
         BlockPos feet = player.blockPosition();
+        java.util.List<BlockPosSpec> candidates = new java.util.ArrayList<>();
         for (int radius = 2; radius <= 6; radius += 2) {
             for (int dir = 0; dir < 8; dir++) {
                 double angle = dir * Math.PI / 4D;
@@ -605,11 +622,79 @@ public final class ReflexProcess extends BaritoneProcessHelper {
                         (int) Math.round(Math.cos(angle) * radius), 0,
                         (int) Math.round(Math.sin(angle) * radius));
                 if (!isLavaAt(candidate) && !isLavaAt(candidate.above()) && !isLavaAt(candidate.below())) {
-                    return new BlockPosSpec(candidate.getX(), candidate.getY(), candidate.getZ());
+                    candidates.add(new BlockPosSpec(candidate.getX(), candidate.getY(), candidate.getZ()));
                 }
             }
+            // a clear nearer ring is preferred over a farther one — only widen if nothing close is
+            // mob-clear yet (so we don't climb out next to a mob when a clear column is one ring out)
+            if (hasClearColumn(candidates, mobs)) {
+                return EscapeColumns.best(candidates, mobs);
+            }
         }
-        return null;
+        return EscapeColumns.best(candidates, mobs);
+    }
+
+    private static boolean hasClearColumn(List<BlockPosSpec> candidates, List<MobInfo> mobs) {
+        for (BlockPosSpec c : candidates) {
+            double nearest = Double.MAX_VALUE;
+            for (MobInfo m : mobs) {
+                nearest = Math.min(nearest, Math.hypot((c.x + 0.5D) - m.x, (c.z + 0.5D) - m.z));
+            }
+            if (nearest >= EscapeColumns.MOB_BLOCK_RADIUS) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Drowning escape: the nearest open-air column to surface into that is NOT capped by a solid
+     * ceiling or by lava, biased away from a mob waiting at the top, plus whether we're sealed
+     * directly overhead (must dig up instead of bobbing). Surfacing into lava or into a waiting hit
+     * was the drowning death the bot kept finding.
+     */
+    private void sampleSurfaceEscape(LocalPlayer player, WorldSnapshot s) {
+        BlockPos feet = player.blockPosition();
+        // sealed overhead: a solid (non-water, non-air) block directly above the head
+        BlockState above = ctx.world().getBlockState(feet.above(2));
+        s.surfaceSealed = isSolid(feet.above(2)) && above.getFluidState().isEmpty();
+        java.util.List<BlockPosSpec> candidates = new java.util.ArrayList<>();
+        for (int radius = 0; radius <= 4; radius++) {
+            for (int dir = 0; dir < 8 && (radius > 0 || dir == 0); dir++) {
+                double angle = dir * Math.PI / 4D;
+                BlockPos col = feet.offset(
+                        (int) Math.round(Math.cos(angle) * radius), 0,
+                        (int) Math.round(Math.sin(angle) * radius));
+                if (surfaceColumnSafe(col)) {
+                    candidates.add(new BlockPosSpec(col.getX(), col.getY(), col.getZ()));
+                }
+            }
+            BlockPosSpec best = EscapeColumns.best(candidates, s.mobs);
+            if (best != null && hasClearColumn(candidates, s.mobs)) {
+                s.surfaceEscape = best;
+                return;
+            }
+        }
+        s.surfaceEscape = EscapeColumns.best(candidates, s.mobs);
+    }
+
+    /** A column we can surface into: open to air above the head and never capped by lava. */
+    private boolean surfaceColumnSafe(BlockPos col) {
+        // scan up from head height to the first non-water block; it must be air (open sky/cave), not
+        // solid (sealed) and never lava (surfacing into fire is death)
+        BlockPos p = col.above();
+        for (int i = 0; i < 12; i++) {
+            if (isLavaAt(p)) {
+                return false;
+            }
+            BlockState st = ctx.world().getBlockState(p);
+            if (st.getFluidState().is(FluidTags.WATER)) {
+                p = p.above();
+                continue;
+            }
+            return st.isAir(); // first non-water block: open air = good, solid = sealed
+        }
+        return false;
     }
 
     private boolean isLavaAt(BlockPos pos) {

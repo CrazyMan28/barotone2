@@ -51,6 +51,16 @@ public final class MobInfo {
     public boolean skeleton;
     /** Any other Monster (zombie, spider...). */
     public boolean hostile;
+    /**
+     * Attacks from range (blaze fireballs, ghast fireballs, drowned trident...). Like a skeleton it
+     * out-trades a melee charge — answer it with cover/shelter, never chase it into its fire.
+     */
+    public boolean ranged;
+    /**
+     * Unwinnable by design (the Warden): can one-shot fully geared and out-damages any trade — there
+     * is no fight to be had, only flee. Forced down the flee ladder regardless of gear.
+     */
+    public boolean unkillable;
     /** Creeper currently hissing/ignited (severity spike). */
     public boolean ignited;
 }

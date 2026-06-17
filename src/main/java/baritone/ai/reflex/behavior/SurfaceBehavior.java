@@ -20,6 +20,7 @@ package baritone.ai.reflex.behavior;
 import baritone.ai.reflex.BehaviorId;
 import baritone.ai.reflex.ReflexAction;
 import baritone.ai.reflex.ReflexBehavior;
+import baritone.ai.reflex.ReflexMath;
 import baritone.ai.reflex.ReflexTuning;
 import baritone.ai.reflex.ResponsePlan;
 import baritone.ai.reflex.WorldSnapshot;
@@ -28,7 +29,17 @@ import baritone.api.utils.input.Input;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Drowning: hold JUMP to bob up until air refills. Swim forward if pinned under an overhang. */
+/**
+ * Drowning: get to air the SAFE way, not just "hold JUMP and hope".
+ * <ul>
+ *   <li>A safe open column is known ({@link WorldSnapshot#surfaceEscape}) — swim toward it and bob
+ *       up. The adapter only ever picks a column open to air and never capped by lava, and biases it
+ *       away from a mob waiting at the surface, so we never breach straight into a hit or into fire.</li>
+ *   <li>Sealed overhead ({@link WorldSnapshot#surfaceSealed}) with no escape — mine up while
+ *       climbing, since bobbing into a solid ceiling just keeps drowning.</li>
+ *   <li>Otherwise — hold JUMP to surface, swimming out from under an overhang if pinned.</li>
+ * </ul>
+ */
 public final class SurfaceBehavior implements ReflexBehavior {
 
     @Override
@@ -42,7 +53,23 @@ public final class SurfaceBehavior implements ReflexBehavior {
 
     @Override
     public List<ReflexAction> tick(WorldSnapshot s, ReflexTuning t, ResponsePlan plan) {
-        List<ReflexAction> actions = new ArrayList<>(2);
+        List<ReflexAction> actions = new ArrayList<>(3);
+        if (s.surfaceEscape != null) {
+            // swim toward the known-safe open column and rise into it
+            float yaw = ReflexMath.yawToward(s.posX, s.posZ,
+                    s.surfaceEscape.x + 0.5D, s.surfaceEscape.z + 0.5D);
+            actions.add(ReflexAction.look(yaw, 0F));
+            actions.add(ReflexAction.hold(Input.JUMP, true));
+            actions.add(ReflexAction.hold(Input.MOVE_FORWARD, true));
+            return actions;
+        }
+        if (s.surfaceSealed) {
+            // capped by solid block — mine up the shaft and climb it; bobbing here just drowns
+            actions.add(ReflexAction.snapLook(s.yaw, -90F));
+            actions.add(ReflexAction.hold(Input.CLICK_LEFT, true));
+            actions.add(ReflexAction.hold(Input.JUMP, true));
+            return actions;
+        }
         actions.add(ReflexAction.hold(Input.JUMP, true));
         if (s.horizontalCollision) {
             // pinned against a wall under an overhang: swim out from under it

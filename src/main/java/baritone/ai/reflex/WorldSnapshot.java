@@ -95,10 +95,21 @@ public final class WorldSnapshot {
     public int bedSlot = -1;
 
     // ---- precomputed world scans (adapter-side, since the core can't read block states)
-    /** Nearest stand-able non-lava column when in lava, else null. */
+    /**
+     * Stand-able non-lava column to climb out of lava toward, chosen mob-aware (farthest from
+     * hostiles, never one a mob is standing on), else null. {@code ReflexProcess.findLavaEscape}.
+     */
     public BlockPosSpec lavaEscape;
     /** Nearest reachable water block when on fire, else null. */
     public BlockPosSpec nearestWater;
+    /**
+     * Drowning: a SAFE open-air column to surface into — open straight up to air, never capped by
+     * lava or a solid ceiling, chosen away from any mob waiting at the surface. Null when the only
+     * way up is sealed (must dig) or into lava (must swim sideways). {@code ReflexProcess.findSurfaceEscape}.
+     */
+    public BlockPosSpec surfaceEscape;
+    /** Drowning + a solid (non-water) block directly overhead — can't just bob up; must dig or swim out. */
+    public boolean surfaceSealed;
 
     // ---- forward perception ("vision"): cheap look-ahead so reflexes act BEFORE the bot is
     //      already dying. Indexed by octant (see ReflexMath.OCTANT_*): 0=south(+Z), going

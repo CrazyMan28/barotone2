@@ -19,6 +19,7 @@ package baritone.ai.reflex.sim;
 
 import baritone.ai.reflex.BehaviorId;
 import baritone.ai.reflex.BlockPosSpec;
+import baritone.ai.reflex.EscapeColumns;
 import baritone.ai.reflex.FleeMode;
 import baritone.ai.reflex.MobInfo;
 import baritone.ai.reflex.ReflexEngine;
@@ -106,6 +107,15 @@ public final class SurvivalSim {
     public boolean digDownSafe = true; // can always dig a bare-handed turtle hole on solid ground
     public BlockPosSpec lavaEscape;
     public BlockPosSpec nearestWater;
+    public BlockPosSpec surfaceEscape;
+    public boolean surfaceSealed;
+    /**
+     * Candidate escape columns the world offers (out of lava / up from drowning). When set, the sim
+     * re-picks the actual escape column mob-aware each tick via the real {@link EscapeColumns} — the
+     * same selection the adapter does — so "a mob blocks the escape" is a fair test of the real logic.
+     */
+    private List<BlockPosSpec> lavaCandidates;
+    private List<BlockPosSpec> surfaceCandidates;
 
     // internal episode bookkeeping
     private int attackCooldown;
@@ -123,6 +133,9 @@ public final class SurvivalSim {
     private final List<SimMob> mobs = new ArrayList<>();
     private final List<SimMob> walledOff = new ArrayList<>();
 
+    /** Every distinct behavior the engine chose across the run — lets tests assert "never combat a warden". */
+    public final java.util.EnumSet<BehaviorId> behaviorsSeen = java.util.EnumSet.noneOf(BehaviorId.class);
+
     public boolean debug;
     public final List<String> log = new ArrayList<>();
 
@@ -130,6 +143,8 @@ public final class SurvivalSim {
         int id;
         String type;
         boolean creeper, skeleton, hostile;
+        boolean ranged;      // blaze/ghast/trident-drowned: shoots from range (treated like a skeleton)
+        boolean unkillable;  // warden: never winnable — must always flee
         double x, y, z;
         double hp = 20;
         double speed = 0.23D;
@@ -221,10 +236,75 @@ public final class SurvivalSim {
         return this;
     }
 
+    /**
+     * In lava with TWO stand-able columns: a near one toward +X (where a mob will be placed) and a
+     * farther clear one toward -X. The old "nearest column" pick climbs out onto the mob (and cooks
+     * while it eats hits); the mob-aware pick takes the clear column. The sim re-selects each tick
+     * via the real {@link EscapeColumns}, so this measures the real selection rule.
+     */
+    public SurvivalSim inLavaMobBlocked(double nearDist, double farDist) {
+        this.inLava = true;
+        this.lavaCandidates = new ArrayList<>();
+        this.lavaCandidates.add(new BlockPosSpec((int) Math.round(x + nearDist), (int) y, (int) z));
+        this.lavaCandidates.add(new BlockPosSpec((int) Math.round(x - farDist), (int) y, (int) z));
+        return this;
+    }
+
     public SurvivalSim drowning() {
         this.underWater = true;
         this.air = 40;
         return this;
+    }
+
+    /**
+     * Drowning sealed directly overhead (a cave ceiling / ice) with no side opening: bobbing up just
+     * keeps drowning, so the only way out is to MINE up. Without the surface-escape fix the bot holds
+     * JUMP into the ceiling and drowns; with it, it digs the shaft and climbs out.
+     */
+    public SurvivalSim drowningSealed() {
+        this.underWater = true;
+        this.air = 40;
+        this.surfaceSealed = true;
+        return this;
+    }
+
+    /**
+     * Drowning with the only safe surface to the side ({@code escapeDist} away) — straight up is
+     * sealed, so bobbing fails; the bot must swim to the open column. Models a mob potentially
+     * waiting at one opening (the column is picked mob-aware).
+     */
+    public SurvivalSim drowningSideEscape(double escapeDist) {
+        this.underWater = true;
+        this.air = 40;
+        this.surfaceSealed = true;
+        this.surfaceCandidates = new ArrayList<>();
+        this.surfaceCandidates.add(new BlockPosSpec((int) Math.round(x + escapeDist), (int) y, (int) z));
+        return this;
+    }
+
+    /** A Warden: unwinnable — must always flee, never combat, regardless of gear. */
+    public SurvivalSim warden(double dist) {
+        return warden(dist, 0);
+    }
+
+    public SurvivalSim warden(double dist, double angleDeg) {
+        SurvivalSim s = addMob("warden", dist, angleDeg, false, false, true, 0.21D, 12.0D, 1.8D);
+        SimMob m = mobs.get(mobs.size() - 1);
+        m.unkillable = true;
+        m.hp = 500; // can't be killed in the fight window — fleeing is the only survival
+        return s;
+    }
+
+    /** A ranged non-skeleton (blaze/ghast/trident-drowned): shoots from afar — answer with cover. */
+    public SurvivalSim blaze(double dist) {
+        return blaze(dist, 0);
+    }
+
+    public SurvivalSim blaze(double dist, double angleDeg) {
+        // fireballs hit hard from afar (range 14) — charging into them dies; only cover stops them
+        SurvivalSim s = addMob("blaze", dist, angleDeg, false, false, true, 0.22D, 5.5D, 14D);
+        mobs.get(mobs.size() - 1).ranged = true;
+        return s;
     }
 
     public SurvivalSim onFire(boolean water) {
@@ -388,6 +468,7 @@ public final class SurvivalSim {
         WorldSnapshot s = render();
         ReflexEngine.Output out = reflexesOff ? null : engine.tick(s, tuning);
         BehaviorId behavior = out == null ? BehaviorId.NONE : out.plan.behavior;
+        behaviorsSeen.add(behavior);
         FleeMode fleeMode = out == null ? FleeMode.NORMAL : out.plan.fleeMode;
         int target = out == null ? -1 : out.plan.targetEntityId;
 
@@ -465,10 +546,26 @@ public final class SurvivalSim {
                 }
                 break;
             case SURFACE:
-                if (++surfaceProgress >= 4) {
-                    underWater = false;
+                if (surfaceSealed && surfaceEscape == null) {
+                    // capped by solid block with no side escape: only digging up gets us out, and
+                    // bobbing (old behavior) just keeps drowning. Dig is slow; air does NOT refill
+                    // until we've broken through.
+                    if (++digOutProgress >= 16) {
+                        surfaceSealed = false;
+                        underWater = false;
+                    }
+                } else if (surfaceEscape != null && dist2D(surfaceEscape.x, surfaceEscape.z) >= 1.0D) {
+                    // sealed/open but the only safe column is to the side: swim there, surfacing only
+                    // once we reach it (air keeps draining while we cross — the behavior holds JUMP too)
+                    moveToward(surfaceEscape.x, surfaceEscape.z, BOT_SPEED);
+                    air = Math.min(300, air + 8);
+                } else {
+                    if (++surfaceProgress >= 4) {
+                        underWater = false;
+                        surfaceSealed = false;
+                    }
+                    air = Math.min(300, air + 12);
                 }
-                air = Math.min(300, air + 12);
                 break;
             case DIG_OUT:
                 digOutProgress++;
@@ -796,8 +893,8 @@ public final class SurvivalSim {
         s.blockSlot = blocks > 0 ? 1 : -1;
         s.blockCount = blocks;
         s.bedSlot = bedSlot;
-        s.lavaEscape = lavaEscape;
         s.nearestWater = nearestWater;
+        s.surfaceSealed = surfaceSealed;
         s.octantSafe = octantSafe.clone();
         s.digDownSafe = digDownSafe;
         s.night = night;
@@ -813,6 +910,8 @@ public final class SurvivalSim {
             mi.creeper = m.creeper;
             mi.skeleton = m.skeleton;
             mi.hostile = m.hostile;
+            mi.ranged = m.ranged;
+            mi.unkillable = m.unkillable;
             mi.x = m.x;
             mi.y = m.y;
             mi.z = m.z;
@@ -825,6 +924,16 @@ public final class SurvivalSim {
             mi.lineOfSight = !enclosed;
             s.mobs.add(mi);
         }
+        // mob-aware re-selection of the escape column (after mobs are rendered), exactly like the
+        // adapter does via the real EscapeColumns — so "a mob blocks the escape" is a fair test.
+        if (lavaCandidates != null) {
+            lavaEscape = EscapeColumns.best(lavaCandidates, s.mobs);
+        }
+        if (surfaceCandidates != null) {
+            surfaceEscape = EscapeColumns.best(surfaceCandidates, s.mobs);
+        }
+        s.lavaEscape = lavaEscape;
+        s.surfaceEscape = surfaceEscape;
         return s;
     }
 

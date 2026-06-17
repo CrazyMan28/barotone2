@@ -32,6 +32,8 @@ public final class Detectors {
     public static final int SEV_VOID = 100;
     public static final int SEV_SUFFOCATION = 96;
     public static final int SEV_DROWN = 95;
+    /** The Warden — unwinnable, one-shots geared players. Outranks every other mob: drop everything and run. */
+    public static final int SEV_WARDEN = 92;
     public static final int SEV_FALL = 90;
     public static final int SEV_SWARM = 85;
     public static final int SEV_FLEE_MOB = 80;
@@ -176,15 +178,15 @@ public final class Detectors {
     }
 
     /**
-     * True if a mob we must FLEE is within radius: any creeper, any skeleton when not combat-ready,
-     * or any plain hostile while the fight is unfavorable (gear-aware). The flee release check uses
-     * this with radius+4 (hysteresis).
+     * True if a mob we must FLEE is within radius: any Warden, any creeper, any shooter
+     * (skeleton/blaze/ghast) when not combat-ready, or any plain hostile while the fight is
+     * unfavorable (gear-aware). The flee release check uses this with radius+4 (hysteresis).
      */
     public static boolean fleeRequiredWithin(WorldSnapshot s, ReflexTuning t, double radius) {
         boolean ready = combatReady(s, t);
         boolean outmatched = t.gearAwareCombat && !CombatPower.fightFavorable(s, t);
-        return anyWithin(s, radius, m -> m.creeper || (m.skeleton && !ready)
-                || (outmatched && m.hostile && !m.creeper && !m.skeleton));
+        return anyWithin(s, radius, m -> m.unkillable || m.creeper || (isShooter(m) && !ready)
+                || (outmatched && m.hostile && !m.creeper && !isShooter(m)));
     }
 
     /** A skeleton we choose to stand and fight: geared, healthy, and no creeper to flee first. */
@@ -207,30 +209,50 @@ public final class Detectors {
                 ? new Threat(ThreatType.DROWN, SEV_DROWN) : null;
     }
 
+    /** A mob that fights from range — skeleton (arrows) or blaze/ghast/trident-drowned (fireballs/tridents). */
+    public static boolean isShooter(MobInfo m) {
+        return m.skeleton || m.ranged;
+    }
+
     /**
-     * The mobs answered by FLEE: creepers always (they explode — never melee one), skeletons when
-     * we aren't geared to take them (closing on a skeleton unarmed just eats arrows), and any plain
-     * hostile while the gear-aware power comparison says we'd lose the trade (OUTMATCHED).
+     * The mobs answered by FLEE: a Warden always (unwinnable — drop everything and run), creepers
+     * always (they explode — never melee one), shooters (skeletons/blaze/ghast) when we aren't geared
+     * to take them (closing on a shooter unarmed just eats arrows/fireballs), and any plain hostile
+     * while the gear-aware power comparison says we'd lose the trade (OUTMATCHED).
      */
     public static Threat fleeMob(WorldSnapshot s, ReflexTuning t) {
+        // a Warden out-ranks every mob and ignores gear: there is no winnable fight, only flight.
+        MobInfo warden = nearestFlee(s, t, m -> m.unkillable);
+        if (warden == null) {
+            warden = nearest(s, t.perceptionRadius, m -> m.unkillable);
+        }
+        if (warden != null) {
+            return new Threat(ThreatType.WARDEN, SEV_WARDEN, warden);
+        }
         if (t.fleeCreepers) {
             MobInfo creeper = nearestFlee(s, t, m -> m.creeper);
             if (creeper != null) {
                 int sev = SEV_FLEE_MOB + (creeper.ignited ? SEV_IGNITED_BONUS : 0);
                 return new Threat(ThreatType.CREEPER, sev, creeper);
             }
-            MobInfo skeleton = nearestFlee(s, t, m -> m.skeleton);
-            if (skeleton != null && skeletonToFight(s, t) == null) {
-                return new Threat(ThreatType.RANGED, SEV_FLEE_MOB, skeleton);
+            MobInfo shooter = nearestFlee(s, t, Detectors::isShooter);
+            if (shooter != null && skeletonToFight(s, t) == null) {
+                return new Threat(ThreatType.RANGED, SEV_FLEE_MOB, shooter);
             }
         }
+        // a committed shooter caught past the flee radius (e.g. a blaze hovering at range, lobbing
+        // fireballs) still gets cover, not an open-field OUTMATCHED flee that runs into its fire
+        MobInfo rangedFar = nearestCommitted(s, t, t.perceptionRadius, m -> m.ranged && !m.skeleton);
+        if (t.fleeCreepers && rangedFar != null && skeletonToFight(s, t) == null) {
+            return new Threat(ThreatType.RANGED, SEV_FLEE_MOB, rangedFar);
+        }
         if (t.gearAwareCombat && !CombatPower.fightFavorable(s, t)) {
-            // a committed (charging) hostile gets the full proactive radius — a real head start to
-            // run; a merely nearby idle one only the normal flee radius
+            // a committed (charging) MELEE hostile gets the full proactive radius — a real head start
+            // to run; a merely nearby idle one only the normal flee radius (shooters go to cover above)
             MobInfo hostile = nearestCommitted(s, t, t.proactiveEngageRadius,
-                    m -> m.hostile && !m.creeper && !m.skeleton);
+                    m -> m.hostile && !m.creeper && !isShooter(m));
             if (hostile == null) {
-                hostile = nearestFlee(s, t, m -> m.hostile && !m.creeper && !m.skeleton);
+                hostile = nearestFlee(s, t, m -> m.hostile && !m.creeper && !isShooter(m));
             }
             if (hostile != null) {
                 return new Threat(ThreatType.OUTMATCHED, SEV_OUTMATCHED, hostile);
@@ -249,12 +271,15 @@ public final class Detectors {
             return new Threat(ThreatType.MELEE_MOB, SEV_MELEE, skeleton);
         }
         if (canBrawl(s, t)) {
-            // proactive: meet a hostile that's committed to us BEFORE it reaches melee range...
+            // proactive: meet a MELEE hostile committed to us BEFORE it reaches range. Never a target:
+            // a shooter (blaze/ghast/trident-drowned out-trade a charge like a skeleton) or a Warden
+            // (unwinnable — no trade is worth taking)...
             MobInfo target = nearestCommitted(s, t, t.proactiveEngageRadius,
-                    m -> m.hostile && !m.creeper && !m.skeleton);
+                    m -> m.hostile && !m.creeper && !m.unkillable && !isShooter(m));
             // ...or one that already hit us but isn't flagged as approaching (reactive fallback)
             if (target == null && recentlyHurt(s, t)) {
-                target = nearest(s, t.meleeEngageRadius, m -> m.hostile && !m.creeper && !m.skeleton);
+                target = nearest(s, t.meleeEngageRadius,
+                        m -> m.hostile && !m.creeper && !m.unkillable && !isShooter(m));
             }
             if (target != null) {
                 return new Threat(ThreatType.MELEE_MOB, SEV_MELEE, target);

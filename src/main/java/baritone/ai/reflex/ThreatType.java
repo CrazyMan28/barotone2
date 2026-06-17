@@ -28,6 +28,8 @@ public enum ThreatType {
     SUFFOCATION,
     FIRE,
     FALL,
+    /** The Warden: unwinnable, one-shots geared players — always flee, ranks above every other mob. */
+    WARDEN,
     CREEPER,
     SWARM,
     RANGED,
