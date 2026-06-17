@@ -98,7 +98,13 @@ public final class ReflexTuning {
     public int fleeEpisodeGapTicks = 100;
     public double panicDistance = 4.5D;      // inside this, sprint away before pathing
     public int fleeGoalDistance = 16;
-    public int pillarHeight = 3;
+    public int pillarHeight = 3;             // min blocks on hand to bother choosing PILLAR
+    /** Climb at LEAST this high when pillaring (a 3-tall pillar still eats a creeper blast). */
+    public int pillarTargetHeight = 6;
+    /** Never pillar past this (out of blocks / diminishing returns / don't tower forever). */
+    public int pillarMaxHeight = 16;
+    /** Keep climbing until every creeper is at least this many blocks BELOW us (blast falls off ~4). */
+    public int creeperSafeGap = 5;
 
     // ---- health modulation / retreat
     public double lowHpFleeBias = 0.8D;      // severity *= 1 + bias*(1-hpFrac) for mob-flee threats

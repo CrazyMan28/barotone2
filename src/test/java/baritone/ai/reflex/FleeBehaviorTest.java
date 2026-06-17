@@ -89,11 +89,17 @@ public class FleeBehaviorTest {
         assertNotNull("place at the apex", place);
         assertEquals(64, place.pos.y);
 
-        // tall enough: stop building, stand safe
+        // a 3-tall pillar still eats a creeper blast (the real-world death) — keep climbing
+        WorldSnapshot midClimb = chased(4);
+        midClimb.posY = 67.1; // ~3 up: NOT safe yet
+        List<ReflexAction> a25 = b.tick(midClimb, t, plan(midClimb, FleeMode.PILLAR));
+        assertTrue("a 3-tall pillar is too short — keep jumping", holds(a25, Input.JUMP));
+
+        // safely high (>= pillarTargetHeight above the creeper): stop building, stand safe
         WorldSnapshot top = chased(4);
-        top.posY = 67.1;
+        top.posY = 70.2; // ~6 up, clear of the blast
         List<ReflexAction> a3 = b.tick(top, t, plan(top, FleeMode.PILLAR));
-        assertNull("pillar is done", find(a3, ReflexAction.Kind.PLACE_BLOCK));
+        assertNull("pillar is done once safely high", find(a3, ReflexAction.Kind.PLACE_BLOCK));
         assertTrue("stop jumping", !holds(a3, Input.JUMP));
     }
 

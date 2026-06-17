@@ -76,10 +76,17 @@ public class SurvivalRateTest {
             all.add(new Scenario("creeper@" + d + " kitted", () -> kitted().creeper(d)));
             all.add(new Scenario("creeper@" + d + " fresh", () -> freshBlocks().creeper(d)));
         }
-        // B. cornered / boxed creeper with blocks — must pillar up
+        // B. cornered / boxed creeper with blocks — must pillar up HIGH ENOUGH (blast reaches ~4 up)
         all.add(new Scenario("creeper cornered+blocks", () -> kitted().creeper(5).cornered()));
         all.add(new Scenario("creeper boxed+blocks", () -> kitted().creeper(5).fullyBoxed()));
         all.add(new Scenario("ignited creeper close+blocks", () -> kitted().creeper(4).fullyBoxed()));
+        // the real-world death: cornered creeper while already hurt — a 3-tall pillar gets you killed,
+        // only a dynamic tall pillar (clearing the creeper by the safe gap) survives
+        all.add(new Scenario("lowhp boxed creeper", () -> kitted().armor(8).hp(10).creeper(4).fullyBoxed()));
+        all.add(new Scenario("lowhp cornered creeper", () -> kitted().armor(8).hp(9).creeper(5).cornered()));
+        // creeper standing on a ledge level-ish with us — pillar must out-climb the creeper's OWN height
+        all.add(new Scenario("creeper on ledge boxed", () -> kitted().creeperAtHeight(4, 3).fullyBoxed()));
+        all.add(new Scenario("creeper on ledge cornered", () -> kitted().armor(10).hp(12).creeperAtHeight(4, 2).cornered()));
 
         // C. armed skeleton — must fight and win
         for (double d : new double[]{5, 7, 10, 14}) {

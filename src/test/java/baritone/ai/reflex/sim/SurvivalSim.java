@@ -57,6 +57,8 @@ public final class SurvivalSim {
     private static final double CREEPER_BLAST = 45D;  // point-blank damage (lethal even geared)
     private static final double CREEPER_RANGE = 3.0D; // fuse range
     private static final double CREEPER_STOP = 0.6D;  // a creeper walks right up onto the player
+    /** A creeper blast reaches ~4 blocks UP — a 3-tall pillar still eats it (the real-world death). */
+    private static final double BLAST_VERTICAL = 4.5D;
     private static final int SHELTER_BUILD_TICKS = 22; // ticks to seal a turtle hole / wall in
     private static final int WALL_BUILD_TICKS = 12;
     // a mob loses the bot once it has been outrun (broken contact) or sealed away long enough — the
@@ -245,6 +247,13 @@ public final class SurvivalSim {
 
     public SurvivalSim creeper(double dist, double angleDeg) {
         return addMob("creeper", dist, angleDeg, true, false, false, 0.21D, 0, 0);
+    }
+
+    /** A creeper standing {@code dy} blocks above the bot (mesa ledge) — a short pillar won't clear it. */
+    public SurvivalSim creeperAtHeight(double dist, double dy) {
+        creeper(dist, 0);
+        mobs.get(mobs.size() - 1).y = y + dy;
+        return this;
     }
 
     public SurvivalSim skeleton(double dist) {
@@ -472,7 +481,16 @@ public final class SurvivalSim {
                     pillaring = true;
                     pillarBaseY = y;
                 }
-                if (y - pillarBaseY < tuning.pillarHeight) {
+                // climb to the dynamic safe height: at least pillarTargetHeight, and high enough that
+                // every creeper is creeperSafeGap below us — measured against the creeper's own Y.
+                double needed = tuning.pillarTargetHeight;
+                for (SimMob m : mobs) {
+                    if (m.creeper) {
+                        needed = Math.max(needed, (m.y - pillarBaseY) + tuning.creeperSafeGap);
+                    }
+                }
+                needed = Math.min(needed, tuning.pillarMaxHeight);
+                if (y - pillarBaseY < needed) {
                     y += PILLAR_RATE;
                     if (gameTime % 3 == 0) {
                         blocks--;
@@ -686,8 +704,15 @@ public final class SurvivalSim {
     }
 
     private boolean botOutOfReach(SimMob m) {
-        // pillared up out of melee/blast reach
-        return pillaring && (y - pillarBaseY) >= 2.4D && !m.skeleton;
+        // pillared up out of melee/blast reach. A creeper's blast reaches ~4 blocks up, so a short
+        // pillar does NOT clear it — must be BLAST_VERTICAL above the creeper. Skeletons shoot upward
+        // regardless, so pillaring never blocks them (the brain shelters from shooters instead).
+        if (m.skeleton) {
+            return false;
+        }
+        double gap = y - m.y; // height of the bot above THIS mob (creeper may be on a higher ledge)
+        double reach = m.creeper ? BLAST_VERTICAL : 2.4D;
+        return pillaring && gap >= reach;
     }
 
     // ---------------------------------------------------------------- snapshot rendering

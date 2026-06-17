@@ -98,8 +98,13 @@ public final class FleeBehavior implements ReflexBehavior {
         if (Double.isNaN(pillarBase)) {
             pillarBase = Math.floor(s.posY);
         }
-        if (s.posY - pillarBase >= t.pillarHeight - 0.2D || s.blockSlot < 0) {
-            return List.of(ReflexAction.releaseAll()); // tall enough (or out of blocks): stand safe
+        double built = s.posY - pillarBase;
+        double needed = safePillarHeight(s, t);
+        // climb until we're truly clear (a fixed 3-tall pillar still eats a creeper blast, and on
+        // mesa/cliff terrain the creeper can be at our level — so the height is measured against the
+        // creeper, not our start). Stop only when high enough, out of blocks, or capped out.
+        if (built >= needed - 0.2D || s.blockSlot < 0 || s.blockCount <= 0) {
+            return List.of(ReflexAction.releaseAll()); // safe height reached / nothing left to build with
         }
         List<ReflexAction> actions = new ArrayList<>(4);
         actions.add(ReflexAction.selectSlot(s.blockSlot));
@@ -111,6 +116,22 @@ public final class FleeBehavior implements ReflexBehavior {
                     (int) Math.floor(s.posX), (int) Math.floor(s.posY) - 1, (int) Math.floor(s.posZ))));
         }
         return actions;
+    }
+
+    /**
+     * How high this pillar must reach to be safe: at least {@code pillarTargetHeight}, but raised so
+     * that EVERY nearby creeper ends up {@code creeperSafeGap} blocks below us — measured against the
+     * creeper's own Y, because on mesa/cliff terrain a creeper can stand level with or above us, and a
+     * pillar relative only to our start would leave us inside the blast. Capped at {@code pillarMaxHeight}.
+     */
+    private double safePillarHeight(WorldSnapshot s, ReflexTuning t) {
+        double needed = t.pillarTargetHeight;
+        for (MobInfo m : s.mobs) {
+            if (m.creeper && m.distance <= t.perceptionRadius) {
+                needed = Math.max(needed, (m.y - pillarBase) + t.creeperSafeGap);
+            }
+        }
+        return Math.min(needed, t.pillarMaxHeight);
     }
 
     /** Brick up the cell between us and the chaser, feet and head height. */
