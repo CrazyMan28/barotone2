@@ -181,25 +181,15 @@ public final class FleeBehavior implements ReflexBehavior {
         if (nearest == null) {
             return List.of(ReflexAction.releaseAll());
         }
-        if (nearest.distance <= t.panicDistance) {
-            // PANIC: sprint away before pathing can even compute — but never INTO lava or off a
-            // ledge. Use the average away-vector from every pursuer, snapped to a safe direction.
-            float awayYaw = Moves.awayFromAll(s, mobs);
-            List<ReflexAction> actions = new ArrayList<>(4);
-            if (Moves.boxedIn(s, awayYaw)) {
-                // hazards all around: don't run into one. Face the threat and let the escalation
-                // ladder resolve it (pillar/wall) instead of sprinting to our death.
-                actions.add(ReflexAction.look(awayYaw, 5F));
-                return actions;
-            }
-            actions.add(ReflexAction.look(Moves.safeFleeYaw(s, awayYaw), 5F));
-            actions.add(ReflexAction.hold(Input.MOVE_FORWARD, true));
-            actions.add(ReflexAction.hold(Input.SPRINT, true));
-            if (s.horizontalCollision) {
-                actions.add(ReflexAction.hold(Input.JUMP, true));
-            }
-            return actions;
-        }
+        // PATHFINDING-FIRST: hand Baritone a GoalRunAway and let it navigate AROUND terrain — walls,
+        // hills, trees, water, diagonal pinches — at ALL ranges, even point-blank. The old code raw-
+        // sprinted (look + MOVE_FORWARD) inside panicDistance "before pathing can compute", but a raw
+        // forward press has no obstacle avoidance: the one-block hazard look-ahead can't see a wall two
+        // blocks out or a diagonal squeeze, and the smoothed look walks the body the wrong way, so the
+        // bot ground into terrain and the chaser killed the stuck bot (the live "looks one way, gets
+        // stuck" death). Baritone sprints along its computed path immediately and reroutes every tick,
+        // so it is both faster in practice and never wedges. If it genuinely can't find a way out
+        // (boxed/walled), the brain's progress watchdog escalates to PILLAR/WALL/NEW_DIRECTION fast.
         BlockPosSpec[] from = new BlockPosSpec[mobs.size()];
         for (int i = 0; i < mobs.size(); i++) {
             MobInfo m = mobs.get(i);

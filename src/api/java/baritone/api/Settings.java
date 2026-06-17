@@ -1381,6 +1381,19 @@ public final class Settings {
     public final Setting<Boolean> aiRemoteBridge = new Setting<>(false);
 
     /**
+     * Debug control bridge (for headless agent-driven testing — drive the game WITHOUT touching the
+     * desktop). When true, lines written to {@code <gameDir>/baritone/debug_commands.txt} are executed
+     * a few times a second and the file is truncated; an ack line per command is appended to
+     * {@code debug_log.txt}. A line beginning with {@code /} runs as a VANILLA command on the
+     * integrated server at operator level (works even when the world has cheats off, and {@code ~}/
+     * {@code @p} resolve at the player), so {@code /time set night}, {@code /summon}, {@code /difficulty}
+     * etc. all work; {@code screenshot} snaps the window; anything else runs as a Baritone command
+     * ({@code ai get wood}, {@code #goto ...}). Local filesystem only; no network surface. Defaults ON
+     * in this debug fork so an external agent can drive the game with zero desktop interaction.
+     */
+    public final Setting<Boolean> aiDebugBridge = new Setting<>(true);
+
+    /**
      * Fast path for the fine-tuned {@code baritone-brain} ollama model: when the active ollama model
      * name starts with "baritone-brain", the agent first sends a tiny schema-free prompt (the tools
      * are baked into the model's weights) and executes the single tool call it returns - typically

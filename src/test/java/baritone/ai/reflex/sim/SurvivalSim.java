@@ -22,7 +22,9 @@ import baritone.ai.reflex.BlockPosSpec;
 import baritone.ai.reflex.EscapeColumns;
 import baritone.ai.reflex.FleeMode;
 import baritone.ai.reflex.MobInfo;
+import baritone.ai.reflex.ReflexAction;
 import baritone.ai.reflex.ReflexEngine;
+import baritone.ai.reflex.ReflexMath;
 import baritone.ai.reflex.ReflexTuning;
 import baritone.ai.reflex.WorldSnapshot;
 
@@ -132,6 +134,16 @@ public final class SurvivalSim {
 
     // terrain
     public boolean[] octantSafe = {true, true, true, true, true, true, true, true};
+    /**
+     * Whether a direction is actually WALKABLE for raw {@code MOVE_FORWARD} (not just hazard-free).
+     * This is the fidelity the old sim lacked: in real Minecraft a direction can be {@code octantSafe}
+     * (no lava/ledge in the one block the reflex look-ahead checks) yet not traversable by a raw sprint —
+     * a wall 2+ blocks out, a diagonal squeeze, water, or simply the smoothed-look lag walking the body
+     * the wrong way. A raw-input flee LOCKED to such a direction grinds in place (the real death); only
+     * Baritone pathfinding ({@code SET_GOAL}) routes around it. Defaults all-true so open-terrain
+     * scenarios (every pre-existing test) move exactly as before.
+     */
+    public boolean[] octantWalkable = {true, true, true, true, true, true, true, true};
     public boolean digDownSafe = true; // can always dig a bare-handed turtle hole on solid ground
     public BlockPosSpec lavaEscape;
     /**
@@ -277,6 +289,26 @@ public final class SurvivalSim {
     public SurvivalSim fullyBoxed() {
         for (int i = 0; i < octantSafe.length; i++) {
             octantSafe[i] = false;
+        }
+        return this;
+    }
+
+    /**
+     * A wall/obstacle in {@code octant}: hazard-free ({@code octantSafe} stays true, so the reflex's
+     * one-block look-ahead and {@code safeFleeYaw} still pick it) but NOT walkable, so a raw
+     * {@code MOVE_FORWARD} locked to it gets stuck. Models the terrain that kills a raw-sprint flee in
+     * the real game (a wall just past the look-ahead, a diagonal pinch, water) while pathfinding routes
+     * around it. The bot survives only if its flee hands Baritone a goal instead of mashing forward.
+     */
+    public SurvivalSim wall(int octant) {
+        octantWalkable[octant % 8] = false;
+        return this;
+    }
+
+    /** Walls in every direction except {@code openOctant}: a raw sprint can only escape one way. */
+    public SurvivalSim wallsExcept(int openOctant) {
+        for (int i = 0; i < octantWalkable.length; i++) {
+            octantWalkable[i] = i == (openOctant % 8);
         }
         return this;
     }
@@ -672,6 +704,7 @@ public final class SurvivalSim {
         behaviorsSeen.add(behavior);
         FleeMode fleeMode = out == null ? FleeMode.NORMAL : out.plan.fleeMode;
         int target = out == null ? -1 : out.plan.targetEntityId;
+        List<ReflexAction> actions = out == null ? List.of() : out.actions;
 
         boolean hurtThisTick = false;
 
@@ -685,7 +718,7 @@ public final class SurvivalSim {
         }
 
         // 1. apply the bot's chosen response (its physical consequence)
-        applyBehavior(behavior, fleeMode, target);
+        applyBehavior(behavior, fleeMode, target, actions);
 
         // 2. step the threats
         hurtThisTick |= stepHazards();
@@ -718,7 +751,7 @@ public final class SurvivalSim {
         return behavior;
     }
 
-    private void applyBehavior(BehaviorId behavior, FleeMode fleeMode, int target) {
+    private void applyBehavior(BehaviorId behavior, FleeMode fleeMode, int target, List<ReflexAction> actions) {
         // remember where we started this tick so we can credit ANY movement off a contact hazard
         // (real MC clears cactus/magma/sweet-berry damage the instant you leave the block, no matter
         // which behavior moved you — not just EXTINGUISH_FIRE). See the post-switch clear below.
@@ -810,7 +843,7 @@ public final class SurvivalSim {
                 }
                 break;
             case FLEE:
-                doFlee(fleeMode);
+                doFlee(fleeMode, actions);
                 break;
             case COMBAT:
                 doCombat(target);
@@ -962,7 +995,7 @@ public final class SurvivalSim {
         return best;
     }
 
-    private void doFlee(FleeMode mode) {
+    private void doFlee(FleeMode mode, List<ReflexAction> actions) {
         if (mode == FleeMode.PILLAR) {
             if (blocks > 0) {
                 if (!pillaring) {
@@ -1001,12 +1034,53 @@ public final class SurvivalSim {
                 return;
             }
         }
-        // NORMAL / NEW_DIRECTION: sprint directly away from the pursuers, along a safe direction
-        double[] away = awayVector(true);
-        if (away == null) {
-            return; // boxed in with nobody to run from
+        // NORMAL / NEW_DIRECTION: move the way the behavior ACTUALLY chose this tick. This is the
+        // fidelity that exposes the real bug:
+        //  - a pathfinding GoalRunAway routes around terrain → pick the best safe+walkable heading;
+        //  - a raw MOVE_FORWARD is LOCKED to the looked direction → it only moves if that one octant is
+        //    walkable, otherwise it grinds in place (stuck) while the mob closes — the live-game death.
+        if (hasGoal(actions)) {
+            double[] away = awayVector(true);
+            if (away != null) {
+                moveAlongSafe(away[0], away[1], BOT_SPEED);
+            }
+        } else if (hasRawForward(actions)) {
+            int octant = ReflexMath.nearestOctant(lookedYaw(actions));
+            double ang = Math.toRadians(octant * 45);
+            moveAlongSafe(Math.sin(ang), Math.cos(ang), BOT_SPEED); // no-ops if that octant isn't walkable
         }
-        moveAlongSafe(away[0], away[1], BOT_SPEED);
+        // else: behavior emitted no locomotion this tick (boxed-in look-only) — hold position.
+    }
+
+    /** True if the behavior handed Baritone a pathing goal this tick (routes around terrain). */
+    private static boolean hasGoal(List<ReflexAction> actions) {
+        for (ReflexAction a : actions) {
+            if (a.kind == ReflexAction.Kind.SET_GOAL) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** True if the behavior is driving raw forward movement (locked to the looked direction). */
+    private static boolean hasRawForward(List<ReflexAction> actions) {
+        for (ReflexAction a : actions) {
+            if (a.kind == ReflexAction.Kind.HOLD_INPUT
+                    && a.input == baritone.api.utils.input.Input.MOVE_FORWARD && a.pressed) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** The yaw the behavior is looking/moving along this tick (from its LOOK/SNAP_LOOK action). */
+    private static float lookedYaw(List<ReflexAction> actions) {
+        for (ReflexAction a : actions) {
+            if (a.kind == ReflexAction.Kind.LOOK || a.kind == ReflexAction.Kind.SNAP_LOOK) {
+                return a.yaw;
+            }
+        }
+        return 0F;
     }
 
     private void doCombat(int target) {
@@ -1463,8 +1537,8 @@ public final class SurvivalSim {
         double bestScore = Double.NEGATIVE_INFINITY;
         double[] best = null;
         for (int o = 0; o < 8; o++) {
-            if (!octantSafe[o]) {
-                continue;
+            if (!octantSafe[o] || !octantWalkable[o]) {
+                continue; // pathfinding routes only through directions that are BOTH safe and walkable
             }
             double ang = Math.toRadians(o * 45);
             double ux = Math.sin(ang);
@@ -1516,7 +1590,9 @@ public final class SurvivalSim {
 
     private boolean isBlocked(double ux, double uz) {
         int octant = octantOf(ux, uz);
-        return !octantSafe[octant];
+        // blocked by a hazard (lava/ledge) OR by terrain a raw sprint can't traverse (wall/squeeze).
+        // The walkable check is what makes a raw MOVE_FORWARD into an obstacle actually GET STUCK.
+        return !octantSafe[octant] || !octantWalkable[octant];
     }
 
     /** Map a direction vector to one of the 8 octants matching {@link baritone.ai.reflex.ReflexMath}. */

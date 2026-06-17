@@ -97,8 +97,9 @@ public class ShelterBehaviorTest {
         ResponsePlan plan = ranged(sk);
         b.enter(s, plan);
         List<ReflexAction> actions = b.tick(s, t, plan);
-        assertTrue("must move toward cover", holds(actions, Input.MOVE_FORWARD));
-        assertNotNull("must steer (look) toward the cover octant", find(actions, ReflexAction.Kind.LOOK));
+        ReflexAction g = find(actions, ReflexAction.Kind.SET_GOAL);
+        assertNotNull("must PATH toward cover (Baritone routes around terrain), not raw-sprint into it", g);
+        assertEquals("a RUN_AWAY goal from the shooter", GoalSpec.Kind.RUN_AWAY, g.goal.kind);
     }
 
     @Test
@@ -214,8 +215,9 @@ public class ShelterBehaviorTest {
         ResponsePlan plan = nightExposure();
         b.enter(s, plan);
         List<ReflexAction> actions = b.tick(s, t, plan);
-        assertTrue("nothing to build with: at least get behind something",
-                holds(actions, Input.MOVE_FORWARD));
+        ReflexAction g = find(actions, ReflexAction.Kind.SET_GOAL);
+        assertNotNull("nothing to build with: at least PATH to cover", g);
+        assertEquals(GoalSpec.Kind.RUN_AWAY, g.goal.kind);
     }
 
     @Test

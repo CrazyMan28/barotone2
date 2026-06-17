@@ -98,7 +98,7 @@ public class EngineParityTest {
     }
 
     @Test
-    public void fleePanicSprintsDirectlyAway() {
+    public void fleePointBlankPathsAwayNotRawSprint() {
         ReflexEngine e = new ReflexEngine();
         WorldSnapshot s = working();
         MobInfo creeper = new MobInfo();
@@ -109,14 +109,14 @@ public class EngineParityTest {
         s.mobs.add(creeper);
         ReflexEngine.Output out = e.tick(s, t);
         assertEquals(BehaviorId.FLEE, out.plan.behavior);
-        assertTrue(holds(out.actions, Input.MOVE_FORWARD));
-        assertTrue(holds(out.actions, Input.SPRINT));
-        ReflexAction look = find(out.actions, ReflexAction.Kind.LOOK);
-        assertNotNull(look);
-        // away from due-east => face west => minecraft yaw 90
-        assertEquals(90F, look.yaw, 1.5F);
-        assertFalse("panic mode must not hand pathing a goal",
-                out.actions.stream().anyMatch(a -> a.kind == ReflexAction.Kind.SET_GOAL));
+        // PATHFINDING-FIRST even point-blank: hand Baritone a GoalRunAway so it routes AROUND terrain
+        // instead of raw-sprinting into a wall it can't see and wedging (the live "gets stuck" death).
+        ReflexAction goal = find(out.actions, ReflexAction.Kind.SET_GOAL);
+        assertNotNull("point-blank flee must still path away, not raw-sprint", goal);
+        assertEquals(GoalSpec.Kind.RUN_AWAY, goal.goal.kind);
+        assertEquals(1, goal.goal.from.length);
+        assertFalse("must not drive a raw forward sprint",
+                holds(out.actions, Input.MOVE_FORWARD) || holds(out.actions, Input.SPRINT));
     }
 
     @Test

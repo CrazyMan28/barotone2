@@ -20,6 +20,7 @@ package baritone.ai.reflex.behavior;
 import baritone.ai.reflex.BehaviorId;
 import baritone.ai.reflex.BlockPosSpec;
 import baritone.ai.reflex.Detectors;
+import baritone.ai.reflex.GoalSpec;
 import baritone.ai.reflex.MobInfo;
 import baritone.ai.reflex.ReflexAction;
 import baritone.ai.reflex.ReflexBehavior;
@@ -262,17 +263,22 @@ public final class ShelterBehavior implements ReflexBehavior {
                 mode = Mode.WALL_IN;
                 return tickWall(s, t);
             }
-            return run(Moves.safeFleeYaw(s, awayYaw));
+            return pathAway(s, t, menace);
         }
-        return run(ReflexMath.octantYaw(cover));
+        return pathAway(s, t, menace);
     }
 
-    private List<ReflexAction> run(float yaw) {
-        List<ReflexAction> actions = new ArrayList<>(3);
-        actions.add(ReflexAction.look(yaw, 5F));
-        actions.add(ReflexAction.hold(Input.MOVE_FORWARD, true));
-        actions.add(ReflexAction.hold(Input.SPRINT, true));
-        return actions;
+    /**
+     * Move to cover by handing Baritone a GoalRunAway from the menace — it routes AROUND terrain to put
+     * distance/cover between us and the shooter. The old raw {@code MOVE_FORWARD} toward a looked yaw
+     * had no obstacle avoidance and wedged the bot against terrain (the look-ahead can't see a wall past
+     * one block, and the smoothed look walks the body the wrong way), so it stood still getting shot.
+     */
+    private static List<ReflexAction> pathAway(WorldSnapshot s, ReflexTuning t, MobInfo menace) {
+        return List.of(
+                ReflexAction.releaseAll(),
+                ReflexAction.setGoal(GoalSpec.runAway(t.fleeGoalDistance, ReflexMath.feetBlock(menace)))
+        );
     }
 
     /** Sheltered: stand still and keep the hunger bar high enough for natural regen. */

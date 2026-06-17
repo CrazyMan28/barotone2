@@ -26,7 +26,6 @@ import baritone.ai.reflex.ReflexMath;
 import baritone.ai.reflex.ReflexTuning;
 import baritone.ai.reflex.ResponsePlan;
 import baritone.ai.reflex.WorldSnapshot;
-import baritone.api.utils.input.Input;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -68,18 +67,12 @@ public final class DropGoldBehavior implements ReflexBehavior {
             actions.add(ReflexAction.dropSlot(s.goldSlot));
         }
         // 2. back off from the piglins regardless — opening distance while (and after) the gold leaves
-        // our hand. Sprint along a SAFE direction away from the nearest piglin (never into lava/a ledge).
+        // our hand. Pathfind away (GoalRunAway) so Baritone routes around terrain instead of raw-
+        // sprinting into a wall and wedging the bot in the middle of the pack.
         MobInfo piglin = nearestPiglin(s, t);
         if (piglin != null) {
-            float awayYaw = ReflexMath.yawAway(s.posX, s.posZ, piglin.x, piglin.z);
-            if (!Moves.boxedIn(s, awayYaw)) {
-                actions.add(ReflexAction.look(Moves.safeFleeYaw(s, awayYaw), 5F));
-                actions.add(ReflexAction.hold(Input.MOVE_FORWARD, true));
-                actions.add(ReflexAction.hold(Input.SPRINT, true));
-            } else {
-                actions.add(ReflexAction.setGoal(GoalSpec.runAway(t.fleeGoalDistance,
-                        ReflexMath.feetBlock(piglin))));
-            }
+            actions.add(ReflexAction.setGoal(GoalSpec.runAway(t.fleeGoalDistance,
+                    ReflexMath.feetBlock(piglin))));
         }
         return actions;
     }

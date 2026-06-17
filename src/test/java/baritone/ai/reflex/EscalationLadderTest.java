@@ -76,14 +76,43 @@ public class EscalationLadderTest {
         assertEquals(FleeMode.NEW_DIRECTION, resolveAfterLongChase(chasedBy(true, 0)));
     }
 
+    /**
+     * A flee that is actually OPENING GROUND keeps running (NORMAL) — it must not needlessly escalate
+     * to pillar/wall while the plan is working. (Progress is simulated by advancing the bot's position
+     * each tick; the progress watchdog sees movement and holds off.)
+     */
     @Test
-    public void shortFleesNeverEscalate() {
+    public void aProgressingFleeKeepsRunning() {
         ResponseArbiter a = new ResponseArbiter();
         WorldSnapshot s = chasedBy(true, 30);
-        for (long tick = 0; tick <= 60; tick++) {
+        for (long tick = 0; tick <= 80; tick++) {
             s.gameTime = tick;
+            s.posX += 0.2; // the bot is moving — a working flee, not a wedged one
             assertEquals(FleeMode.NORMAL, a.decide(s, t).fleeMode);
         }
+    }
+
+    /**
+     * The fix: a flee that makes NO progress (wedged against terrain / boxed in) escalates FAST — within
+     * a second or two — instead of letting the chaser tee off for the full ~6s flee clock. The bot here
+     * never moves and never opens distance, so the progress watchdog trips and the ladder resolves.
+     */
+    @Test
+    public void aPinnedFleeEscalatesWithoutWaitingOutTheClock() {
+        ResponseArbiter a = new ResponseArbiter();
+        WorldSnapshot s = chasedBy(true, 30); // creeper at dist 5, bot static (pinned)
+        FleeMode mode = FleeMode.NORMAL;
+        int escalatedAt = -1;
+        for (long tick = 0; tick <= 60; tick++) {
+            s.gameTime = tick;
+            mode = a.decide(s, t).fleeMode;
+            if (mode != FleeMode.NORMAL && escalatedAt < 0) {
+                escalatedAt = (int) tick;
+            }
+        }
+        assertEquals("a pinned creeper flee escalates to PILLAR", FleeMode.PILLAR, mode);
+        org.junit.Assert.assertTrue("must escalate well before the ~6s time clock (got tick " + escalatedAt + ")",
+                escalatedAt >= 0 && escalatedAt < 60);
     }
 
     @Test

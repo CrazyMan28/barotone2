@@ -54,6 +54,14 @@ public class SurvivalBrain {
     private int combatTargetId = -1;
     private FleeMode fleeMode = FleeMode.NORMAL;
     private FleeEscalation flee;
+    /**
+     * Progress watchdog for a running flee: if a full ~1.2s window passes with neither real horizontal
+     * movement NOR any distance opened from the nearest threat, Baritone can't find a way out (boxed /
+     * walled in) — escalate to PILLAR/WALL/NEW_DIRECTION NOW instead of waiting out the ~6s flee clock
+     * while the chaser keeps hitting us. The window/deltas are tuned so a bot fleeing freely in the open
+     * (sprinting ~5+ blocks per window) never trips it; only a genuinely stuck one does.
+     */
+    private final BehaviorWatchdog fleeProgress = new BehaviorWatchdog(24, 2.0D, 2.0D);
     /** Debounces release of mob behaviors so a mob bobbing in/out of range can't cause flapping. */
     private final ThreatMemory mobMemory = new ThreatMemory();
 
@@ -199,11 +207,16 @@ public class SurvivalBrain {
                     ? mobMemory.shouldRelease(now, wantRelease, t.minMobDwellTicks, t.mobReleaseGraceTicks)
                     : wantRelease;
             if (!doRelease) {
-                // running isn't working: RESOLVE the chase instead of fleeing forever. Normally this
-                // waits for the flee clock to confirm we're not shaking it, but when we're cornered
-                // (no room to run) waiting just stands us still next to the threat — resolve NOW.
+                // running isn't working: RESOLVE the chase instead of fleeing forever. Escalate when
+                // EITHER the flee clock says we haven't shaken it (~6s), OR we're cornered (no room to
+                // run), OR the progress watchdog sees us pinned — Baritone gaining no ground for ~1.2s
+                // (boxed/walled in). The watchdog is the fast path: it turns a wedged flee into a
+                // pillar/wall/new-direction in about a second instead of letting the chaser tee off on a
+                // stuck bot for six. Only feed it while actually running NORMAL so the window is clean.
+                boolean fleePinned = active == BehaviorId.FLEE && fleeMode == FleeMode.NORMAL
+                        && fleeProgress.stuck(s.gameTime, s.posX, s.posZ, distanceToNearestThreat(s));
                 if (active == BehaviorId.FLEE && fleeMode == FleeMode.NORMAL
-                        && (flee.unresolved(s.gameTime) || lastAssessment.cornered)) {
+                        && (flee.unresolved(s.gameTime) || lastAssessment.cornered || fleePinned)) {
                     fleeMode = pickFleeResolution(s, t);
                     if (fleeMode != FleeMode.NORMAL) {
                         epEscalated = true;
@@ -566,6 +579,9 @@ public class SurvivalBrain {
             activeCause = cause;
             activeTicks = 0;
             fleeMode = FleeMode.NORMAL;
+            if (behavior == BehaviorId.FLEE) {
+                fleeProgress.reset(); // fresh flee episode: start the no-progress window clean
+            }
             if (isMobBehavior(behavior)) {
                 mobMemory.onEngage(now);
             } else {
@@ -578,6 +594,17 @@ public class SurvivalBrain {
             combatTargetId = cause.source.entityId;
         }
         return new ResponsePlan(active, activeCause, fleeMode, combatTargetId);
+    }
+
+    /** Distance to the nearest flee-relevant hostile (creeper/skeleton/any hostile), or a large value. */
+    private static double distanceToNearestThreat(WorldSnapshot s) {
+        double nearest = Double.MAX_VALUE;
+        for (MobInfo m : s.mobs) {
+            if (m.creeper || m.skeleton || m.hostile) {
+                nearest = Math.min(nearest, m.distance);
+            }
+        }
+        return nearest == Double.MAX_VALUE ? 0D : nearest;
     }
 
     private void beginEpisode(WorldSnapshot s, Threat cause) {

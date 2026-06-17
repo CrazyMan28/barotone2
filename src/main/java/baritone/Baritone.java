@@ -111,6 +111,7 @@ public class Baritone implements IBaritone {
             this.inputOverrideHandler = this.registerBehavior(InputOverrideHandler::new);
             this.registerBehavior(WaypointBehavior::new);
             this.registerBehavior(RemoteBridgeBehavior::new); // file bridge for unattended data farming
+            this.registerBehavior(DebugCommandBridge::new);   // headless debug bridge (vanilla + baritone cmds, no desktop)
         }
 
         this.pathingControlManager = new PathingControlManager(this);

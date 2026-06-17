@@ -29,15 +29,18 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * The panic sprint must never run the bot straight into lava or off a ledge: it picks the safe
- * direction closest to "directly away", and if every direction is a hazard it refuses to sprint.
+ * Flee is PATHFINDING-FIRST at every range: it hands Baritone a {@link GoalSpec.Kind#RUN_AWAY} goal
+ * (from the threat) and lets the pathfinder navigate AROUND terrain — walls, hills, water, lava,
+ * ledges. It never drives a raw {@code MOVE_FORWARD}, which is what used to wedge the bot against a
+ * wall the one-block hazard look-ahead couldn't see (the "looks one way, gets stuck" death). Routing
+ * around hazards is no longer the behavior's job — it's the pathfinder's, which does it correctly.
  */
 public class HazardAwareFleeTest {
 
     private final ReflexTuning t = new ReflexTuning();
     private final FleeBehavior b = new FleeBehavior();
 
-    /** Creeper {@code dist} blocks due east, so "directly away" is due west (yaw 90). */
+    /** Creeper {@code dist} blocks due east. */
     private static WorldSnapshot panicFromEast(double dist) {
         WorldSnapshot s = new WorldSnapshot();
         s.working = true;
@@ -60,46 +63,50 @@ public class HazardAwareFleeTest {
                 FleeMode.NORMAL, -1);
     }
 
-    private static boolean holds(List<ReflexAction> a, Input in) {
-        return a.stream().anyMatch(x -> x.kind == ReflexAction.Kind.HOLD_INPUT && x.input == in && x.pressed);
+    private static boolean holdsAnyMovement(List<ReflexAction> a) {
+        return a.stream().anyMatch(x -> x.kind == ReflexAction.Kind.HOLD_INPUT
+                && (x.input == Input.MOVE_FORWARD || x.input == Input.SPRINT) && x.pressed);
     }
 
-    private static ReflexAction look(List<ReflexAction> a) {
-        return a.stream().filter(x -> x.kind == ReflexAction.Kind.LOOK).findFirst().orElse(null);
+    private static GoalSpec goal(List<ReflexAction> a) {
+        return a.stream().filter(x -> x.kind == ReflexAction.Kind.SET_GOAL)
+                .map(x -> x.goal).findFirst().orElse(null);
     }
 
     @Test
-    public void openGroundSprintsDirectlyAway() {
-        WorldSnapshot s = panicFromEast(3); // all octants safe by default
+    public void pointBlankHandsBaritoneARunAwayGoal() {
+        WorldSnapshot s = panicFromEast(3); // point-blank — the old code raw-sprinted here and wedged
         b.enter(s, plan(s));
         List<ReflexAction> a = b.tick(s, t, plan(s));
-        assertTrue("sprints away", holds(a, Input.MOVE_FORWARD) && holds(a, Input.SPRINT));
-        assertEquals("straight away = due west (yaw 90)", 90F, look(a).yaw, 1F);
+        GoalSpec g = goal(a);
+        assertNotNull("flee must hand pathing a goal even point-blank", g);
+        assertEquals("a RUN_AWAY goal", GoalSpec.Kind.RUN_AWAY, g.kind);
+        assertTrue("running away from at least the creeper", g.from.length >= 1);
+        assertFalse("never drives a raw forward sprint (that is what got stuck)", holdsAnyMovement(a));
     }
 
     @Test
-    public void lavaDueWestDivertsToASafeNeighbor() {
-        WorldSnapshot s = panicFromEast(3);
-        s.octantSafe[6] = false; // due west (the straight-away direction) is lava
+    public void beyondPanicRangeAlsoPathsAway() {
+        WorldSnapshot s = panicFromEast(6);
         b.enter(s, plan(s));
         List<ReflexAction> a = b.tick(s, t, plan(s));
-        assertTrue("still flees", holds(a, Input.MOVE_FORWARD));
-        assertNotNull(look(a));
-        assertFalse("does NOT run due west into the lava", Math.abs(look(a).yaw - 90F) < 1F);
-        // nearest safe octant to west is SW(45) or NW(135) — either is fine, both avoid the lava
-        float yaw = look(a).yaw;
-        assertTrue("diverted to a safe diagonal", Math.abs(yaw - 45F) < 1F || Math.abs(yaw - 135F) < 1F);
+        GoalSpec g = goal(a);
+        assertNotNull("flee paths away at range too", g);
+        assertEquals(GoalSpec.Kind.RUN_AWAY, g.kind);
     }
 
     @Test
-    public void boxedInRefusesToSprintIntoAHazard() {
+    public void surroundedByHazardsStillPathsRatherThanSprintingBlind() {
         WorldSnapshot s = panicFromEast(3);
         for (int i = 0; i < s.octantSafe.length; i++) {
-            s.octantSafe[i] = false; // hazards in every direction
+            s.octantSafe[i] = false; // hazards/walls all around — Baritone (not a raw sprint) judges escape
         }
         b.enter(s, plan(s));
         List<ReflexAction> a = b.tick(s, t, plan(s));
-        assertFalse("must not sprint to its death", holds(a, Input.MOVE_FORWARD));
-        assertNotNull("still faces away, lets escalation (pillar/wall) resolve it", look(a));
+        // It hands a goal (the pathfinder won't step into lava/off a ledge, and finds no path if truly
+        // boxed — at which point the brain's progress watchdog escalates to pillar/wall). The key
+        // invariant: it does NOT blindly sprint into a hazard.
+        assertFalse("must not raw-sprint into the hazards", holdsAnyMovement(a));
+        assertNotNull("hands pathing a run-away goal", goal(a));
     }
 }
