@@ -437,6 +437,15 @@ public final class MistralAgent implements Helper {
                 if (verbose && am.content != null && !am.content.isEmpty()) {
                     logDirect("[AI:thought] " + truncate(am.content, 400), ChatFormatting.GRAY);
                 }
+                // Died WHILE the LLM call was in flight (the worker thread was blocked in client.chat()
+                // for the full network round-trip, so the pre-call check above couldn't see it). Bail
+                // BEFORE executing the now-stale tool call the dead/respawned bot can't carry out —
+                // otherwise the planner only learns of the death a whole tool-execution later.
+                if (subAgentMode && DeathWatch.currentSeq() > deathSeqAtStart) {
+                    logDirect("[AI] died while waiting for the LLM — handing back to the planner.",
+                            ChatFormatting.YELLOW);
+                    return failOutcome("died mid-LLM (lost gear; planner will recover/re-gear)");
+                }
 
                 if (am.toolCalls == null || am.toolCalls.size() == 0) {
                     history.add(am.raw);
