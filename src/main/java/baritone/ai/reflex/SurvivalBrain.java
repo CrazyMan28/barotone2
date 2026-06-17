@@ -179,6 +179,14 @@ public class SurvivalBrain {
                     if (fleeMode != FleeMode.NORMAL) {
                         epEscalated = true;
                     }
+                } else if (active == BehaviorId.FLEE && fleeMode != FleeMode.NORMAL
+                        && exhaustedFleeMode(s, t)) {
+                    // already escalated to PILLAR/WALL but the blocks ran out before it sealed us in
+                    // (e.g. a creeper on a ledge needs an 8-tall pillar, we had 3) — don't keep
+                    // re-emitting a build we can't finish. Re-pick: another build if any blocks are
+                    // left, otherwise run a fresh direction instead of standing on a stub pillar.
+                    fleeMode = pickFleeResolution(s, t);
+                    epEscalated = true;
                 }
                 return new ResponsePlan(active, activeCause, fleeMode, combatTargetId);
             }
@@ -507,6 +515,38 @@ public class SurvivalBrain {
      * (it can't reach and won't detonate), wall off anything else's approach/arrows, and with
      * no blocks to spare, at least try a perpendicular escape route.
      */
+    /**
+     * The escalated flee mode (PILLAR/WALL) has run out of the blocks it needs to finish: a pillar
+     * that can no longer reach safe height (or has no blocks at all), or a wall with nothing to place.
+     * When this is true the bot is stuck re-emitting a build it can't complete while the chaser closes
+     * — re-pick the resolution (a cheaper build if any blocks remain, else just run).
+     */
+    private boolean exhaustedFleeMode(WorldSnapshot s, ReflexTuning t) {
+        boolean noBlocks = s.blockSlot < 0 || s.blockCount <= 0;
+        if (fleeMode == FleeMode.PILLAR) {
+            // a creeper above/level with us needs the pillar to out-climb IT by the safe gap; if the
+            // blocks left can't cover the climb still owed, the pillar will strand us in the blast.
+            double owed = neededPillarClimb(s, t);
+            return noBlocks || s.blockCount < owed;
+        }
+        if (fleeMode == FleeMode.WALL) {
+            return noBlocks || s.blockCount < 2;
+        }
+        return false;
+    }
+
+    /** Blocks of vertical climb still owed to clear every nearby creeper by the safe gap. */
+    private double neededPillarClimb(WorldSnapshot s, ReflexTuning t) {
+        double need = 0D;
+        for (MobInfo m : s.mobs) {
+            if (m.creeper && m.distance <= t.perceptionRadius) {
+                // climb to creeperSafeGap above the creeper's Y; how much of that is still left
+                need = Math.max(need, (m.y - s.posY) + t.creeperSafeGap);
+            }
+        }
+        return Math.max(0D, need);
+    }
+
     private FleeMode pickFleeResolution(WorldSnapshot s, ReflexTuning t) {
         // a Warden tunnels through any wall and out-climbs a pillar — no static defense holds it.
         // The only thing that helps is opening distance, so keep sprinting (NEW_DIRECTION).

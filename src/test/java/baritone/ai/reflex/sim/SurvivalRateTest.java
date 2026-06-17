@@ -88,6 +88,10 @@ public class SurvivalRateTest {
         // creeper standing on a ledge level-ish with us — pillar must out-climb the creeper's OWN height
         all.add(new Scenario("creeper on ledge boxed", () -> kitted().creeperAtHeight(4, 3).fullyBoxed()));
         all.add(new Scenario("creeper on ledge cornered", () -> kitted().armor(10).hp(12).creeperAtHeight(4, 2).cornered()));
+        // pillar runs out of blocks mid-climb (a ledge creeper needs ~8, we have 3): must downgrade
+        // gracefully — run for an open direction instead of stranding ourselves on a stub pillar.
+        all.add(new Scenario("creeper ledge low-blocks cornered", () -> kitted().blocks(3).creeperAtHeight(5, 3).cornered()));
+        all.add(new Scenario("creeper ledge low-blocks open", () -> kitted().blocks(3).creeperAtHeight(6, 3)));
 
         // C. armed skeleton — must fight and win
         for (double d : new double[]{5, 7, 10, 14}) {

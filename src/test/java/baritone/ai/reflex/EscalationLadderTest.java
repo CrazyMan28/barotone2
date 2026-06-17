@@ -87,6 +87,28 @@ public class EscalationLadderTest {
     }
 
     @Test
+    public void pillarThatRunsOutOfBlocksDowngradesToRunning() {
+        // a creeper on a +3 ledge needs an ~8-tall pillar; with the few blocks gone the pillar can't
+        // finish — the brain must re-pick (NEW_DIRECTION) instead of re-emitting a build it can't do.
+        ResponseArbiter a = new ResponseArbiter();
+        WorldSnapshot s = chasedBy(true, 8);
+        s.mobs.get(0).y = 67; // creeper 3 blocks above the bot (a stub pillar won't clear it)
+        // escalate to PILLAR over a long chase
+        FleeMode mode = FleeMode.NORMAL;
+        for (long tick = 0; tick <= 140; tick++) {
+            s.gameTime = tick;
+            mode = a.decide(s, t).fleeMode;
+        }
+        assertEquals("a ledge creeper escalates to PILLAR", FleeMode.PILLAR, mode);
+        // now the blocks are spent — the next decision must downgrade away from the doomed pillar
+        s.blockCount = 0;
+        s.blockSlot = -1;
+        s.gameTime = 141;
+        assertEquals("an exhausted pillar downgrades to running",
+                FleeMode.NEW_DIRECTION, a.decide(s, t).fleeMode);
+    }
+
+    @Test
     public void engineReportsTheResolution() {
         ReflexEngine e = new ReflexEngine();
         WorldSnapshot s = chasedBy(true, 30);
