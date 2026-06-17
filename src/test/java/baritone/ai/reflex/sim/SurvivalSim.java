@@ -54,6 +54,8 @@ public final class SurvivalSim {
     private static final double LAVA_DMG = 0.45D;     // per tick while standing in lava
     private static final double FIRE_DMG = 0.12D;     // per tick on fire (out of lava)
     private static final double DROWN_DMG = 0.5D;     // per tick once air is gone
+    private static final int FREEZE_FULL = 140;       // ticks in powder snow before fully frozen (~7s)
+    private static final double FREEZE_DMG = 0.06D;    // per tick once fully frozen (slow, but lethal if stuck)
     private static final int CREEPER_FUSE = 30;       // ticks within blast range before it detonates
     private static final double CREEPER_BLAST = 45D;  // point-blank damage (lethal even geared)
     private static final double CREEPER_RANGE = 3.0D; // fuse range
@@ -97,6 +99,15 @@ public final class SurvivalSim {
     /** Standing on a contact-damage block (cactus/magma/sweet-berry): ticks damage until we step off. */
     public boolean contactHazard;
     private double contactHazardMoved; // how far we've moved off the hazard cell
+    /**
+     * Standing in powder snow: a SLOW freeze accumulator (counter to 140 = fully frozen, ~7s), then
+     * freeze damage. Unlike cactus the danger isn't instant — but staying put still kills (and the freeze
+     * slows you). Powder snow is also a contact hazard (step-off block), so the reflex leaves immediately;
+     * the freeze model is what makes "doing nothing" lethal in the control and validates the step-off.
+     */
+    public boolean powderSnow;
+    private int freezeTicks;            // accumulates while in powder snow, drains when out, cap 140
+    private double powderSnowMoved;     // how far we've moved off the powder-snow cell
     /**
      * Standing at the brink of a ledge/lava with a melee mob on the safe side: a hit knocks us off to a
      * fatal fall. The bot survives only by repositioning off the brink (moving ~1 block toward safe
@@ -416,6 +427,20 @@ public final class SurvivalSim {
         return this;
     }
 
+    /**
+     * Standing in powder snow: the freeze counter climbs to 140 (~7s) with NO damage, then freeze
+     * damage ticks. The reflex must step off (powder snow is a contact hazard) before the freeze
+     * accumulates; doing nothing freezes the bot to death (the control).
+     */
+    public SurvivalSim powderSnow() {
+        this.powderSnow = true;
+        this.contactHazard = true; // also a step-off block (adapter flags POWDER_SNOW as contactHazard)
+        this.contactHazardMoved = 0;
+        this.powderSnowMoved = 0;
+        this.freezeTicks = 0;
+        return this;
+    }
+
     /** Encased in solid (e.g. a cave-in / bad teleport): must mine out AND climb the shaft. */
     public SurvivalSim encased() {
         this.encased = true;
@@ -623,6 +648,9 @@ public final class SurvivalSim {
         if (suffocating || encased) {
             return "suffocation";
         }
+        if (powderSnow) {
+            return "freeze";
+        }
         if (contactHazard) {
             return "contact_hazard";
         }
@@ -811,6 +839,7 @@ public final class SurvivalSim {
             contactHazardMoved += Math.hypot(x - preX, z - preZ);
             if (contactHazardMoved >= 1.0D) {
                 contactHazard = false; // stepped off the hazard block
+                powderSnow = false;    // and out of the powder snow (freeze stops accumulating/thaws)
             }
         }
         // knockback ledge: any active repositioning along safe ground steps us off the brink. Once we've
@@ -1106,9 +1135,22 @@ public final class SurvivalSim {
             hp -= 0.6D;
             hurt = true;
         }
-        if (contactHazard) {
-            hp -= 0.5D; // cactus/magma/sweet-berry contact ticks until we step off
-            hurt = true;
+        if (powderSnow) {
+            // freeze accumulator: climbs to FREEZE_FULL with NO damage (~7s grace), then freeze damage
+            // ticks while fully frozen. Slower than cactus — but staying put still kills (the control).
+            freezeTicks = Math.min(FREEZE_FULL, freezeTicks + 1);
+            if (freezeTicks >= FREEZE_FULL) {
+                hp -= FREEZE_DMG;
+                hurt = true;
+            }
+        } else {
+            if (freezeTicks > 0) {
+                freezeTicks = Math.max(0, freezeTicks - 2); // thaws faster than it freezes once we're out
+            }
+            if (contactHazard) {
+                hp -= 0.5D; // cactus/magma/sweet-berry contact ticks until we step off
+                hurt = true;
+            }
         }
         if (falling) {
             fallDistance += 0.5D;
@@ -1264,6 +1306,7 @@ public final class SurvivalSim {
         s.nearestWater = nearestWater;
         s.surfaceSealed = surfaceSealed;
         s.contactHazardAtFeet = contactHazard;
+        s.freezeTicks = freezeTicks;
         s.octantSafe = octantSafe.clone();
         s.digDownSafe = digDownSafe;
         s.night = night;

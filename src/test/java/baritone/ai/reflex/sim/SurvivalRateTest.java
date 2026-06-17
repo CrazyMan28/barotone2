@@ -196,6 +196,12 @@ public class SurvivalRateTest {
         // while still standing on it). Tests the cross-behavior contact-clear + FLEE-release guard.
         all.add(new Scenario("contact hazard + creeper", () -> kitted().armor(12).contactHazard().creeper(6, 0)));
         all.add(new Scenario("contact hazard + skeleton", () -> kitted().armor(12).contactHazard().skeleton(7, 0)));
+        // T3. POWDER SNOW: a SLOW freeze accumulator (~7s grace, then freeze damage) — must step off
+        // before it freezes us to death. Step-off is the same fix as any contact hazard, now validated
+        // against the freeze model. Low hunger (no natural regen, the realistic "cold and hungry" case)
+        // so the slow freeze is genuinely lethal if you stand in it (the control).
+        all.add(new Scenario("powder snow", () -> kitted().armor(8).hp(8).food(6, 2, 6).powderSnow()));
+        all.add(new Scenario("powder snow + zombie", () -> kitted().armor(12).hp(10).food(6, 2, 6).powderSnow().zombie(7, 0)));
 
         // U. critical starvation, safe to eat
         all.add(new Scenario("starving f1", () -> new SurvivalSim().food(1, 2, 6)));
@@ -591,6 +597,25 @@ public class SurvivalRateTest {
         SurvivalSim.Outcome o = sim.run(TICKS);
         assertTrue("must step off a cactus/magma block, not stand there bleeding: " + o.cause, o.survived);
         assertFalse("must have left the contact hazard", sim.contactHazard);
+    }
+
+    @Test
+    public void powderSnowIsSteppedOffBeforeFreezing() {
+        // powder snow freezes slowly (~7s grace then freeze damage) — the bot must step off before it
+        // freezes to death, validated against the freeze accumulator model.
+        SurvivalSim sim = kitted().armor(8).hp(8).food(6, 2, 6).powderSnow();
+        SurvivalSim.Outcome o = sim.run(TICKS);
+        assertTrue("must step out of powder snow before freezing: " + o.cause, o.survived);
+        assertFalse("must have left the powder snow", sim.powderSnow);
+    }
+
+    @Test
+    public void controlReflexesOffFreezesInPowderSnow() {
+        // standing in powder snow with no reflexes (and low hunger, so regen can't outpace the slow
+        // freeze): the freeze accumulator runs to full and kills it.
+        SurvivalSim.Outcome o = kitted().armor(8).hp(8).food(6, 2, 6).powderSnow().disableReflexes().run(TICKS);
+        assertFalse("with no reflexes powder snow must freeze the bot to death", o.survived);
+        assertTrue("must have died to freeze", o.cause.contains("freeze"));
     }
 
     @Test

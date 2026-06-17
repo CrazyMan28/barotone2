@@ -165,11 +165,20 @@ public final class WorldSnapshot {
     /** A solid block sits within 2 above the head — the turtle hole is already sealed. */
     public boolean sealedOverhead;
     /**
-     * Standing on / inside a contact-damage block (cactus, magma block, sweet-berry bush) that ticks
-     * damage while we touch it but isn't fire/lava. After a fall-MLG the bot can land on one and stand
-     * there bleeding because nothing else detects it — step off NOW. Set by the adapter's block scan.
+     * Standing on / inside a contact-damage block (cactus, magma block, sweet-berry bush, powder snow)
+     * that ticks damage while we touch it but isn't fire/lava. After a fall-MLG the bot can land on one
+     * and stand there bleeding because nothing else detects it — step off NOW. Set by the adapter's block
+     * scan. (Powder snow's damage is the slow freeze accumulator below, but it's still a step-off block.)
      */
     public boolean contactHazardAtFeet;
+    /**
+     * Accumulated freeze ticks from standing in powder snow ({@code player.getTicksFrozen()}, capped 140
+     * = fully frozen). Freezing is a SLOW accumulator — no damage until ~140 ticks (~7s), then 1 HP/2s
+     * and movement slows — so unlike cactus the danger isn't instant, but standing put still kills. The
+     * fix is the same (step off — powder snow is a {@link #contactHazardAtFeet}); this counter lets the
+     * step-off be validated against real freezing and lets the brain treat a high counter as urgent.
+     */
+    public int freezeTicks;
 
     // ---- ambient (spawn / night awareness)
     /** Block-light at the feet (0-15); low light at night is where hostiles spawn on top of you. */

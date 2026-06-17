@@ -441,6 +441,9 @@ public final class ReflexProcess extends BaritoneProcessHelper {
         // "fall-MLG landed on cactus and the bot stands there bleeding" death. Check both cells.
         s.contactHazardAtFeet = isContactHazard(ctx.world().getBlockState(player.blockPosition()))
                 || isContactHazard(ctx.world().getBlockState(player.blockPosition().below()));
+        // freeze accumulator (powder snow): 0..140, 140 = fully frozen. The step-off is the same fix as
+        // any contact hazard, but tracking the counter validates it against real freezing damage.
+        s.freezeTicks = Math.min(140, player.getTicksFrozen());
         // look & UI
         s.yaw = ctx.playerRotations().getYaw();
         s.pitch = ctx.playerRotations().getPitch();
