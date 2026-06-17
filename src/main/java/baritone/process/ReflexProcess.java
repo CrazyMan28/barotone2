@@ -474,6 +474,11 @@ public final class ReflexProcess extends BaritoneProcessHelper {
                         bestRank = rank;
                         s.bestWeaponSlot = slot;
                         s.bestWeaponTier = rank;
+                        // remaining durability % so the power score discounts a near-broken sword
+                        // (it snaps mid-fight and then deals fist damage — never "win" on it)
+                        int maxDmg = stack.getMaxDamage();
+                        s.bestWeaponDurabilityPercent = (maxDmg <= 0 || !stack.isDamageableItem())
+                                ? -1 : (maxDmg - stack.getDamageValue()) * 100 / maxDmg;
                     }
                     break;
                 }

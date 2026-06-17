@@ -274,6 +274,12 @@ public class SurvivalRateTest {
         }
         all.add(new Scenario("blaze + zombie kitted", () -> kitted().armor(12).blaze(9, 0).zombie(6, 180)));
 
+        // AL. near-broken weapon: a sword about to snap deals fist damage, so a fight that looks
+        // winnable on the weapon tier is actually a loss — the power score must discount it and flee.
+        all.add(new Scenario("broken sword + zombie", () -> kitted().armor(6).weaponDurability(2).zombie(5, 0)));
+        all.add(new Scenario("broken sword + 2 zombies", () -> kitted().armor(8).weaponDurability(1).zombie(5, 0).zombie(6, 90)));
+        all.add(new Scenario("broken sword fresh-flee", () -> new SurvivalSim().weapon(2).weaponDurability(3).blocks(32).food(20, 2, 6).zombie(6, 0)));
+
         return all;
     }
 

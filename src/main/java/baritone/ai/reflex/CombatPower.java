@@ -41,14 +41,30 @@ public final class CombatPower {
     private CombatPower() {
     }
 
+    /** Below this remaining durability the weapon is "about to snap" — count it as bare-handed. */
+    private static final int BROKEN_WEAPON_PERCENT = 5;
+
     static double weaponPoints(int tier) {
         return tier >= 0 && tier < WEAPON_POINTS.length ? WEAPON_POINTS[tier] : 0D;
+    }
+
+    /**
+     * Weapon contribution, discounted by remaining durability. A weapon nearly out of durability
+     * breaks mid-fight and then deals fist damage, so once it drops under {@link #BROKEN_WEAPON_PERCENT}
+     * it contributes nothing (the bot should retreat/regear, not "win" a fight its sword can't finish).
+     */
+    static double effectiveWeaponPoints(WorldSnapshot s) {
+        double pts = weaponPoints(s.bestWeaponTier);
+        if (s.bestWeaponDurabilityPercent >= 0 && s.bestWeaponDurabilityPercent < BROKEN_WEAPON_PERCENT) {
+            return 0D;
+        }
+        return pts;
     }
 
     /** What the bot brings to a melee: weapon + armor + health, with shield and full-belly tips. */
     public static double playerPower(WorldSnapshot s) {
         double hpFrac = s.maxHp <= 0 ? 1D : Math.min(1D, s.hp / (double) s.maxHp);
-        double power = weaponPoints(s.bestWeaponTier)
+        double power = effectiveWeaponPoints(s)
                 + 0.35D * s.armorValue
                 + 3.0D * hpFrac
                 + (s.hasShieldOffhand ? 1.0D : 0D)

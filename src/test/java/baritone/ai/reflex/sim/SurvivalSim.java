@@ -95,6 +95,7 @@ public final class SurvivalSim {
 
     // gear / resources
     public int weaponSlot = -1, weaponTier = -1;
+    public int weaponDurabilityPercent = -1; // -1 = unbreakable/none; near 0 = about to snap
     public int armor;
     public boolean shield;
     public int blocks;          // blocks on hand
@@ -168,6 +169,12 @@ public final class SurvivalSim {
     public SurvivalSim weapon(int tier) {
         this.weaponSlot = 0;
         this.weaponTier = tier;
+        return this;
+    }
+
+    /** A weapon with this remaining durability percent (e.g. 2 = about to snap, dealing fist damage). */
+    public SurvivalSim weaponDurability(int percent) {
+        this.weaponDurabilityPercent = percent;
         return this;
     }
 
@@ -885,6 +892,7 @@ public final class SurvivalSim {
         s.selectedSlot = 0;
         s.bestWeaponSlot = weaponSlot;
         s.bestWeaponTier = weaponTier;
+        s.bestWeaponDurabilityPercent = weaponDurabilityPercent;
         s.hasShieldOffhand = shield;
         s.armorValue = armor;
         s.bestFoodSlot = foodSlot;
@@ -944,13 +952,16 @@ public final class SurvivalSim {
     }
 
     private double weaponDamage() {
+        // a weapon about to snap deals fist damage (and breaks for good — model it as bare-handed)
+        boolean broken = weaponDurabilityPercent >= 0 && weaponDurabilityPercent < 5;
+        int effTier = broken ? -1 : weaponTier;
         if (weakened) {
-            return Math.max(0.5D, (weaponTier < 0 ? 1.0D : 8 - weaponTier) - 4.0D); // weakness guts melee
+            return Math.max(0.5D, (effTier < 0 ? 1.0D : 8 - effTier) - 4.0D); // weakness guts melee
         }
-        if (weaponTier < 0) {
+        if (effTier < 0) {
             return 1.0D; // bare fist
         }
-        return Math.max(2.0D, 8 - weaponTier);
+        return Math.max(2.0D, 8 - effTier);
     }
 
     private SimMob byId(int id) {

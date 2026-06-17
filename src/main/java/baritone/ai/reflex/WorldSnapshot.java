@@ -83,6 +83,13 @@ public final class WorldSnapshot {
     public int bestWeaponSlot = -1;
     /** Rank in the melee-weapon table, lower = better (-1 = none). */
     public int bestWeaponTier = -1;
+    /**
+     * Remaining durability of the best weapon as a percent 0-100 (-1 = unbreakable / no weapon).
+     * A near-broken sword (about to snap) deals little/no damage, so the gear-aware power score must
+     * discount it — otherwise the bot "wins" a fight on paper with a weapon that breaks mid-swing
+     * and then bleeds out bare-handed (a real death). {@code CombatPower.playerPower} reads this.
+     */
+    public int bestWeaponDurabilityPercent = -1;
     public boolean hasShieldOffhand;
     /** Worn armor points, 0-20+ ({@code player.getArmorValue()}). */
     public int armorValue;

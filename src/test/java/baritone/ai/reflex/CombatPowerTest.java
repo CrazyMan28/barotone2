@@ -130,6 +130,32 @@ public class CombatPowerTest {
     }
 
     @Test
+    public void aNearBrokenSwordCountsAsBareHanded() {
+        // a stone sword + armor normally beats a zombie, but at 2% durability it snaps mid-fight
+        // and then deals fist damage — the power score must discount it so the bot flees instead.
+        WorldSnapshot fullDurability = bot(STONE_SWORD, 6);
+        fullDurability.bestWeaponDurabilityPercent = 100;
+        fullDurability.mobs.add(mob(1, "zombie", 3));
+        assertTrue("a healthy sword wins the fight", CombatPower.fightFavorable(fullDurability, t));
+
+        WorldSnapshot aboutToSnap = bot(STONE_SWORD, 6);
+        aboutToSnap.bestWeaponDurabilityPercent = 2;
+        aboutToSnap.mobs.add(mob(1, "zombie", 3));
+        assertTrue("a near-broken sword scores like a fist",
+                CombatPower.playerPower(aboutToSnap) < CombatPower.playerPower(fullDurability));
+    }
+
+    @Test
+    public void unbreakableWeaponIsNotPenalised() {
+        // -1 durability means unbreakable / not damageable — full weapon points
+        WorldSnapshot s = bot(STONE_SWORD, 6);
+        s.bestWeaponDurabilityPercent = -1;
+        WorldSnapshot full = bot(STONE_SWORD, 6);
+        full.bestWeaponDurabilityPercent = 100;
+        assertTrue(CombatPower.playerPower(s) == CombatPower.playerPower(full));
+    }
+
+    @Test
     public void legacyModeTrustsTheOldJudgment() {
         t.gearAwareCombat = false;
         WorldSnapshot s = bot(-1, 0);
