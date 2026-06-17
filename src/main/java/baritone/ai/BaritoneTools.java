@@ -2643,6 +2643,9 @@ public final class BaritoneTools {
             snap.y = ctx.playerFeet().y;
             snap.z = ctx.playerFeet().z;
             try {
+                snap.dimension = p.level().dimension().identifier().toString();
+            } catch (RuntimeException ignored) {}
+            try {
                 snap.food = p.getFoodData().getFoodLevel();
             } catch (RuntimeException ignored) {}
             try {

@@ -307,10 +307,15 @@ public final class PlannerAgent implements Helper {
         double distance = Math.sqrt(Math.pow(here.x - death.x, 2)
                 + Math.pow(here.y - death.y, 2) + Math.pow(here.z - death.z, 2));
         double secondsSince = Math.max(0, (DeathWatch.currentGameTime() - death.gameTime) / 20.0);
+        // cross-dimension death (e.g. died in the Nether, respawned in the Overworld): the drops are
+        // unreachable without a portal trip, and a straight-line distance across dimensions is
+        // meaningless — never send the recovery step on a doomed cross-dimension walk.
+        boolean sameDimension = death.dimension != null && death.dimension.equals(here.dimension);
         DeathPolicy.Verdict verdict = DeathPolicy.decide(distance, secondsSince, plan.deathsNearLast,
                 Math.max(0, settings.aiPlannerMaxDeathsPerSubGoal.value),
                 settings.aiPlannerWalkSpeedBlocksPerSec.value,
-                settings.aiPlannerDespawnSeconds.value);
+                settings.aiPlannerDespawnSeconds.value,
+                sameDimension);
         int secondsLeft = (int) Math.max(0, settings.aiPlannerDespawnSeconds.value - secondsSince);
         int maxMissionDeaths = Math.max(1, settings.aiPlannerMaxMissionDeaths.value);
 

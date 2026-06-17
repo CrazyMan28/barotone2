@@ -51,6 +51,28 @@ public final class DeathPolicy {
     }
 
     /**
+     * Dimension-aware overload. When the bot respawned in a DIFFERENT dimension than where it died
+     * (e.g. died in the Nether, respawned in the Overworld), the drops are unreachable no matter how
+     * small the Euclidean distance looks — straight-line distance across dimensions is meaningless
+     * (and the Nether is 8x), and recovery needs a portal traversal the recovery step can't do. So a
+     * cross-dimension death is always {@code recoverable=false} → re-gear instead of a doomed trip.
+     *
+     * @param sameDimension whether the current dimension matches the death dimension
+     */
+    public static Verdict decide(double distanceBlocks, double secondsSinceDeath,
+                                 int deathsThisSubGoal, int maxDeaths,
+                                 double walkSpeedBlocksPerSec, double despawnSeconds,
+                                 boolean sameDimension) {
+        if (!sameDimension) {
+            return new Verdict(Decision.REPLAN_AND_REGEAR, false,
+                    "died in a different dimension than the respawn — drops are unreachable "
+                            + "(needs a portal trip), re-gear instead of a doomed recovery");
+        }
+        return decide(distanceBlocks, secondsSinceDeath, deathsThisSubGoal, maxDeaths,
+                walkSpeedBlocksPerSec, despawnSeconds);
+    }
+
+    /**
      * @param distanceBlocks      current position → death spot
      * @param secondsSinceDeath   how much of the despawn window is already burned
      * @param deathsThisSubGoal   running death count on the current sub-goal

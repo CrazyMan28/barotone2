@@ -48,6 +48,11 @@ public final class StateSnapshot {
     /** Player feet Z (0 when unknown). */
     public int z;
 
+    /** Current dimension id ("minecraft:overworld", "minecraft:the_nether", ...) or "unknown".
+     *  Drives the cross-dimension recovery guard: a death whose drops are in another dimension is
+     *  unreachable no matter how near the straight-line distance looks. */
+    public String dimension = "unknown";
+
     /** Best pickaxe item id ("minecraft:iron_pickaxe") or "none" — same shape as get_state. */
     public String bestPickaxe = "none";
 
@@ -81,6 +86,10 @@ public final class StateSnapshot {
             try {
                 s.food = j.get("food").getAsInt();
             } catch (RuntimeException ignored) {}
+        }
+        String dim = asString(j, "dimension");
+        if (dim != null && !dim.isEmpty()) {
+            s.dimension = dim;
         }
         String pick = asString(j, "best_pickaxe");
         if (pick != null && !pick.isEmpty()) {

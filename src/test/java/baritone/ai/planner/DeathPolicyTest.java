@@ -71,6 +71,25 @@ public class DeathPolicyTest {
     }
 
     @Test
+    public void crossDimensionDeathIsNeverRecoverableEvenWhenNear() {
+        // died in the Nether, respawned in the Overworld: the straight-line distance is tiny but the
+        // drops are in another dimension — must re-gear, not walk into a wall where the portal isn't.
+        DeathPolicy.Verdict v = DeathPolicy.decide(5, 5, 1, 5, WALK, DESPAWN, false);
+        assertEquals(DeathPolicy.Decision.REPLAN_AND_REGEAR, v.decision);
+        assertFalse("drops in another dimension are unreachable", v.recoverable);
+        assertNotNull(v.reason);
+    }
+
+    @Test
+    public void sameDimensionDeathStillFollowsTheNormalPolicy() {
+        // the dimension-aware overload with sameDimension=true must match the plain overload exactly
+        DeathPolicy.Verdict same = DeathPolicy.decide(40, 10, 1, 5, WALK, DESPAWN, true);
+        DeathPolicy.Verdict plain = DeathPolicy.decide(40, 10, 1, 5, WALK, DESPAWN);
+        assertEquals(plain.decision, same.decision);
+        assertEquals(plain.recoverable, same.recoverable);
+    }
+
+    @Test
     public void despawnBoundaryUsesEtaPlusSafetyMargin() {
         // recoverable iff secondsSinceDeath + distance/walk + MARGIN < despawn
         double margin = DeathPolicy.SAFETY_MARGIN_SECONDS;
